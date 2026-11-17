@@ -17,6 +17,7 @@ from .commands import STAGES
 from .detect import detect
 from .events import Feed
 from .memory import Memory
+from .models import Inventory
 from .orchestrate import execute
 from .planner import plan
 from .repo import Repo
@@ -109,59 +110,42 @@ class Session:
                 self._finish_early()
                 return
 
-            self.feed.emit(
-                "agent.state",
-                agent="Analyst",
-                state="working",
-                note="reading the repository",
-            )
+            # An empty repository has nothing to survey, and a survey run
+            # against one produces twenty findings that all say the same
+            # thing: there are no files. That costs real money and two
+            # minutes to learn what one `iterdir` already knows. So the two
+            # stations are alternatives, not a sequence - one reads what is
+            # there, the other decides what should be.
+            empty = not any(p.name != ".git" for p in self.repo.iterdir())
             commit = Repo(self.repo).head()
-            self.run.inventory, usage = survey(
-                self.repo,
-                self.task,
-                b,
-                self.skills,
-                self._agent_event("Analyst"),
-                budget=self.run.left if self.budget else 0.0,
-                engine=self.engine,
-                model=self.model,
-                memory=self.memory,
-                commit=commit,
-            )
-            self.run.spend(usage)
-            self.run.save()
 
-            # Keep what was read. The next job in this repository starts from
-            # these facts instead of paying a second time to find them.
-            self.memory.toolchain = f"{chain.build_tool} / {chain.language}"
-            self.memory.build_command = chain.build_command
-            self.memory.test_command = chain.test_command
-            self.memory.last_test_count = b.tests_run
-            self.memory.learn(self.run.inventory.findings, commit)
-            self.memory.save()
-
-            self.feed.emit(
-                "agent.state",
-                agent="Analyst",
-                state="done",
-                note=f"{len(self.run.inventory.findings)} findings, "
-                f"{len(self.run.inventory.risks)} risks",
-            )
-            self.feed.emit(
-                "survey",
-                findings=self.run.inventory.findings,
-                risks=self.run.inventory.risks,
-            )
+            if empty:
+                self.feed.emit(
+                    "agent.state",
+                    agent="Analyst",
+                    state="skipped",
+                    note="there is nothing in this repository to read",
+                )
+                self.run.inventory = Inventory(
+                    build_tool=chain.build_tool,
+                    language=chain.language,
+                    test_command=chain.test_command,
+                    build_command=chain.build_command,
+                    source_files=0,
+                    test_files=0,
+                    findings=["The repository is empty. Nothing here was built on."],
+                    risks=[],
+                )
+                self.run.save()
+            else:
+                self._survey(b, chain, commit)
 
             if self.stop_after == "analyst":
                 self._finish_early()
                 return
 
-            # Nothing to read means nothing to plan against. On an empty
-            # repository the shape is decided here, out loud and first,
-            # rather than implied by whatever item four happened to import.
             shape = ""
-            if chain.build_tool == "none" and not b.tests_run:
+            if empty:
                 self.feed.emit(
                     "agent.state",
                     agent="Architect",
@@ -213,38 +197,83 @@ class Session:
                 shape=shape,
             )
             self.run.spend(usage)
-            self.run.save()
-            self.feed.emit(
-                "plan.ready",
-                summary=self.run.plan.summary,
-                items=[
-                    {
-                        "id": i.id,
-                        "title": i.title,
-                        "verify_with": i.verify_with,
-                        "rationale": i.rationale,
-                    }
-                    for i in self.run.plan.items
-                ],
-                cost=round(self.run.cost, 2),
-            )
-            self.feed.emit(
-                "agent.state",
-                agent="Planner",
-                state="done",
-                note=f"{len(self.run.plan.items)} items, awaiting approval",
-            )
+            self._after_plan(auto_run)
 
-            if auto_run:
-                self.work_the_plan()
-            else:
-                self.feed.emit("awaiting.approval")
         except Exception as exc:  # noqa: BLE001 - the page has to be told
             self.error = f"{type(exc).__name__}: {exc}"
             self.feed.emit("run.error", detail=self.error)
-        finally:
-            if not self.running:
-                pass
+
+    def _survey(self, b, chain, commit: str) -> None:
+        """Read the repository, and keep what was read."""
+        self.feed.emit(
+            "agent.state",
+            agent="Analyst",
+            state="working",
+            note="reading the repository",
+        )
+        self.run.inventory, usage = survey(
+            self.repo,
+            self.task,
+            b,
+            self.skills,
+            self._agent_event("Analyst"),
+            budget=self.run.left if self.budget else 0.0,
+            engine=self.engine,
+            model=self.model,
+            memory=self.memory,
+            commit=commit,
+        )
+        self.run.spend(usage)
+        self.run.save()
+
+        # The next job in this repository starts from these facts instead of
+        # paying a second time to find them.
+        self.memory.toolchain = f"{chain.build_tool} / {chain.language}"
+        self.memory.build_command = chain.build_command
+        self.memory.test_command = chain.test_command
+        self.memory.last_test_count = b.tests_run
+        self.memory.learn(self.run.inventory.findings, commit)
+        self.memory.save()
+
+        self.feed.emit(
+            "agent.state",
+            agent="Analyst",
+            state="done",
+            note=f"{len(self.run.inventory.findings)} findings, "
+            f"{len(self.run.inventory.risks)} risks",
+        )
+        self.feed.emit(
+            "survey",
+            findings=self.run.inventory.findings,
+            risks=self.run.inventory.risks,
+        )
+
+    def _after_plan(self, auto_run: bool) -> None:
+        self.run.save()
+        self.feed.emit(
+            "plan.ready",
+            summary=self.run.plan.summary,
+            items=[
+                {
+                    "id": i.id,
+                    "title": i.title,
+                    "verify_with": i.verify_with,
+                    "rationale": i.rationale,
+                }
+                for i in self.run.plan.items
+            ],
+            cost=round(self.run.cost, 2),
+        )
+        self.feed.emit(
+            "agent.state",
+            agent="Planner",
+            state="done",
+            note=f"{len(self.run.plan.items)} items, awaiting approval",
+        )
+        if auto_run:
+            self.work_the_plan()
+        else:
+            self.feed.emit("awaiting.approval")
 
     # Which desk owns each stage. The verifier owns the baseline because the
     # baseline is a build and a test run, and that is the one judgement in the
