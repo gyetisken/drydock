@@ -152,3 +152,65 @@ class _Reader:
 
     def read(self):
         return self.text
+
+
+class TestCountingTurns:
+    """A worker reports its own turn count only in its final message. One
+    that was stopped by the clock therefore reported nought turns after
+    twelve minutes of visible work - wrong, and the opposite of useful in
+    the one message where the number mattered."""
+
+    def test_turns_are_counted_as_they_happen(self):
+        import json
+
+        from drydock.engines import ClaudeCodeEngine
+
+        lines = [json.dumps({"type": "assistant", "message": {"content": []}})] * 5
+        _, turns, _ = ClaudeCodeEngine()._read(_Says(lines), None)
+        assert turns == 5
+
+    def test_the_worker_s_own_count_wins_when_it_is_larger(self):
+        """It knows about turns that produced no assistant message."""
+        import json
+
+        from drydock.engines import ClaudeCodeEngine
+
+        lines = [
+            json.dumps({"type": "assistant", "message": {"content": []}}),
+            json.dumps({"type": "result", "num_turns": 9, "total_cost_usd": 0.4}),
+        ]
+        _, turns, _ = ClaudeCodeEngine()._read(_Says(lines), None)
+        assert turns == 9
+
+    def test_a_count_that_arrives_low_does_not_undo_what_was_seen(self):
+        import json
+
+        from drydock.engines import ClaudeCodeEngine
+
+        lines = [json.dumps({"type": "assistant", "message": {"content": []}})] * 4 + [
+            json.dumps({"type": "result", "num_turns": 1})
+        ]
+        _, turns, _ = ClaudeCodeEngine()._read(_Says(lines), None)
+        assert turns == 4
+
+
+class _Says:
+    """A worker that emits these lines and then ends."""
+
+    returncode = 0
+
+    def __init__(self, lines):
+        self.stdout = iter(lines)
+        self.stderr = _Reader("")
+
+    def poll(self):
+        return None
+
+    def wait(self, timeout=None):
+        return 0
+
+    def kill(self):
+        pass
+
+    def terminate(self):
+        pass

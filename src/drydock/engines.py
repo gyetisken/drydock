@@ -488,7 +488,7 @@ class ClaudeCodeEngine:
         heartbeat = threading.Thread(target=still_there, daemon=True)
         heartbeat.start()
 
-        dollars, turns = 0.0, 0
+        dollars, turns, counted = 0.0, 0, 0
         try:
             for line in process.stdout:
                 spoke_at[0] = time.monotonic()
@@ -500,7 +500,14 @@ class ClaudeCodeEngine:
                 except json.JSONDecodeError:
                     continue
                 dollars = event.get("total_cost_usd", dollars)
-                turns = event.get("num_turns", turns)
+                # The worker reports its own turn count, but only in the
+                # final message - so a worker that was stopped reported nought
+                # turns after twelve minutes of visible work, which is both
+                # wrong and the opposite of useful. Count them here as well
+                # and keep whichever is larger.
+                if event.get("type") == "assistant":
+                    counted += 1
+                turns = max(turns, event.get("num_turns", 0), counted)
                 if on_event:
                     _report(event, on_event)
         finally:
