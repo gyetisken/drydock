@@ -109,3 +109,37 @@ class TestThingsNobodyWrote:
         assert (
             len([f for f in look(diff).findings if f.kind == "not ours to commit"]) == 1
         )
+
+
+class TestImprovisedAssets:
+    """An item asked for a photograph. Nothing in this process can take one,
+    so a worker hand-wrote a 16x20 bitmap of flat colour blocks and committed
+    it as public/corner.jpg. Three gates passed it; the one with eyes caught
+    it. This is the mechanical version of that catch."""
+
+    def added(self, path: str) -> str:
+        return f"--- /dev/null\n+++ b/{path}\n+binary"
+
+    def test_a_bitmap_wearing_a_jpg_extension(self, tmp_path):
+        (tmp_path / "corner.jpg").write_bytes(b"BM" + b"\x00" * 4000)
+        report = look(self.added("corner.jpg"), repo=tmp_path)
+        assert not report.clean
+        assert "is .bmp" in report.reason
+
+    def test_an_image_too_small_to_be_of_anything(self, tmp_path):
+        (tmp_path / "hero.png").write_bytes(b"\x89PNG\r\n\x1a\n" + b"\x00" * 40)
+        report = look(self.added("hero.png"), repo=tmp_path)
+        assert not report.clean
+        assert "bytes" in report.reason
+
+    def test_a_real_image_is_left_alone(self, tmp_path):
+        (tmp_path / "hero.png").write_bytes(b"\x89PNG\r\n\x1a\n" + b"\x00" * 9000)
+        assert look(self.added("hero.png"), repo=tmp_path).clean
+
+    def test_an_svg_is_not_checked_for_magic_bytes(self, tmp_path):
+        """SVG is text and is readable in the diff like anything else."""
+        (tmp_path / "mark.svg").write_text("<svg/>")
+        assert look(self.added("mark.svg"), repo=tmp_path).clean
+
+    def test_nothing_happens_without_a_repository_to_look_in(self):
+        assert look(self.added("corner.jpg")).clean

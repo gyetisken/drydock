@@ -43,6 +43,14 @@ other single choice.
 restaurant's site are outside it deciding whether to go in. Design that
 first; the desktop version is the easy one.
 
+**No photographs.** Nothing in this process can take one, buy one or
+generate one. A layout that needs a hero image is a layout nobody here can
+build, and what arrives instead is a few hundred bytes of flat colour named
+.jpg. Design with type, colour, space and drawn marks. Where an image really
+is required, leave a placeholder that looks like a decision - a flat field at
+the right aspect ratio with the caption saying what goes there - and say in
+the README what to drop in.
+
 **Say what you will not do.** Writing down the generic version - stock hero
 photo of a table, "Welcome to our restaurant", a carousel nobody asked for -
 is what stops it arriving by default.

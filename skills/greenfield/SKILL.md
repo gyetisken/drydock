@@ -81,6 +81,12 @@ Keep the first version small enough that it works. Something that does one
 thing end to end is a foundation; a half-built thing with six features is a
 pile.
 
+Never improvise an asset. If an item needs something this process cannot
+produce - a photograph, a font licence, a real API key - the item is not
+done. Say so and leave a placeholder that is obviously a placeholder. A
+hand-written bitmap named .jpg is not a photograph; it is a lie that passes
+a build.
+
 Do not invent requirements. Where the task is silent, choose the plainest thing
 that works and report the choice rather than burying it.
 

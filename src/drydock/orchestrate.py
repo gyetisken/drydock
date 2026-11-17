@@ -251,7 +251,9 @@ def execute(
             refusal = ""
             if verdict.passed:
                 diff = repo.pending()
-                report_card = look(diff, allow_removals=item.removes_tests)
+                report_card = look(
+                    diff, allow_removals=item.removes_tests, repo=repo_path
+                )
                 if on_gate:
                     on_gate(item, "inspector", report_card.clean, report_card.reason)
                 if not report_card.clean:

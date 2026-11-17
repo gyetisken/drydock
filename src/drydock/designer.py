@@ -70,6 +70,15 @@ Name it. If there is nothing to describe, there is nothing designed.
 sit beside, and one sentence each on what is being taken - the rhythm, the
 way the type is set, the restraint, the density. Not to copy; to aim.
 
+**Nothing here can take a photograph.** There is no camera, no stock library
+and no image generator in this process, so a design that rests on a
+photograph is a design that cannot be built. Make it work with type, colour,
+space, rule and a drawn mark - which is a harder brief and usually a better
+page. If an image genuinely must exist, say exactly what it is, at what
+aspect ratio, and direct a placeholder that looks deliberate and says what
+belongs there. A page that ships a fake photograph is worse than one that
+ships none.
+
 Then the specifics, in enough detail to build from: hex values with their
 contrast ratios, Google Font names with weights, a type scale in rem, a
 spacing scale, and the breakpoints where the composition changes.

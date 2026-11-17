@@ -14,6 +14,7 @@ arithmetic, like the test count, and arithmetic does not negotiate.
 
 import re
 from dataclasses import dataclass, field
+from pathlib import Path
 
 # A test, in every language anyone here is likely to be holding. These are
 # matched on removed lines only, so a false positive costs one re-run and a
@@ -99,7 +100,78 @@ def _added_files(diff: str) -> list[str]:
     return re.findall(r"^\+\+\+ b/(.+)$", diff, flags=re.MULTILINE)
 
 
-def look(diff: str, *, allow_removals: bool = False) -> Report:
+# What each image format actually starts with. A file claiming to be one
+# thing and containing another is never right, and it is the shape a faked
+# asset takes: asked for a photograph it cannot produce, a worker writes a
+# handful of bytes and names the file .jpg.
+MAGIC = {
+    ".jpg": (b"\xff\xd8\xff",),
+    ".jpeg": (b"\xff\xd8\xff",),
+    ".png": (b"\x89PNG\r\n\x1a\n",),
+    ".gif": (b"GIF87a", b"GIF89a"),
+    ".webp": (b"RIFF",),
+    ".avif": (b"\x00\x00\x00",),
+    ".bmp": (b"BM",),
+    ".ico": (b"\x00\x00\x01\x00",),
+}
+
+# Below this, an image is not a photograph of anything.
+TOO_SMALL = 2048
+
+
+def check_assets(repo: Path, added: list[str]) -> list[Finding]:
+    """Look at image files the diff added, on disk rather than in the diff.
+
+    A binary file is not readable in a patch, so this is the one check that
+    has to open the file. It exists because an item asked for a photograph,
+    nothing in this system can take one, and what arrived was a hand-written
+    bitmap of flat colour blocks named .jpg.
+    """
+    findings = []
+    for path in added:
+        suffix = Path(path).suffix.lower()
+        if suffix not in MAGIC:
+            continue
+        here = repo / path
+        if not here.exists():
+            continue
+
+        head = here.read_bytes()[:16]
+        if not any(head.startswith(sig) for sig in MAGIC[suffix]):
+            actual = next(
+                (
+                    ext
+                    for ext, sigs in MAGIC.items()
+                    if any(head.startswith(sig) for sig in sigs)
+                ),
+                "something else",
+            )
+            findings.append(
+                Finding(
+                    "not what it says",
+                    f"{path} is named {suffix} and is {actual}. A file that "
+                    "lies about what it is was not made, it was improvised.",
+                )
+            )
+            continue
+
+        size = here.stat().st_size
+        if size < TOO_SMALL:
+            findings.append(
+                Finding(
+                    "not a real image",
+                    f"{path} is {size} bytes. Nothing that small is a "
+                    "photograph or an illustration of anything; if a real "
+                    "image cannot be produced, the item has to say so rather "
+                    "than ship a placeholder pretending to be the thing.",
+                )
+            )
+    return findings
+
+
+def look(
+    diff: str, *, allow_removals: bool = False, repo: Path | None = None
+) -> Report:
     """Read a unified diff and report what should stop it from standing.
 
     `allow_removals` is for the rare item whose whole point is to delete
@@ -174,5 +246,8 @@ def look(diff: str, *, allow_removals: bool = False) -> Report:
                 )
             )
             break
+
+    if repo is not None:
+        findings += check_assets(repo, _added_files(diff))
 
     return Report(clean=not findings, findings=findings)
