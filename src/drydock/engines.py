@@ -108,12 +108,15 @@ def _shell_rule(build_command: str) -> str:
 QUIET_EVERY = 30
 QUIET_AFTER = 90
 
-# How long a worker may say absolutely nothing before it is treated as
-# stopped rather than busy. Working looks like a tool call every few
-# seconds; five minutes of silence is not a long turn, it is a worker that
-# has come off the rails. One did exactly this and held an item for ten
-# minutes before the twelve-minute clock reached it, and the whole of that
-# was waiting for something that was never coming.
+# How long a worker may show nothing before it is treated as stopped rather
+# than busy. Working looks like a tool call every few seconds, so five
+# minutes with nothing to show is not a long turn.
+#
+# Measured against what a person would have seen, not against the raw
+# output. A worker waiting on a connection that has stalled still has lines
+# coming down the pipe - keepalives - so by that measure it is talking, and
+# one sat at under one percent of a processor for six minutes looking
+# perfectly healthy. The only honest signal is that nothing appeared.
 SILENT_LIMIT = 300
 
 _WORKERS: set[subprocess.Popen] = set()
@@ -448,11 +451,11 @@ class ClaudeCodeEngine:
                 # It was this program that killed it, so the exit code is our
                 # own signal and says nothing.
                 reason = (
-                    f"it stopped producing anything at all for "
-                    f"{SILENT_LIMIT // 60} minutes and was stopped. It got "
-                    f"through {turns} turns first. This is not an item that "
-                    "was too large; it is a worker that came off the rails, "
-                    "and the same item is worth trying again"
+                    f"it showed nothing at all for {SILENT_LIMIT // 60} "
+                    f"minutes and was stopped. It got through {turns} turns "
+                    "first. This is not an item that was too large; it is a "
+                    "worker that stopped working, usually on a connection "
+                    "that stalled, and the same item is worth trying again"
                 )
             elif overran:
                 reason = (
@@ -468,8 +471,11 @@ class ClaudeCodeEngine:
                     reason += (
                         f". This program stopped it: {ours}"
                         if ours
-                        else ". Nothing in this program asked it to stop, so "
-                        "something outside did"
+                        else ". Nothing in this program asked it to stop, and "
+                        "it was in a session of its own where a stray group "
+                        "signal cannot reach it - so it gave up on its own. "
+                        "That is usually a request that stalled, and it says "
+                        "nothing about the item"
                     )
             if not overran and turns >= self.max_turns:
                 reason += (
@@ -483,7 +489,12 @@ class ClaudeCodeEngine:
                 summary=reason,
                 files_changed=[],
                 noticed=[],
-                died=_was_killed(process.returncode) and not overran,
+                # A worker that stopped showing anything is a worker that
+                # stopped working, which is not the item's fault and is
+                # worth trying again. A worker that used its whole clock
+                # really did use it, and would use it again.
+                died=overran == "silence"
+                or (_was_killed(process.returncode) and not overran),
                 dollars=dollars,
                 turns=turns,
             )
@@ -538,11 +549,11 @@ class ClaudeCodeEngine:
         def still_there() -> None:
             while not quiet.wait(QUIET_EVERY):
                 since = time.monotonic() - spoke_at[0]
-                if since >= SILENT_LIMIT and process.poll() is None:
-                    silent.set()
-                    _asked_to_stop(process, "it went silent")
-                    return
                 unseen = time.monotonic() - showed_at[0]
+                if unseen >= SILENT_LIMIT and process.poll() is None:
+                    silent.set()
+                    _asked_to_stop(process, "it showed nothing for five minutes")
+                    return
                 if unseen >= QUIET_AFTER and on_event:
                     left = self.seconds - (time.monotonic() - began)
                     on_event(

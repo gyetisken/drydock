@@ -330,13 +330,29 @@ class TestAWorkerThatWasTakenAway:
 
         assert fake.briefed == ["", ""]
 
-    def test_it_is_restarted_once(self, shop, monkeypatch):
-        """A worker killed twice is a machine problem, and looping on it
-        burns the run rather than reporting it."""
-        fake = Fake(monkeypatch, [was_killed(), was_killed()])
+    def test_it_is_restarted_more_than_once(self, shop, monkeypatch):
+        """This happened three times on one item in an afternoon and the
+        item itself was fine every time."""
+        fake = Fake(monkeypatch, [was_killed(), was_killed(), finished()])
+        result = fake.run_it(a_run(shop))
+
+        assert result.outcome is Outcome.DONE
+        assert result.attempts == 1
+
+    def test_the_restarts_run_out(self, shop, monkeypatch):
+        """A worker that cannot stay up three times running is a machine
+        problem, and looping on it burns the run instead of reporting it."""
+        fake = Fake(monkeypatch, [was_killed()] * 4)
         result = fake.run_it(a_run(shop))
 
         assert result.outcome is Outcome.BLOCKED
+
+    def test_each_restart_says_which_one_it_is(self, shop, monkeypatch):
+        fake = Fake(monkeypatch, [was_killed(), finished()])
+        fake.run_it(a_run(shop))
+
+        said = next(note for who, note in fake.gates if who == "restarted")
+        assert "restart 1 of 2" in said
 
     def test_the_restart_is_announced(self, shop, monkeypatch):
         fake = Fake(monkeypatch, [was_killed(), finished()])
