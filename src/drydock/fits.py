@@ -81,29 +81,46 @@ const out = await send('Runtime.evaluate', {
   expression: `(() => {
     const root = document.documentElement;
     const seen = root.clientWidth;
-    // Three ways text ends up off the screen. The document scrolling is
-    // only the loudest; a box that clips its own content hides the
-    // problem from scrollWidth entirely, which is why that alone reported
-    // a page as fitting while every line of it was cut off at the edge.
-    const wide = [...document.querySelectorAll('body *')]
-      .filter((el) => {
-        const r = el.getBoundingClientRect();
-        if (r.width === 0 || r.height === 0) return false;
-        if (r.right > seen + 1 || r.left < -1) return true;
-        if (el.scrollWidth > el.clientWidth + 1) return true;
-        // A line of text wider than the box holding it, clipped rather
-        // than wrapped. The box fits; the words do not.
-        const style = getComputedStyle(el);
-        if (style.whiteSpace === 'nowrap' && el.scrollWidth > el.clientWidth) {
-          return true;
-        }
-        return false;
-      })
-      .map((el) => el.tagName.toLowerCase()
-        + (el.id ? '#' + el.id : '')
-        + (typeof el.className === 'string' && el.className.trim()
-            ? '.' + el.className.trim().split(/\s+/).join('.') : ''))
-      .slice(0, 5);
+
+    // The question is not whether a box overflows - plenty of them do on
+    // purpose. A photograph hung past the edge of its column, a six
+    // hundred pixel decorative letter clipped by its section: both are
+    // compositions somebody chose, and refusing them would cost an item
+    // for a defect that is not there.
+    //
+    // The question is whether any WORDS are off the screen. That is what
+    // a reader loses, and it is what the page is refused for.
+    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+    const range = document.createRange();
+    const guilty = new Map();
+    let node;
+    while ((node = walker.nextNode())) {
+      if (!node.nodeValue || !node.nodeValue.trim()) continue;
+      const parent = node.parentElement;
+      if (!parent) continue;
+      const style = getComputedStyle(parent);
+      if (style.visibility === 'hidden' || style.display === 'none') continue;
+      range.selectNodeContents(node);
+      let worst = 0;
+      for (const r of range.getClientRects()) {
+        if (r.width === 0) continue;
+        if (r.right > seen + 1) worst = Math.max(worst, r.right - seen);
+        if (r.left < -1) worst = Math.max(worst, -r.left);
+      }
+      if (!worst) continue;
+      const name = parent.tagName.toLowerCase()
+        + (parent.id ? '#' + parent.id : '')
+        + (typeof parent.className === 'string' && parent.className.trim()
+            ? '.' + parent.className.trim().split(' ').filter(Boolean).join('.')
+            : '');
+      guilty.set(name, Math.max(guilty.get(name) || 0, Math.round(worst)));
+    }
+
+    const wide = [...guilty.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5)
+      .map(([name, over]) => name + ' (' + over + 'px off)');
+
     return JSON.stringify({ seen, needs: root.scrollWidth, wide });
   })()`,
 }, sessionId);
