@@ -13,7 +13,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import preview
+from . import intent, preview
 from .commands import available, match
 from .engines import stop_workers
 from .repo import Repo
@@ -125,7 +125,14 @@ PAGE = """<!doctype html><html lang="en"><head><meta charset="utf-8">
     <div class="composer"><div class="cwrap">
       <div class="menu" id="menu" style="display:none"></div>
       <div class="cbox">
-        <textarea id="box" rows="1" placeholder="/ to see commands" spellcheck="false"></textarea>
+        <textarea id="box" rows="1"
+          placeholder="Say what you want. / for the list if you prefer."
+          spellcheck="false"></textarea>
+        <div class="reading" id="reading" style="display:none">
+          <span class="verb" id="reading-verb"></span>
+          <span class="why" id="reading-why"></span>
+          <button class="btn small ghost" id="reading-change">not that</button>
+        </div>
         <div class="picks">
           <button class="pick" id="pick-model">
             <span id="model-label">Opus</span><span class="caret">&#9662;</span>
@@ -562,10 +569,42 @@ class StartJob(BaseModel):
     model: str = "opus"
 
 
+class Reading(BaseModel):
+    project: str
+    text: str
+
+
+@app.post("/api/read")
+def read_intent(body: Reading) -> dict:
+    """What a sentence is asking for, without spending anything to find out.
+
+    Deterministic, so the answer comes back in a millisecond and costs
+    nothing. It is shown before anything runs and can be overruled, because
+    a router that quietly chooses wrong is worse than no router at all.
+    """
+    guess = intent.read(body.text, Path(body.project) if body.project else None)
+    command = next((c for c in available(SKILLS) if c.name == guess.command), None)
+    return {
+        "command": guess.command,
+        "why": guess.why,
+        "sure": guess.sure,
+        "summary": command.summary if command else "",
+        "ceremony": command.ceremony if command else True,
+    }
+
+
 @app.post("/api/start")
 def start(body: StartJob) -> JSONResponse:
     commands = available(SKILLS)
-    command, rest = match(body.command, commands)
+    # A sentence with no command on the front of it is read rather than
+    # refused. Typing /fix before something that plainly is a fix is a tax
+    # on using this.
+    said = body.command.strip()
+    if not said.startswith("/"):
+        guess = intent.read(said, Path(body.project))
+        said = f"{guess.command} {said}"
+
+    command, rest = match(said, commands)
     if command is None:
         return JSONResponse(
             {"ok": False, "reason": "unknown command. Type / to see the list."},

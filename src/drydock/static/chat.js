@@ -1114,7 +1114,8 @@ async function send() {
   if (!text) return;
   if (!S.project) { fail("Choose a project on the left first."); return; }
   youSaid(text);
-  $("box").value = ""; $("menu").style.display = "none"; $("hint").textContent = "";
+  $("box").value = "";
+  $("reading").style.display = "none"; $("menu").style.display = "none"; $("hint").textContent = "";
   const res = await fetch("/api/start", {
     method: "POST", headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -1194,6 +1195,58 @@ $("collapse").onclick = collapse;
 $("show-side").onclick = collapse;
 if (localStorage.getItem("drydock.sidebar") === "tucked")
   document.body.classList.add("tucked");
+
+// What the sentence is being read as, shown while it is typed. The call is
+// deterministic and server-side, so it is a millisecond and costs nothing -
+// but it still only runs when typing stops, because a request per keystroke
+// is rude to anything.
+let reading = null;
+
+async function readIt() {
+  const said = $("box").value.trim();
+  if (!said || said.startsWith("/") || said.length < 6) {
+    $("reading").style.display = "none";
+    S.reading = null;
+    return;
+  }
+  const res = await fetch("/api/read", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ project: S.project || "", text: said }),
+  });
+  const r = await res.json();
+  S.reading = r;
+  $("reading").style.display = "flex";
+  $("reading-verb").textContent = r.command;
+  $("reading-verb").className = "verb" + (r.ceremony ? "" : " fast");
+  $("reading-why").textContent = r.why;
+}
+
+$("box").addEventListener("input", () => {
+  drawMenu();
+  clearTimeout(reading);
+  reading = setTimeout(readIt, 350);
+});
+
+// Overruling it: the list of commands, with the reading already explained.
+$("reading-change").onclick = () => {
+  const said = $("box").value.trim();
+  $("box").value = "/";
+  drawMenu();
+  $("box").value = said;
+  $("menu").style.display = "block";
+  $("menu").innerHTML = S.commands.map((c, i) => `
+    <div class="mi ${i === 0 ? "on" : ""}" data-cmd="${esc(c.name)}">
+      <span class="c">${esc(c.name)}</span><span class="s">${esc(c.summary)}</span>
+    </div>`).join("");
+  document.querySelectorAll(".mi").forEach(el => {
+    el.onclick = () => {
+      $("box").value = `${el.dataset.cmd} ${said}`;
+      $("menu").style.display = "none";
+      $("reading").style.display = "none";
+      $("box").focus();
+    };
+  });
+};
 
 $("box").addEventListener("input", drawMenu);
 $("box").addEventListener("keydown", (e) => {

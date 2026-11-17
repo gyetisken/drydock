@@ -619,3 +619,15 @@ body.split .composer .cwrap { max-width:none }
 .answer pre.block { margin:11px 0; padding:11px 13px; background:var(--input);
   border:1px solid var(--line); border-radius:9px; overflow-x:auto;
   font:11.5px/1.65 ui-monospace,SFMono-Regular,Menlo,monospace; color:var(--fg) }
+
+/* what the sentence is being read as */
+.reading { display:flex; align-items:center; gap:9px; padding:7px 2px 0;
+  font-size:11.5px; color:var(--faint); animation:settle .18s ease-out }
+.reading .verb { font-family:ui-monospace,Menlo,monospace; font-size:11px;
+  color:var(--accent); background:var(--raise); padding:2px 8px;
+  border-radius:999px; flex:none }
+.reading .verb.fast { color:var(--ok) }
+.reading .why { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis;
+  white-space:nowrap }
+.reading .btn { flex:none; font-size:10.5px; padding:3px 9px }
+@keyframes settle { from { opacity:0; transform:translateY(-3px) } to { opacity:1 } }
