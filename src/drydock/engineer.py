@@ -37,7 +37,22 @@ know. write_file replaces a whole file and hides that.
 
 Do not touch the verification. Changing a test so it passes, loosening an
 assertion, or skipping a case is a failure of this job, not a solution to it.
-If the item cannot be done as written, report that instead."""
+If the item cannot be done as written, report that instead.
+
+Do not verify your own work, and do not prove it. The moment you finish, this
+item is built and its suite is run by something that is not you, against the
+count recorded before anyone touched the repository, and the result decides
+whether your change is kept or thrown away. Running the suite yourself to show
+that it passes does not change that decision and does not make it more likely:
+it spends the turns you need to finish the item. Compile while you work,
+because a compiler catches a mistake while it is cheap. Then stop.
+
+The same goes for experiments. Do not create a temporary file to see what a
+command does and then delete it again. If you genuinely cannot tell what a
+tool will do without trying it, try it once.
+
+Finishing means writing the report. An item that was done perfectly and never
+reported is an item that is thrown away, so leave yourself the turn."""
 
 PROMPT = """Repository: {repo}
 Build: {build_command}

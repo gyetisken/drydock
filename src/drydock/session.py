@@ -457,6 +457,13 @@ class Session:
         )
         session.run = run
 
+        # An item that was blocked or rolled back is the item to try again,
+        # not one to step over. Everything after it was never attempted
+        # anyway, because the loop stops at the first failure.
+        while run.results and run.results[-1].outcome.value != "done":
+            run.results.pop()
+        run.save()
+
         # Whatever was being written when this stopped belongs to an item
         # that never landed, and an item that never landed is one whose
         # changes are thrown away. Leaving them would also mean the next

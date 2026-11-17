@@ -187,7 +187,7 @@ class ClaudeCodeEngine:
 
     name = "claude"
 
-    def __init__(self, model: str = "opus", max_turns: int = 40) -> None:
+    def __init__(self, model: str = "opus", max_turns: int = 60) -> None:
         self.binary = shutil.which("claude")
         if not self.binary:
             raise EngineUnavailable(
@@ -208,14 +208,22 @@ class ClaudeCodeEngine:
         report_file = repo / ".drydock-report.json"
         report_file.unlink(missing_ok=True)
 
+        # The turn budget is stated, because a worker that does not know it
+        # has one spends the end of it proving work that something else is
+        # about to verify anyway, and is cut off before it can report.
         instruction = (
             f"{prompt}\n\n"
-            "When the item is finished, write a file at .drydock-report.json in "
-            "the repository root containing exactly this JSON and nothing else:\n"
+            f"You have {self.max_turns} turns. Use roughly the first two "
+            "thirds for the item itself and leave the rest; the suite is run "
+            "for you afterwards, so turns spent demonstrating that your change "
+            "works are turns taken from making it work.\n\n"
+            "The last thing you do is write .drydock-report.json in the "
+            "repository root, containing exactly this JSON and nothing else:\n"
             '{"done": true, "summary": "...", "files_changed": ["..."], '
             '"noticed": ["..."]}\n'
             "Set done to false if the item could not be done as written. Put "
-            "anything outside the item's scope into noticed rather than fixing it."
+            "anything outside the item's scope into noticed rather than fixing "
+            "it. An item that was finished and not reported is thrown away."
         )
 
         command = [
@@ -272,9 +280,24 @@ class ClaudeCodeEngine:
         _forget(process)
 
         if not report_file.exists():
+            # A worker that fails has to say why. This used to report only
+            # that no report appeared, which is the one fact that was already
+            # obvious, while the actual reason - a turn limit, a refused
+            # permission, a crash - sat unread in a pipe.
+            why = (process.stderr.read() or "").strip()[-1200:]
+            reason = "the worker stopped without writing a report"
+            if process.returncode:
+                reason += f" and exited {process.returncode}"
+            if turns >= self.max_turns:
+                reason += (
+                    f". It used all {self.max_turns} turns it was given, which "
+                    "usually means the item is too large to be one item"
+                )
+            if why:
+                reason += f".\n\n{why}"
             return EngineResult(
                 done=False,
-                summary="the worker finished without writing a report",
+                summary=reason,
                 files_changed=[],
                 noticed=[],
                 dollars=dollars,
@@ -367,9 +390,11 @@ class ClaudeCodeEngine:
         _forget(process)
 
         if not out.exists():
+            why = (process.stderr.read() or "").strip()[-1200:]
             raise EngineUnavailable(
-                "the worker finished without writing an answer. Try the API "
-                "engine, or run the same command again."
+                "the worker stopped without writing an answer"
+                + (f" (exit {process.returncode})" if process.returncode else "")
+                + (f".\n\n{why}" if why else ".")
             )
         payload = json.loads(out.read_text())
         out.unlink(missing_ok=True)

@@ -28,7 +28,7 @@ function youSaid(text) {
 
 /* ---------- live run ---------- */
 
-const live = { items: new Map(), baseline: null, tests: null, cost: 0, el: {} };
+const live = { items: new Map(), baseline: null, tests: null, reverted: 0, el: {} };
 
 function renderPlan() {
   if (!live.el.plan) return;
@@ -55,15 +55,14 @@ function renderStats() {
   const now = live.tests === null ? b.tests : live.tests;
   const landed = [...live.items.values()].filter(i => i.status === "done").length;
   const started = b.tests || b.failed || b.builds;
+  const total = live.items.size;
   live.el.stats.innerHTML = `
     ${started ? `
       <div class="stat ${now < b.tests ? "bad" : "ok"}"><b>${now}</b><span>tests running</span></div>
       <div class="stat"><b>${b.tests}</b><span>before any change</span></div>`
-    : `<div class="stat"><b>${now}</b><span>tests exist now</span></div>`}
-    <div class="stat"><b>${landed}</b><span>items landed</span></div>
-    <div class="stat"><b>$${live.cost.toFixed(2)}</b><span>${
-      S.engine === "claude" ? "on your plan, not billed" : "billed"}</span></div>`;
-  $("spend").textContent = `$${live.cost.toFixed(2)}`;
+    : `<div class="stat ${now ? "ok" : ""}"><b>${now}</b><span>tests exist now</span></div>`}
+    <div class="stat"><b>${landed}${total ? ` / ${total}` : ""}</b><span>items landed</span></div>
+    <div class="stat"><b>${live.reverted || 0}</b><span>rolled back</span></div>`;
 }
 
 // Each landed item offers its own diff, read back out of git on demand. It
@@ -157,7 +156,9 @@ const on = {
     renderStats();
   },
   "agent.tool": (e) => toolLine(e.agent, e.detail),
-  "spend": (e) => { live.cost = e.cost; renderStats(); },
+  // Cost is still recorded and still reported in Settings, where a question
+  // about money belongs. It is not what anyone watching a job wants to know.
+  "spend": () => {},
   "agent.state": (e) => {
     station(e.agent, e.state, e.note);
     if (e.state === "working") running(true, `${e.agent}: ${e.note}`);
@@ -178,7 +179,6 @@ const on = {
     station("Planner", "done", `${e.items.length} items, waiting for you`);
     e.items.forEach(i => live.items.set(i.id,
       { ...i, status: "waiting", note: i.rationale.split(". ")[0] }));
-    live.cost = e.cost || 0;
     renderPlan(); renderStats();
     msg.querySelector("#approve").onclick = async (ev) => {
       ev.target.disabled = true;
@@ -232,7 +232,6 @@ const on = {
     }
     const m = /(\d+) tests/.exec(e.note || "");
     if (m) live.tests = parseInt(m[1], 10);
-    live.cost = e.cost || live.cost;
     if (e.outcome === "done") Office.land(); else Office.bounce("Verifier");
     station("Verifier", e.outcome === "done" ? "done" : "failed",
       e.outcome === "done"
@@ -269,22 +268,22 @@ const on = {
         your repository was touched.</p>${kept}</div>`);
       return;
     }
+    const b = live.baseline;
+    const now = live.tests === null ? (b ? b.tests : 0) : live.tests;
+    const suite = b && (b.tests || b.failed)
+      ? `The suite is at <b>${now} tests</b>, against ${b.tests} before any of
+         this started.`
+      : now
+      ? `There are <b>${now} tests</b> where there were none.`
+      : "";
     const kept = e.remembered
       ? `${e.remembered} facts about this repository were kept, so the next job
-         here starts from them instead of reading it all again. `
+         here starts from them instead of reading it all again.`
       : "";
-    const paid = e.engine === "claude"
-      ? `It ran on your Claude plan, so the <b>$${e.cost.toFixed(2)}</b> of API-priced
-         work was not billed to you.`
-      : `<b>$${e.cost.toFixed(2)}</b> billed.`;
-    say("crew", `<div class="body"><p><b>${e.done} of ${e.total} items landed.</b>
-      ${paid} The work is on its own branch; nothing touched your main branch.</p>
-      <p class="why">${kept}<a href="#" id="see-usage">See what this has cost in
-      total.</a></p></div>`);
-    const link = $("see-usage");
-    if (link) link.onclick = (ev) => {
-      ev.preventDefault(); $("sheet").style.display = "flex"; drawSettings();
-    };
+    say("crew", `<div class="body">
+      <p><b>${e.done} of ${e.total} items landed.</b> ${suite}</p>
+      <p class="why">Each one is its own commit on <code>drydock/${esc(S.key || "")}</code>,
+      and nothing touched your main branch. ${kept}</p></div>`);
   },
   "run.error": (e) => (running(false),
     Keys.notify("drydock stopped", e.detail), say("crew", `<div class="body"><p class="why">${esc(e.detail)}</p></div>`)),
@@ -296,7 +295,8 @@ const on = {
 
 function watch(key) {
   S.key = key;
-  live.items.clear(); live.tests = null; live.baseline = null; live.cost = 0; live.el = {};
+  live.items.clear(); live.tests = null; live.baseline = null;
+  live.reverted = 0; live.el = {};
   Office.reset();
   const src = new EventSource("/api/stream/" + key);
   src.onmessage = (m) => {
@@ -392,8 +392,8 @@ function running(on, what) {
 /* ---------- sidebar ---------- */
 
 async function refresh() {
-  S.projects = (await (await fetch("/api/state")).json()).projects;
   const full = await (await fetch("/api/state")).json();
+  S.projects = full.projects;
   S.commands = full.commands; S.runs = full.runs;
   S.engines = full.engines; S.models = full.models;
   S.model = localStorage.getItem("drydock.model") || S.model;
@@ -558,7 +558,8 @@ function openProject(path) {
   const p = S.projects.find(x => x.path === path);
   if (!p) return;
   Office.reset();
-  live.items.clear(); live.tests = null; live.baseline = null; live.cost = 0; live.el = {};
+  live.items.clear(); live.tests = null; live.baseline = null;
+  live.reverted = 0; live.el = {};
 
   $("thread-inner").innerHTML = "";
   say("", `<div class="body">
@@ -579,7 +580,7 @@ function openProject(path) {
       <div class="what">${esc(r.task.split("\n")[0])}</div>
       <div class="outcome">${r.items
         ? `${r.done} of ${r.items} items${r.unfinished ? " · stopped partway" : ""}`
-        : "nothing was planned"} · $${r.cost.toFixed(2)}</div>
+        : "nothing was planned"}</div>
       ${r.unfinished ? `<button class="btn small" data-carry="${esc(r.id)}">Carry on</button>` : ""}
     </div>`).join("");
   const msg = say("", `<div class="body"><div class="card">
@@ -635,8 +636,7 @@ async function replay(id) {
   }
   const landed = r.results.filter(x => x.outcome === "done").length;
   say("crew", `<div class="body"><p><b>${landed} of ${r.items.length} items
-    landed.</b> $${r.cost.toFixed(2)} of work on ${
-      r.engine === "claude" ? "your Claude plan" : "an API key"}.</p>
+    landed.</b></p>
     <p class="why">Every item that landed is its own commit on the branch
     <code>drydock/${esc(r.id)}</code>.</p></div>`);
 }
@@ -903,6 +903,7 @@ function collapse() {
     document.body.classList.contains("tucked") ? "tucked" : "open");
 }
 $("collapse").onclick = collapse;
+$("show-side").onclick = collapse;
 if (localStorage.getItem("drydock.sidebar") === "tucked")
   document.body.classList.add("tucked");
 
@@ -948,11 +949,53 @@ $("add").onclick = async () => {
   $("newpath").value = "";
   $("addbox").classList.remove("open");
   S.project = null;
-  await Palette.wire();
-refresh();
+  await // The work has always run on the server, so a reload never stopped it. The
+// page simply had no way to find it again afterwards, which from where
+// anyone is sitting is the same thing as having stopped it.
+async function reattach() {
+  const { jobs } = await (await fetch("/api/running")).json();
+  if (!jobs.length) return false;
+  const here = jobs.find(j => j.repo === S.project) || jobs[0];
+  S.project = here.repo;
+  drawSide();
+  view("thread");
+  $("thread-inner").innerHTML = "";
+  youSaid(here.task);
+  say("crew", `<div class="body"><p>This was already running when the page
+    loaded. Picking it back up.</p></div>`, "dim");
+  watch(here.key);
+  running(true, "working");
+  return true;
+}
+
+Palette.wire();
+refresh().then(async () => {
+  if (await reattach()) return;
+});
 drawSettings();
 };
 
+// The work has always run on the server, so a reload never stopped it. The
+// page simply had no way to find it again afterwards, which from where
+// anyone is sitting is the same thing as having stopped it.
+async function reattach() {
+  const { jobs } = await (await fetch("/api/running")).json();
+  if (!jobs.length) return false;
+  const here = jobs.find(j => j.repo === S.project) || jobs[0];
+  S.project = here.repo;
+  drawSide();
+  view("thread");
+  $("thread-inner").innerHTML = "";
+  youSaid(here.task);
+  say("crew", `<div class="body"><p>This was already running when the page
+    loaded. Picking it back up.</p></div>`, "dim");
+  watch(here.key);
+  running(true, "working");
+  return true;
+}
+
 Palette.wire();
-refresh();
+refresh().then(async () => {
+  if (await reattach()) return;
+});
 drawSettings();

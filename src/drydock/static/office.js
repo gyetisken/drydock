@@ -278,7 +278,34 @@ const Office = (() => {
       ctx.restore();
 
       badge(s, dx, dy);
+      nameplate(s, dx, dy);
     }
+  }
+
+  // A name over each head. Without it the room is seven identical people and
+  // the legend underneath is the only thing saying who is who, which means
+  // looking away from the picture to read the picture.
+  function nameplate(s, dx, dy) {
+    ctx.imageSmoothingEnabled = true;
+    ctx.font = "600 8px ui-sans-serif, -apple-system, sans-serif";
+    ctx.textAlign = "center";
+    const x = dx + FW / 2;
+    const y = dy - 5;
+    const w = ctx.measureText(s.id).width + 9;
+
+    ctx.globalAlpha = s.state === "skipped" ? 0.4 : 0.92;
+    ctx.fillStyle = css("--panel");
+    roundRect(x - w / 2, y - 9, w, 12, 3);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+
+    ctx.fillStyle = s.state === "working" ? css("--live")
+      : s.state === "done" ? css("--ok")
+      : s.state === "failed" ? css("--bad")
+      : css("--muted");
+    ctx.fillText(s.id, x, y);
+    ctx.textAlign = "left";
+    ctx.imageSmoothingEnabled = false;
   }
 
   function badge(s, dx, dy) {

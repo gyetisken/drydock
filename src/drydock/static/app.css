@@ -432,8 +432,11 @@ aside:hover .sidebar-toggle { opacity:1 }
 aside { position:relative; transition:width .22s cubic-bezier(.4,0,.2,1) }
 body.tucked aside { width:0; border-right:0; overflow:hidden }
 body.tucked .sidebar-toggle { display:none }
-body.tucked .topbar::before { content:"\\203A"; color:var(--faint); font-size:16px;
-  cursor:pointer; margin-right:4px }
+#show-side { display:none; width:26px; height:26px; border-radius:7px;
+  color:var(--muted); font-size:15px; line-height:1; margin-right:4px;
+  align-items:center; justify-content:center }
+#show-side:hover { background:var(--raise); color:var(--fg) }
+body.tucked #show-side { display:flex }
 
 #find { width:92px; padding:2px 7px; font-size:10.5px; border-radius:6px;
   text-transform:none; letter-spacing:0; font-weight:400 }

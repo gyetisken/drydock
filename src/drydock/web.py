@@ -88,6 +88,7 @@ PAGE = """<!doctype html><html lang="en"><head><meta charset="utf-8">
 
   <main>
     <div class="topbar">
+      <button id="show-side" title="show the sidebar (&#8984;B)">&#9776;</button>
       <b id="proj">no project</b><span class="sub" id="chain"></span>
       <div class="right">
         <span class="running" id="running" style="display:none">
@@ -98,7 +99,6 @@ PAGE = """<!doctype html><html lang="en"><head><meta charset="utf-8">
           <button data-view="thread" class="on">Thread</button>
           <button data-view="office">Office</button>
         </div>
-        <span id="spend"></span>
       </div>
     </div>
 
@@ -570,6 +570,33 @@ def start(body: StartJob) -> JSONResponse:
     return JSONResponse({"ok": True, "key": key})
 
 
+@app.get("/api/running")
+def running_jobs() -> dict:
+    """Jobs this server is working on right now.
+
+    The work has always run server-side, so closing or reloading the page
+    never stopped it - but the page had no way to find it again afterwards,
+    which from the outside is the same thing as having stopped it.
+    """
+    live = []
+    for key, session in workspace.sessions.items():
+        if not session.running and not (session.run and session.feed.finished is False):
+            continue
+        if not session.running:
+            continue
+        live.append(
+            {
+                "key": key,
+                "repo": str(session.repo),
+                "task": session.task.split("\n")[0],
+                "awaiting_approval": bool(
+                    session.run and session.run.plan and not session.stopping
+                ),
+            }
+        )
+    return {"jobs": live}
+
+
 @app.get("/api/run/{run_id}")
 def one_run(run_id: str) -> dict:
     """A finished run, in enough detail to read it back.
@@ -675,7 +702,8 @@ def resume(run_id: str) -> JSONResponse:
             {"ok": False, "reason": "that run never got as far as a plan"},
             status_code=400,
         )
-    left = [i for i in run.plan.items if i.id not in {r.item.id for r in run.results}]
+    landed = {r.item.id for r in run.results if r.outcome.value == "done"}
+    left = [i for i in run.plan.items if i.id not in landed]
     if not left:
         return JSONResponse(
             {"ok": False, "reason": "every item in that plan already has a result"},
