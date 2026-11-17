@@ -50,3 +50,22 @@ def test_every_lockfile_this_knows_about_is_left_out(tmp_path):
 
 def test_a_clean_tree_has_nothing_pending(tmp_path):
     assert make(tmp_path).pending_for_review().strip() == ""
+
+
+def test_drydock_cleans_up_after_itself(tmp_path):
+    """The preview log dirtied a repository and stopped the next job in it,
+    which is the thing this program refuses to let the crew do."""
+    repo = make(tmp_path)
+    (tmp_path / ".drydock-preview.log").write_text("noise\n")
+    (tmp_path / ".drydock-report.json").write_text("{}\n")
+    (tmp_path / "real.js").write_text("export const x = 1;\n")
+
+    gone = repo.sweep()
+
+    assert set(gone) == {".drydock-preview.log", ".drydock-report.json"}
+    assert (tmp_path / "real.js").exists()
+    assert not (tmp_path / ".drydock-preview.log").exists()
+
+
+def test_sweeping_a_clean_repository_removes_nothing(tmp_path):
+    assert make(tmp_path).sweep() == []

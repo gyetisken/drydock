@@ -100,6 +100,8 @@ PAGE = """<!doctype html><html lang="en"><head><meta charset="utf-8">
           <button data-view="thread" class="on">Thread</button>
           <button data-view="office">Office</button>
         </div>
+        <button class="btn small ghost" id="toggle-preview"
+          title="show the project as it is being built">Preview</button>
       </div>
     </div>
 
@@ -139,6 +141,21 @@ PAGE = """<!doctype html><html lang="en"><head><meta charset="utf-8">
       <div class="hint" id="hint"></div>
     </div></div>
   </main>
+
+  <section class="preview" id="preview" style="display:none">
+    <div class="pv-bar">
+      <span class="dot" id="pv-dot"></span>
+      <input id="pv-url" readonly spellcheck="false">
+      <button class="btn small ghost" id="pv-reload" title="reload">&#8635;</button>
+      <button class="btn small ghost" id="pv-open" title="open in a tab">&#8599;</button>
+      <button class="btn small ghost" id="pv-close" title="close">&times;</button>
+    </div>
+    <div class="pv-body" id="pv-body">
+      <p class="empty" id="pv-said">Nothing is running yet. This starts the
+      project the way its own manifest says it starts, and reloads it each time
+      an item lands.</p>
+    </div>
+  </section>
 
 </div>
 

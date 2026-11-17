@@ -37,6 +37,22 @@ class Repo:
         self._git(f"commit -q -m {_quote(message)}")
         return self.head()
 
+    # Files this application writes into somebody's repository. They are
+    # written there because a worker has to put its answer somewhere the
+    # worker can reach, and they are removed because leaving them would mean
+    # drydock dirtying a tree it then refuses to work in.
+    OURS = (".drydock-report.json", ".drydock-out.json", ".drydock-preview.log")
+
+    def sweep(self) -> list[str]:
+        """Remove anything drydock itself left behind. Returns what went."""
+        gone = []
+        for name in self.OURS:
+            path = self.path / name
+            if path.exists():
+                path.unlink()
+                gone.append(name)
+        return gone
+
     def discard(self) -> None:
         """Throw away uncommitted work. The undo button for a failed item."""
         self._git("reset --hard -q HEAD")

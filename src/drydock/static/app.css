@@ -13,10 +13,15 @@
   --accent:#5b8ddb; --accent-dim:#2f4f85;
   --ok:#5fc08a; --bad:#e2796d; --live:#6aa5e8; --warn:#d6ac5c;
   --markbg:#162742; --markink:#ffffff;
+  /* The stop button is red. --bad is a text colour and has to stay readable
+     on a dark ground, which makes it too soft to be a button that stops
+     something. */
+  --stop:#e02d2d; --stop-hot:#f04444;
   --r:10px;
 }
 :root[data-theme="light"] {
   --markbg:#1f4786; --markink:#ffffff;
+  --stop:#d12121; --stop-hot:#b81b1b;
   --bg:#f5f8fc; --side:#eaf0f8; --panel:#ffffff; --raise:#e8eef7; --input:#ffffff;
   --line:#d3ddeb; --line-soft:#e5ecf5;
   --fg:#0d1626; --muted:#4f5f79; --faint:#8292aa;
@@ -26,6 +31,7 @@
 @media (prefers-color-scheme: light) {
   :root:not([data-theme="dark"]):not([data-theme="light"]) {
     --markbg:#1f4786; --markink:#ffffff;
+    --stop:#d12121; --stop-hot:#b81b1b;
     --bg:#f5f8fc; --side:#eaf0f8; --panel:#ffffff; --raise:#e8eef7; --input:#ffffff;
     --line:#d3ddeb; --line-soft:#e5ecf5;
     --fg:#0d1626; --muted:#4f5f79; --faint:#8292aa;
@@ -280,7 +286,15 @@ select { background:transparent; color:var(--muted); border:1px solid var(--line
   display:flex; align-items:center; justify-content:center;
   transition:background .14s, transform .14s }
 .go:hover { transform:translateY(-1px) }
-.go.stopping { background:var(--bad) }
+.go.stopping { background:var(--stop); box-shadow:0 0 0 0 var(--stop);
+  animation:stop-pulse 1.8s ease-out infinite }
+.go.stopping:hover { background:var(--stop-hot); animation:none }
+@keyframes stop-pulse {
+  0% { box-shadow:0 0 0 0 color-mix(in srgb,var(--stop) 55%,transparent) }
+  70% { box-shadow:0 0 0 7px transparent }
+  100% { box-shadow:0 0 0 0 transparent }
+}
+@media (prefers-reduced-motion: reduce) { .go.stopping { animation:none } }
 .go:disabled { opacity:.45; transform:none }
 .pop { position:absolute; bottom:calc(100% + 9px); right:0; z-index:40; width:282px;
   background:var(--panel); border:1px solid var(--line); border-radius:var(--r);
@@ -565,3 +579,22 @@ textarea#inst:focus { border-color:var(--accent-dim) }
   border-radius:10px; font-size:12.5px }
 .live-link a { color:var(--ok); font-weight:600 }
 .live-link .btn { margin-left:auto }
+
+/* ---------- the project, while it is being built ----------
+   A split rather than a tab: the point is to watch the thing change as items
+   land, which you cannot do if looking at it means leaving the run. */
+.preview { width:min(46vw,760px); flex:none; display:flex; flex-direction:column;
+  border-left:1px solid var(--line); background:var(--side) }
+.pv-bar { display:flex; align-items:center; gap:7px; padding:9px 11px;
+  border-bottom:1px solid var(--line); flex:none }
+#pv-url { flex:1; min-width:0; font:11.5px ui-monospace,Menlo,monospace;
+  padding:5px 9px; color:var(--muted); background:var(--input) }
+.pv-body { flex:1; position:relative; background:#fff }
+.pv-body iframe { width:100%; height:100%; border:0; display:block }
+.pv-body .empty { position:absolute; inset:0; display:flex; align-items:center;
+  justify-content:center; text-align:center; padding:34px; margin:0;
+  background:var(--panel); color:var(--muted); font-size:12.5px; line-height:1.65 }
+.pv-body .empty.bad { color:var(--bad); white-space:pre-wrap; text-align:left;
+  font-family:ui-monospace,Menlo,monospace; font-size:11.5px; align-items:flex-start }
+body.split .composer .cwrap { max-width:none }
+@media (max-width:1100px) { .preview { display:none !important } }

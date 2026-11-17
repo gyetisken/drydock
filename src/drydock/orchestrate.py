@@ -54,6 +54,7 @@ def execute(
         chain = detect(repo_path)
         return {"build": chain.build_command, "tests": chain.test_command}
 
+    repo.sweep()
     if not repo.is_clean():
         raise DirtyTree(
             f"{repo_path} has uncommitted changes. The crew needs a clean tree so "

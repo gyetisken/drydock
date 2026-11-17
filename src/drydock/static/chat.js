@@ -45,18 +45,34 @@ function renderPlan() {
                 (i.steps || []).length > 1
                   ? `<span class="count">${i.steps.length} steps</span>` : ""
               }</div>
-              ${(i.steps || []).length > 1
-                ? `<details class="more"><summary>every step</summary>
-                   <div class="tech steps-list">${i.steps.slice(-40).map(x =>
-                     `<div>${esc(x)}</div>`).join("")}</div></details>` : ""}`
+`
             : ""}
           ${i.note ? `<div class="why">${esc(i.note)}</div>` : ""}
           ${i.gates ? `<div class="gates">${i.gates}</div>` : ""}
-          ${i.plain ? `<details class="more"><summary>how</summary>
-            <div class="tech"><b>${esc(i.title)}</b>
-            <p>${esc(i.rationale || "")}</p></div></details>` : ""}
+          ${i.plain || (i.steps || []).length ? `<details class="more"
+            data-item="${i.id}" ${
+              // Open while it is working, unless somebody closed it. The
+              // panel is rebuilt on every step, so the choice has to be kept
+              // somewhere other than the element.
+              (i.openHow === undefined ? i.status === "working" : i.openHow)
+                ? "open" : ""
+            }><summary>how</summary>
+            <div class="tech">
+              ${(i.steps || []).length ? `<div class="steps-list">${
+                i.steps.slice(-60).map(x => `<div>${esc(x)}</div>`).join("")
+              }</div>` : ""}
+              ${i.plain ? `<b>${esc(i.title)}</b>
+                <p>${esc(i.rationale || "")}</p>` : ""}
+            </div></details>` : ""}
         </div>
       </div>`).join("");
+
+  live.el.plan.querySelectorAll("details[data-item]").forEach(box => {
+    box.addEventListener("toggle", () => {
+      const item = live.items.get(Number(box.dataset.item));
+      if (item) item.openHow = box.open;
+    });
+  });
 
   // The item being worked on is the one thing anyone is looking for, so it
   // is also kept in view when the plan is longer than the panel.
@@ -265,11 +281,14 @@ const on = {
     };
   },
   "item.start": (e) => {
+    live.current = e.id;
     const i = live.items.get(e.id);
     if (i) {
       i.status = "working";
-      i.note = "the engineer is on this one";
+      i.note = "";
       i.gates = "";
+      i.doing = "getting started";
+      i.steps = [];
       renderPlan();
     }
     Office.at("Engineer", "working", `item ${e.id}: ${e.title}`);
@@ -300,7 +319,7 @@ const on = {
   "item.done": (e) => {
     // Every landed item is its own commit, so the diff can be shown exactly
     // as the repository holds it rather than as something reconstructed.
-    if (e.outcome === "done") showDiffLink(e);
+    if (e.outcome === "done") { showDiffLink(e); Pv.refresh(); }
     const i = live.items.get(e.id);
     if (i) {
       i.status = e.outcome;
@@ -385,6 +404,8 @@ const on = {
         <button class="btn" id="open-it">Open it</button>
         <span class="hint" id="open-said">Starts the project and opens it in a tab.</span>
       </div>` : ""}</div>`);
+
+    if (e.url) { Pv.url = e.url; $("pv-url").value = e.url; Pv.refresh(); }
 
     const stopper = msg.querySelector("#stop-preview");
     if (stopper) stopper.onclick = async () => {
@@ -504,6 +525,73 @@ function view(which) {
 }
 document.querySelectorAll("#views button").forEach(b =>
   (b.onclick = () => view(b.dataset.view)));
+
+/* ---------- the project, while it is being built ---------- */
+
+// A split pane rather than a tab. The point is to watch the thing change as
+// items land, and you cannot watch it change if looking at it means leaving
+// the run.
+const Pv = {
+  open: false,
+  url: "",
+
+  async show() {
+    Pv.open = true;
+    $("preview").style.display = "flex";
+    document.body.classList.add("split");
+    $("toggle-preview").classList.add("on");
+    if (!S.project) { Pv.say("Choose a project first."); return; }
+    await Pv.start();
+  },
+
+  hide() {
+    Pv.open = false;
+    $("preview").style.display = "none";
+    document.body.classList.remove("split");
+    $("toggle-preview").classList.remove("on");
+  },
+
+  say(text, bad = false) {
+    $("pv-body").innerHTML =
+      `<p class="empty ${bad ? "bad" : ""}">${esc(text)}</p>`;
+    $("pv-dot").className = "dot" + (bad ? " bad" : "");
+  },
+
+  async start() {
+    Pv.say("starting it…");
+    const res = await fetch("/api/preview", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ project: S.project }),
+    });
+    const body = await res.json();
+    if (!body.ok) { Pv.url = ""; Pv.say(body.reason, true); return; }
+    Pv.url = body.url;
+    $("pv-url").value = body.url;
+    $("pv-dot").className = "dot ok";
+    Pv.load();
+  },
+
+  load() {
+    if (!Pv.url) return;
+    // A query that changes is the only reliable way to make a cross-origin
+    // frame fetch again; reload() on it is not ours to call.
+    $("pv-body").innerHTML =
+      `<iframe src="${esc(Pv.url)}?_=${Date.now()}" title="the project"></iframe>`;
+  },
+
+  // Called when an item lands. A preview that is open should show the change
+  // that just happened, and one that is not open should stay shut.
+  refresh() {
+    if (!Pv.open) return;
+    if (!Pv.url) { Pv.start(); return; }
+    Pv.load();
+  },
+};
+
+$("toggle-preview").onclick = () => (Pv.open ? Pv.hide() : Pv.show());
+$("pv-close").onclick = () => Pv.hide();
+$("pv-reload").onclick = () => Pv.load();
+$("pv-open").onclick = () => Pv.url && window.open(Pv.url, "_blank", "noopener");
 
 /* ---------- is it running ---------- */
 

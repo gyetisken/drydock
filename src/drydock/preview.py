@@ -35,6 +35,16 @@ _RUNNING: dict[str, Preview] = {}
 _LOCK = threading.Lock()
 
 
+def _log_for(repo: Path) -> Path:
+    """Where this project's preview output goes. Outside the project."""
+    import hashlib
+
+    home = Path.home() / ".drydock" / "previews"
+    home.mkdir(parents=True, exist_ok=True)
+    key = hashlib.sha256(str(repo.resolve()).encode()).hexdigest()[:12]
+    return home / f"{repo.name}-{key}.log"
+
+
 def _free_port() -> int:
     with socket.socket() as sock:
         sock.bind(("127.0.0.1", 0))
@@ -87,7 +97,10 @@ def start(repo: Path, timeout: float = 25.0) -> Preview:
         raise LookupError(why)
 
     port = _free_port()
-    log = repo / ".drydock-preview.log"
+    # Not in the repository. drydock refuses to let the crew leave files in
+    # somebody's project and then left its own there, where it dirtied the
+    # tree and stopped the next job before it started.
+    log = _log_for(repo)
     env = {"PORT": str(port), "HOST": "127.0.0.1"}
 
     with log.open("w") as out:
