@@ -26,6 +26,7 @@ from .events import Feed
 from .memory import Memory
 from .models import Inventory, Item, Plan
 from .orchestrate import execute
+from .pace import from_log
 from .planner import plan
 from .repo import Repo
 from .run import Run
@@ -106,7 +107,10 @@ class Session:
                 return
             path.parent.mkdir(exist_ok=True)
             with path.open("a") as out:
-                out.write(event.sse()[6:])
+                # One event per line. The sse() form ends in a blank line
+                # because that is what the wire format needs, and half the
+                # lines in a run log were that blank line.
+                out.write(event.sse()[6:].rstrip("\n") + "\n")
         except OSError:
             # A run must not fail because its log could not be written.
             pass
@@ -713,8 +717,33 @@ class Session:
             remembered=len(self.memory.notes),
             url=link,
         )
+        self._say_where_the_time_went()
         self._publish(landed, link)
         self.feed.close()
+
+    def _say_where_the_time_went(self) -> None:
+        """How long that took, and which part of it was the work.
+
+        Asked after every run so far, and answered with a guess every time.
+        The events carry the times, so this is arithmetic over a file that
+        was being written anyway.
+        """
+        if not self.run:
+            return
+        try:
+            measured = from_log(Path("runs") / f"{self.run.id}.log")
+        except OSError:
+            return
+        lines = measured.lines()
+        if not lines:
+            return
+        self.feed.emit(
+            "pace",
+            lines=lines,
+            seconds=round(measured.seconds),
+            working=round(measured.working),
+            checking=round(measured.checking),
+        )
 
     def _publish(self, landed: int, url: str) -> None:
         """Open a draft pull request, if that is wanted and possible.

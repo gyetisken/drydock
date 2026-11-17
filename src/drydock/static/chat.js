@@ -473,6 +473,24 @@ const on = {
     running(false);
     $("go").disabled = false;
   },
+  // How long that took, and which part of it was the work rather than the
+  // checking. It was asked after every run and answered with a guess.
+  "pace": (e) => {
+    const lines = (e.lines || []).map(esc);
+    if (!lines.length) return;
+    say("crew", `<div class="body pace">
+      <p>${lines[0]}</p>
+      ${lines.length > 1
+        ? `<ul>${lines.slice(1).map(l => `<li>${l}</li>`).join("")}</ul>`
+        : ""}
+      ${e.working && e.checking
+        ? `<p class="why">${Math.round(e.working / (e.working + e.checking) * 100)}%
+           of the item time was writing code; the rest was the four gates
+           reading it.</p>`
+        : ""}
+    </div>`, "dim");
+  },
+
   "run.summary": (e) => {
     running(false);
     $("go").disabled = false;
