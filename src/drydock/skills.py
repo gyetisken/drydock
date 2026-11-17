@@ -20,7 +20,7 @@ from pathlib import Path
 
 import yaml
 
-SECTIONS = ("survey", "plan", "engineer", "verify")
+SECTIONS = ("survey", "design", "plan", "engineer", "verify")
 
 
 @dataclass(frozen=True)

@@ -194,7 +194,7 @@ const on = {
     Office.reset();
     const NEEDS = {
       Verifier: "baseline", Analyst: "analyst",
-      Architect: "planner", Planner: "planner",
+      Architect: "planner", Designer: "planner", Planner: "planner",
       Engineer: "engineer", Inspector: "engineer", Reviewer: "engineer",
     };
     Object.entries(NEEDS).forEach(([who, stage]) => {
@@ -256,6 +256,28 @@ const on = {
       <div class="card"><h4>What could go wrong</h4>
       ${e.risks.slice(0, 4).map(r => `<p class="why">${esc(r.slice(0, 260))}</p>`).join("")}
       </div></div>`, "dim");
+  },
+  // What the designer decided, shown rather than buried in a prompt.
+  "look": (e) => {
+    const swatches = (e.palette || []).map(c => {
+      const hex = (/#[0-9a-fA-F]{3,8}/.exec(c) || [])[0] || "#888";
+      return `<span class="swatch" title="${esc(c)}"
+        style="background:${esc(hex)}"></span>`;
+    }).join("");
+    say("designer", `<div class="body">
+      <p>${esc(e.idea || "")}</p>
+      <div class="card look">
+        <div class="brandline">
+          <div class="mark-box">${e.logo_svg || ""}</div>
+          <div><div class="swatches">${swatches}</div>
+          <p class="why">${esc(e.logo_reasoning || "")}</p></div>
+        </div>
+        <h4>Type</h4><p class="why">${esc(e.type_scale || "")}</p>
+        <h4>Layout</h4><p class="why">${esc(e.layout || "")}</p>
+        <h4>Voice</h4><p class="why">${esc(e.words || "")}</p>
+        ${(e.avoid || []).length ? `<h4>Deliberately not</h4>
+          <p class="why">${esc((e.avoid || []).join(" · "))}</p>` : ""}
+      </div></div>`);
   },
   "plan.ready": (e) => {
     const msg = say("planner", `<div class="body"><p>${esc(e.summary)}</p>

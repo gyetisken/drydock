@@ -7,6 +7,7 @@ survives the browser being closed, which is the behaviour anyone would expect
 of something that takes twenty minutes and costs money.
 """
 
+import re
 import threading
 from pathlib import Path
 from typing import ClassVar
@@ -15,6 +16,8 @@ from . import preview
 from .analyst import baseline, survey
 from .architect import as_briefing, design
 from .commands import STAGES
+from .designer import as_briefing as look_briefing
+from .designer import decide, write_logo
 from .detect import detect
 from .engines import stop_workers
 from .events import Feed
@@ -210,6 +213,45 @@ class Session:
                     note="the project already has a shape; the Analyst read it",
                 )
 
+            # Anything with a face gets one. Nobody was responsible for how
+            # the thing looked, so everything came out looking the same -
+            # default HTML passes every test there is.
+            look = ""
+            if self._has_a_face():
+                self.feed.emit(
+                    "agent.state",
+                    agent="Designer",
+                    state="working",
+                    note="deciding how it should look",
+                )
+                found, usage = decide(
+                    self.repo,
+                    self.task,
+                    shape,
+                    self.skills,
+                    self._agent_event("Designer"),
+                    budget=self.run.left if self.budget else 0.0,
+                    engine=self.engine,
+                    model=self.model,
+                )
+                self._spent(usage, "Designer")
+                write_logo(self.repo, found)
+                look = look_briefing(found)
+                self.feed.emit(
+                    "agent.state",
+                    agent="Designer",
+                    state="done",
+                    note=found.get("idea", "")[:110] or "the look is decided",
+                )
+                self.feed.emit("look", **found)
+            else:
+                self.feed.emit(
+                    "agent.state",
+                    agent="Designer",
+                    state="skipped",
+                    note="nothing here is looked at by anybody",
+                )
+
             self.feed.emit(
                 "agent.state",
                 agent="Planner",
@@ -226,7 +268,7 @@ class Session:
                 budget=self.run.left if self.budget else 0.0,
                 engine=self.engine,
                 model=self.model,
-                shape=shape,
+                shape=shape + look,
             )
             self._spent(usage, "Planner")
             self._after_plan(auto_run)
@@ -246,6 +288,30 @@ class Session:
         self.run.spend(usage)
         self.run.save()
         self.feed.emit("spend", cost=round(self.run.cost, 2), who=who)
+
+    # Words that mean somebody is going to look at this. Matched on word
+    # boundaries, because "ui" sits inside "suite" and a JUnit migration was
+    # being sent to a designer.
+    FACES: ClassVar[re.Pattern] = re.compile(
+        r"\b(web ?site|site|web ?page|page|landing|web ?app|app|ui|ux|"
+        r"frontend|front-end|dashboard|portal|blog|shop|storefront|"
+        r"interface|home ?page|marketing)\b"
+    )
+
+    def _has_a_face(self) -> bool:
+        """Whether this job produces something a person looks at.
+
+        A parser, a migration or a CLI does not need a palette, and asking
+        for one costs a minute and produces an answer nobody reads.
+        """
+        if self.FACES.search(self.task.lower()):
+            return True
+        # An existing repository that already serves pages has a face whether
+        # or not the request mentions one.
+        return any(
+            (self.repo / name).exists()
+            for name in ("public", "static", "views", "templates", "src/pages")
+        )
 
     def _survey(self, b, chain, commit: str) -> None:
         """Read the repository, and keep what was read."""
@@ -324,7 +390,7 @@ class Session:
     OWNERS: ClassVar[dict[str, list[str]]] = {
         "baseline": ["Verifier"],
         "analyst": ["Analyst"],
-        "planner": ["Architect", "Planner"],
+        "planner": ["Architect", "Designer", "Planner"],
         "engineer": ["Engineer", "Inspector", "Reviewer"],
     }
 

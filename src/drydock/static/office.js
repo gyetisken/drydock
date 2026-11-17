@@ -43,13 +43,14 @@ const Office = (() => {
   // Desks sit on the tile grid. x is the desk's left tile, y its top tile; the
   // chair and the person go one row below, which is how a top-down room reads.
   const CREW = [
-    { id: "Analyst",   role: "reads the repository",      tint: "#5b8ddb", hair: "short",        x: 2,  y: 6 },
-    { id: "Architect", role: "decides the shape",         tint: "#4cb3c4", hair: "bob",          x: 9,  y: 6 },
-    { id: "Planner",   role: "turns it into items",       tint: "#8a7fd0", hair: "parted",       x: 16, y: 6 },
-    { id: "Engineer",  role: "one change at a time",      tint: "#5fc08a", hair: "spiky",        x: 23, y: 6 },
-    { id: "Verifier",  role: "builds it, runs the suite", tint: "#d6ac5c", hair: "mop",          x: 3,  y: 13, code: true },
-    { id: "Inspector", role: "reads the diff",            tint: "#d98bb0", hair: "long_waves",   x: 12, y: 13, code: true },
-    { id: "Reviewer",  role: "did it do the item",        tint: "#e2796d", hair: "slicked_back", x: 21, y: 13 },
+    { id: "Analyst",   role: "reads the repository",      tint: "#5b8ddb", hair: "short",        x: 1,  y: 6 },
+    { id: "Architect", role: "decides the shape",         tint: "#4cb3c4", hair: "bob",          x: 7,  y: 6 },
+    { id: "Designer",  role: "decides how it looks",      tint: "#e8a33d", hair: "long_waves",   x: 13, y: 6 },
+    { id: "Planner",   role: "turns it into items",       tint: "#8a7fd0", hair: "parted",       x: 19, y: 6 },
+    { id: "Engineer",  role: "one change at a time",      tint: "#5fc08a", hair: "spiky",        x: 25, y: 6 },
+    { id: "Verifier",  role: "builds it, runs the suite", tint: "#d6ac5c", hair: "mop",          x: 4,  y: 13, code: true },
+    { id: "Inspector", role: "reads the diff",            tint: "#d98bb0", hair: "bob",          x: 13, y: 13, code: true },
+    { id: "Reviewer",  role: "did it do the item",        tint: "#e2796d", hair: "slicked_back", x: 22, y: 13 },
   ];
 
   // Everybody sits at their own desk, working or not. Idle people were sent
