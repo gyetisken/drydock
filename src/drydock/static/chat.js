@@ -40,6 +40,16 @@ function renderPlan() {
         <span class="n mono">${i.id}</span>
         <div>
           <div class="ttl">${esc(i.plain || i.title)}</div>
+          ${i.status === "working" && i.doing
+            ? `<div class="doing"><span class="now">${esc(i.doing)}</span>${
+                (i.steps || []).length > 1
+                  ? `<span class="count">${i.steps.length} steps</span>` : ""
+              }</div>
+              ${(i.steps || []).length > 1
+                ? `<details class="more"><summary>every step</summary>
+                   <div class="tech steps-list">${i.steps.slice(-40).map(x =>
+                     `<div>${esc(x)}</div>`).join("")}</div></details>` : ""}`
+            : ""}
           ${i.note ? `<div class="why">${esc(i.note)}</div>` : ""}
           ${i.gates ? `<div class="gates">${i.gates}</div>` : ""}
           ${i.plain ? `<details class="more"><summary>how</summary>
@@ -74,23 +84,40 @@ function renderStats() {
 // is not kept with the run: the commit is the record, and a second copy is a
 // copy that can disagree with it.
 function showDiffLink(e) {
+  // The run id is taken now rather than when the panel is opened. A resumed
+  // job has a different session key from the run it is continuing, and the
+  // commit belongs to the run.
+  const runId = (S.key || "").replace(/-resumed$/, "");
   const msg = say("crew", `<div class="body">
     <p><b>Item ${e.id} landed.</b> ${esc(e.note)}</p>
-    <details class="diff"><summary>See what changed</summary>
-      <div class="patch">reading the commit…</div></details></div>`, "dim");
+    <details class="diff"><summary><span class="sum">See what changed</span></summary>
+      <div class="patch"><div class="dl meta">reading the commit…</div></div>
+    </details></div>`, "dim");
   const box = msg.querySelector("details");
+  const out = msg.querySelector(".patch");
   box.addEventListener("toggle", async () => {
     if (!box.open || box.dataset.loaded) return;
     box.dataset.loaded = "1";
-    const r = await (await fetch(`/api/diff/${S.key}/${e.id}`)).json();
-    const out = msg.querySelector(".patch");
-    if (!r.ok) { out.textContent = r.reason; return; }
-    out.innerHTML = paint(r.patch) +
-      (r.clipped ? `<div class="why">The rest of the diff is not shown. An item
-        this large cannot be read as one change.</div>` : "");
-    box.querySelector("summary").textContent =
-      `What changed in item ${e.id} · ${r.commit}`;
-  }, { once: false });
+    try {
+      const res = await fetch(`/api/diff/${encodeURIComponent(runId)}/${e.id}`);
+      const r = await res.json();
+      if (!r.ok) {
+        out.innerHTML = `<div class="dl meta">${esc(r.reason)}</div>`;
+        return;
+      }
+      out.innerHTML = paint(r.patch) +
+        (r.clipped ? `<div class="dl meta">The rest is not shown. An item this
+          large cannot be read as one change.</div>` : "");
+      msg.querySelector(".sum").textContent =
+        `What changed in item ${e.id} · ${r.commit}`;
+    } catch (err) {
+      // A panel stuck on "reading the commit" is worse than one that says
+      // what went wrong, because it looks like it is still working.
+      out.innerHTML = `<div class="dl meta">Could not read the commit: ${
+        esc(String(err))}</div>`;
+      box.dataset.loaded = "";
+    }
+  });
 }
 
 // Colouring a diff is four lines of CSS and makes the difference between a
@@ -104,6 +131,32 @@ function paint(patch) {
       : line.startsWith("diff ") || line.startsWith("index ") ? "meta" : "";
     return `<div class="dl ${cls}">${esc(line) || "&nbsp;"}</div>`;
   }).join("");
+}
+
+// A tool call as a sentence. The raw line is the tool name followed by its
+// arguments, which is readable only if you already know the tool.
+function readable(detail) {
+  const text = String(detail || "");
+  const tool = text.split(" ")[0];
+  const path = (/(?:file_path|path|notebook_path)=([^\s,]+)/.exec(text) || [])[1];
+  const short = path ? path.split("/").slice(-2).join("/") : "";
+  const command = (/command=(.+?)(?:, description=|$)/.exec(text) || [])[1];
+
+  if (tool === "Write") return `Writing ${short || "a file"}`;
+  if (tool === "Edit" || tool === "MultiEdit") return `Editing ${short || "a file"}`;
+  if (tool === "Read") return `Reading ${short || "a file"}`;
+  if (tool === "Glob" || tool === "Grep") return `Searching the project`;
+  if (tool === "Bash") {
+    const c = (command || "").trim();
+    if (/\btest\b/.test(c)) return "Running the tests";
+    if (/^(npm|pnpm|yarn) (i|install|ci)\b/.test(c)) return "Installing dependencies";
+    if (/^(npm|pnpm|yarn) run build|^mvn|^gradle|^go build|^cargo build/.test(c))
+      return "Building";
+    if (/^(ls|cat|find|head|tail|wc)\b/.test(c)) return "Looking around";
+    return c ? `Running ${c.split(" ").slice(0, 3).join(" ")}` : "Running a command";
+  }
+  if (tool === "thinking") return "";
+  return "";
 }
 
 function toolLine(agent, detail) {
@@ -160,7 +213,20 @@ const on = {
     live.el.stats = msg.querySelector(".stats");
     renderStats();
   },
-  "agent.tool": (e) => toolLine(e.agent, e.detail),
+  "agent.tool": (e) => {
+    toolLine(e.agent, e.detail);
+    // While an item is running, what the engineer is doing right now belongs
+    // on that item. The drawer at the top of the thread holds everything;
+    // nobody watching a job wants to go and open it.
+    const item = live.items.get(live.current);
+    if (!item || item.status !== "working") return;
+    const said = readable(e.detail);
+    if (!said) return;
+    item.doing = said;
+    item.steps = (item.steps || []);
+    if (item.steps[item.steps.length - 1] !== said) item.steps.push(said);
+    renderPlan();
+  },
   // Cost is still recorded and still reported in Settings, where a question
   // about money belongs. It is not what anyone watching a job wants to know.
   "spend": () => {},
@@ -243,13 +309,26 @@ const on = {
     }
     const m = /(\d+) tests/.exec(e.note || "");
     if (m) live.tests = parseInt(m[1], 10);
-    if (e.outcome === "done") Office.land(); else Office.bounce("Verifier");
-    station("Verifier", e.outcome === "done" ? "done" : "failed",
-      e.outcome === "done"
-        ? `item ${e.id} held the suite, so it stays`
-        : `item ${e.id} did not hold the suite, so it was rolled back`);
+    const judged = e.outcome === "done" || e.outcome === "reverted";
+    if (e.outcome === "done") Office.land();
+    else if (judged) Office.bounce("Verifier");
+    if (judged) {
+      station("Verifier", e.outcome === "done" ? "done" : "failed",
+        e.outcome === "done"
+          ? `item ${e.id} held the suite, so it stays`
+          : `item ${e.id} did not hold the suite, so it was rolled back`);
+    }
     renderStats();
-    if (e.outcome !== "done") {
+    if (e.outcome === "out_of_budget") {
+      say("crew", `<div class="body"><p><b>Stopped at item ${e.id}: the run reached
+        its spending limit.</b></p><p class="why">This item was not attempted and
+        nothing was rolled back. Everything before it is committed, and the job can
+        be carried on from the project view.</p></div>`);
+    } else if (e.outcome === "stopped") {
+      say("crew", `<div class="body"><p><b>Stopped before item ${e.id}.</b></p>
+        <p class="why">You asked it to stop. The tree is clean and the job can be
+        carried on from the project view.</p></div>`);
+    } else if (e.outcome !== "done") {
       say("crew", `<div class="body"><p><b>Item ${e.id} was rolled back.</b>
         ${esc(e.note)}</p><p class="why">The tree is back where it was. Nothing after
         this item was attempted, because each one assumes the last one landed.</p></div>`);
@@ -291,10 +370,38 @@ const on = {
       ? `${e.remembered} facts about this repository were kept, so the next job
          here starts from them instead of reading it all again.`
       : "";
-    say("crew", `<div class="body">
+    const finished = e.done === e.total && e.total > 0;
+    const msg = say("crew", `<div class="body">
       <p><b>${e.done} of ${e.total} items landed.</b> ${suite}</p>
-      <p class="why">Each one is its own commit on <code>drydock/${esc(S.key || "")}</code>,
-      and nothing touched your main branch. ${kept}</p></div>`);
+      <p class="why">Each one is its own commit on
+      <code>drydock/${esc((S.key || "").replace(/-resumed$/, ""))}</code>, and nothing
+      touched your main branch. ${kept}</p>
+      ${finished ? `<div class="actions">
+        <button class="btn" id="open-it">Open it</button>
+        <span class="hint" id="open-said">Starts the project and opens it in a tab.</span>
+      </div>` : ""}</div>`);
+
+    const open = msg.querySelector("#open-it");
+    if (open) open.onclick = async () => {
+      const said = msg.querySelector("#open-said");
+      open.disabled = true;
+      said.textContent = "starting it…";
+      const res = await fetch("/api/preview", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ project: S.project }),
+      });
+      const body = await res.json();
+      open.disabled = false;
+      if (!body.ok) {
+        said.className = "hint bad";
+        said.textContent = body.reason;
+        return;
+      }
+      said.className = "hint";
+      said.innerHTML = `running <code>${esc(body.command)}</code> at
+        <a href="${esc(body.url)}" target="_blank" rel="noopener">${esc(body.url)}</a>`;
+      window.open(body.url, "_blank", "noopener");
+    };
   },
   "run.error": (e) => (running(false),
     Keys.notify("drydock stopped", e.detail), say("crew", `<div class="body"><p class="why">${esc(e.detail)}</p></div>`)),

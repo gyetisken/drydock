@@ -52,15 +52,11 @@ const Office = (() => {
     { id: "Reviewer",  role: "did it do the item",        tint: "#e2796d", hair: "slicked_back", x: 21, y: 13 },
   ];
 
-  // Where somebody stands when they have nothing to do. Nobody waits at a
-  // desk they are not using, so how much of the room is busy is legible from
-  // across the room - but only if there is a spot for every one of them.
-  // Three spots and seven people meant four invisible people standing inside
-  // the other three.
-  const LOUNGE = [
-    [28.4, 9.4], [30.8, 9.0], [27.9, 11.3],
-    [30.3, 11.8], [28.8, 13.6], [31.2, 13.9], [29.6, 15.6],
-  ];
+  // Everybody sits at their own desk, working or not. Idle people were sent
+  // to stand in a corner, which looked like seven strangers queueing and
+  // stacked their name labels on top of each other. A desk with its monitor
+  // off already says the station is not working, and it says it in the place
+  // you are looking for that station.
 
   const art = {};
   const tinted = new Map();
@@ -382,9 +378,9 @@ const Office = (() => {
           : (dy > 0 ? "down" : "up");
       } else {
         s.px = s.tx; s.py = s.ty;
-        // Arrived. At a desk you face the screen, which is up the room; in
-        // the lounge you face the room, which is down it.
-        s.face = s.state === "idle" ? "down" : "up";
+        // Arrived, and everybody arrives at a desk, so everybody faces up
+        // the room at their screen.
+        s.face = "up";
       }
     }
     if (paper.on) {
@@ -417,19 +413,11 @@ const Office = (() => {
   }
 
   function retarget() {
-    let waiting = 0;  // never exceeds CREW.length, and LOUNGE has one each
     for (const c of CREW) {
       const s = state.get(c.id);
-      if (s.state === "idle") {
-        // Each person keeps the same spot for as long as they are idle, so
-        // the room does not reshuffle every time somebody else sits down.
-        const [lx, ly] = LOUNGE[waiting];
-        waiting += 1;
-        s.tx = lx * TILE; s.ty = ly * TILE;
-      } else if (s.state !== "skipped") {
-        const [sx, sy] = seat(c);
-        s.tx = sx; s.ty = sy;
-      }
+      if (s.state === "skipped") continue;
+      const [sx, sy] = seat(c);
+      s.tx = sx; s.ty = sy;
     }
   }
 

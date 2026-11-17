@@ -446,7 +446,8 @@ body.tucked #show-side { display:flex }
   overflow:hidden; background:var(--panel) }
 .diff summary { cursor:pointer; font-size:12px; color:var(--muted);
   list-style:none; padding:10px 13px; display:flex; align-items:center;
-  gap:8px; user-select:none; transition:background .12s }
+  gap:9px; user-select:none; transition:background .12s; outline:none }
+.diff summary:focus-visible { box-shadow:inset 0 0 0 2px var(--accent-dim) }
 .diff summary:hover { background:var(--raise); color:var(--fg) }
 .diff summary::-webkit-details-marker { display:none }
 .diff summary::before { content:"\203A"; font-size:15px; line-height:1;
@@ -548,3 +549,12 @@ textarea#inst:focus { border-color:var(--accent-dim) }
 ::-webkit-scrollbar-thumb:hover { background:var(--faint);
   border:3px solid transparent; background-clip:content-box }
 ::-webkit-scrollbar-corner { background:transparent }
+
+/* what the engineer is doing right now, on the item it is doing it to */
+.doing { display:flex; align-items:baseline; gap:9px; margin-top:5px }
+.doing .now { font-size:12px; color:var(--accent); font-weight:550 }
+.doing .now::after { content:"…"; opacity:.6 }
+.doing .count { font-size:10.5px; color:var(--faint) }
+.steps-list div { font:11.5px/1.75 ui-monospace,SFMono-Regular,Menlo,monospace;
+  color:var(--muted) }
+.steps-list div:last-child { color:var(--fg) }

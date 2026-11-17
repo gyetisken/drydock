@@ -13,6 +13,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
+from . import preview
 from .commands import available, match
 from .engines import stop_workers
 from .repo import Repo
@@ -535,6 +536,10 @@ def edit_project(body: EditProject) -> dict:
 class StartJob(BaseModel):
     project: str
     command: str
+    # A cap in dollars, for the engine that spends dollars. On a Claude plan
+    # nothing is billed per run, so a cap there is a limit this application
+    # invented and then enforced against work somebody had already paid for -
+    # which is how a four-item website stopped after three.
     budget: float = 4.0
     engine: str = "claude"
     model: str = "opus"
@@ -564,7 +569,7 @@ def start(body: StartJob) -> JSONResponse:
         Path(body.project),
         command.task_for(rest),
         skills,
-        body.budget,
+        0.0 if body.engine == "claude" else body.budget,
         body.engine,
         body.model,
         command.stop_after,
@@ -572,6 +577,36 @@ def start(body: StartJob) -> JSONResponse:
     )
     key = next(k for k, v in workspace.sessions.items() if v is session)
     return JSONResponse({"ok": True, "key": key})
+
+
+class Preview(BaseModel):
+    project: str
+
+
+@app.post("/api/preview")
+def open_preview(body: Preview) -> JSONResponse:
+    """Start the project and hand back a URL.
+
+    A job ends with commits and a green suite, and then the only question
+    anybody has is where to look at the thing. Answering it with a paragraph
+    about which command to type is answering a different question.
+    """
+    repo = Path(body.project)
+    try:
+        running = preview.running(repo)
+        live = running or preview.start(repo)
+    except LookupError as exc:
+        return JSONResponse({"ok": False, "reason": str(exc)}, status_code=400)
+    except (RuntimeError, TimeoutError) as exc:
+        return JSONResponse({"ok": False, "reason": str(exc)}, status_code=400)
+    return JSONResponse(
+        {"ok": True, "url": live.url, "command": live.command, "already": bool(running)}
+    )
+
+
+@app.delete("/api/preview")
+def close_preview(body: Preview) -> dict:
+    return {"ok": True, "stopped": preview.stop(Path(body.project))}
 
 
 @app.get("/api/running")
@@ -662,6 +697,9 @@ def _stop_everything() -> None:
     stopped = stop_workers()
     if stopped:
         print(f"stopped {stopped} worker(s) still running")
+    previews = preview.stop()
+    if previews:
+        print(f"stopped {previews} preview(s)")
 
 
 @app.get("/api/diff/{run_id}/{item_id}")

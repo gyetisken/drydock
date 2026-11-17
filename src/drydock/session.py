@@ -467,6 +467,12 @@ class Session:
         question is which item is next. `execute` already skips items that
         have results, so resuming is the same loop started again.
         """
+        # A cap saved with the run was a cap in dollars, and a run on a Claude
+        # plan does not spend dollars per run. Carrying it forward would stop
+        # the same job at the same item every time it was resumed.
+        if (engine or run.engine) == "claude":
+            run.budget = 0.0
+
         session = cls(
             Path(run.repo),
             run.task,
