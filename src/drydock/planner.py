@@ -25,17 +25,29 @@ when it did not, reverting it loses an hour rather than a day.
 
 Rules for the plan:
 
-As few items as the work honestly needs. An item exists because it is a
-separate thing that can fail on its own, not because the work can be sliced
-there. Three data modules that are each a list of facts are one item; a
-layout and the page that uses it are one item. Splitting further does not
-make anything safer, it makes a plan nobody reads and a run that spends most
-of its time starting and stopping. A small site is five or six items. Twelve
-means the knife went in at every joint it could find rather than at the
-joints that matter.
+As few items as the work honestly needs, and fewer than feels natural.
+
+Every item costs the same whether it is large or small. After the work
+itself, each one is built, its suite is run, its diff is read, it is
+reviewed against what it was asked to do, and anything it renders is looked
+at - between three and four minutes of checking per item, regardless of
+whether the item took two minutes or twenty. Splitting a small piece of work
+in two does not halve the risk; it doubles the overhead and adds nothing.
+
+So an item exists because it is a separate thing that can fail on its own,
+not because the work can be sliced there. Three data modules that are each a
+list of facts are one item. A layout and the first page that uses it are one
+item. A feature and its tests are always one item. A README is never an item
+of its own - it goes with the last piece of work it describes.
 
 The test for a seam: if two pieces would always be written in the same
-sitting and would always fail together, they are one item.
+sitting, and a failure in one would be diagnosed by looking at the other,
+they are one item.
+
+A plan for a small site is four items, five if something in it is genuinely
+hard. If you have written seven, go back and find the three that were only
+split because they could be. If you have written ten, you have planned a
+list of files rather than a sequence of working states.
 
 Order by what would hide a problem. If one change could make the test suite
 stop reporting failures honestly, it comes first, because everything after it

@@ -55,6 +55,12 @@ the list. "Last updated 2 hours ago" does not replace the content. Whenever
 an item renders something computed, ask what the visitor came for, and make
 sure the page still contains it.
 
+Then one feature per item, each with its test in the same item - and group
+features that would be written in one sitting. The skeleton, the data and
+the first page that renders it is one item, not three. Documentation and
+deploy configuration go with the last piece of work rather than becoming
+items of their own.
+
 Then one feature per item, each with its test in the same item. A plan that
 puts the tests in a later item will reach that item with nothing to test
 against and no way back.
