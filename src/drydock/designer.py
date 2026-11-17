@@ -199,13 +199,23 @@ def as_briefing(found: dict) -> str:
 
 
 def write_logo(repo: Path, found: dict) -> str:
-    """Put the mark on disk so items can reference a file, not a description."""
+    """Put the mark on disk, and commit it, so items can reference a file.
+
+    Committed immediately on purpose. It is the project's own asset rather
+    than something drydock left lying about, and the loop refuses to start on
+    a dirty tree - so a file written here and not committed stops the whole
+    job before the first item.
+    """
     svg = (found.get("logo_svg") or "").strip()
     if not svg.startswith("<svg"):
         return ""
     brand = repo / "brand"
     brand.mkdir(exist_ok=True)
     (brand / "logo.svg").write_text(svg + "\n")
+
+    from .repo import Repo
+
+    Repo(repo).commit("The mark, drawn before anything was built")
     return "brand/logo.svg"
 
 

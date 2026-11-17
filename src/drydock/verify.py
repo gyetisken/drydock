@@ -44,6 +44,21 @@ def verify(repo: Path, item_verify: str, base: Baseline, commands: dict) -> Verd
             check=result,
         )
 
+    # An item verified by its tests must still leave something that builds.
+    # Without this, a change that breaks the build is invisible until some
+    # later item happens to be verified by one - and then it is six commits
+    # back and belongs to nobody. It cost exactly that here: a test file put
+    # inside a routes directory, found at item seven.
+    build = commands.get("build", "")
+    if build and build != commands["tests"]:
+        compiled = check("build", build, repo)
+        if not compiled.passed:
+            return Verdict(
+                False,
+                "the tests may pass but it no longer builds",
+                compiled,
+            )
+
     result = check("tests", commands["tests"], repo)
     run, failed, _ = read_test_counts(result.detail)
 

@@ -89,3 +89,41 @@ class TestVerdict:
             ),
         )
         assert not verify(Path("."), "tests", self.BASE, self.COMMANDS).passed
+
+
+class TestItAlsoHasToBuild:
+    """An item verified by its tests must still leave something that builds.
+
+    Without this a broken build is invisible until some later item happens to
+    be verified by one, and by then it is six commits back and belongs to
+    nobody. That is exactly what happened: a test file written into a routes
+    directory, found at item seven of seven.
+    """
+
+    BASE = Baseline(builds=True, tests_run=24, tests_failed=0, tests_skipped=0)
+    COMMANDS: ClassVar[dict] = {"build": "false", "tests": "true"}
+
+    def test_green_tests_do_not_excuse_a_broken_build(self, monkeypatch):
+        monkeypatch.setattr(
+            "drydock.verify.check",
+            lambda name, *_: fake_check(name != "build", "Tests run: 24"),
+        )
+        verdict = verify(Path("."), "tests", self.BASE, self.COMMANDS)
+        assert not verdict.passed
+        assert "no longer builds" in verdict.reason
+
+    def test_a_project_with_no_separate_build_is_not_asked_for_one(self, monkeypatch):
+        """Where the build command and the test command are the same thing,
+        running it twice proves nothing and costs a minute."""
+        calls = []
+
+        def spy(name, command, *_):
+            calls.append(name)
+            return fake_check(True, "Tests run: 24, Failures: 0, Errors: 0, Skipped: 0")
+
+        monkeypatch.setattr("drydock.verify.check", spy)
+        verdict = verify(
+            Path("."), "tests", self.BASE, {"build": "npm test", "tests": "npm test"}
+        )
+        assert verdict.passed
+        assert calls == ["tests"]

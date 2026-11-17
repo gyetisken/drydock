@@ -68,6 +68,12 @@ whole patterns and each is worth more than the line it takes:
 - `size-adjust` and the `@font-face` metric overrides on the fallback font.
   Web fonts are the usual cause of the layout shift a hero suffers from.
 
+**Test files never go in a routes directory.** Astro, Next, Nuxt, SvelteKit
+and Remix all turn everything under their pages or routes folder into a URL.
+A test file put there becomes a route, and the build tries to render it and
+dies importing a test runner. Tests go beside the module they test, or in a
+top-level tests directory - never in `src/pages`, `app`, `routes` or `pages`.
+
 **The things a suite cannot see.** Contrast, hierarchy, a hero that pushes
 the content below the fold, a form that is unusable with a thumb. No test
 catches any of them, so they have to be looked at deliberately before the
