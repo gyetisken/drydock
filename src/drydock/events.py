@@ -34,7 +34,7 @@ class Event:
 class Feed:
     """One run's events, fanned out to everyone watching."""
 
-    def __init__(self, keep: int = 400) -> None:
+    def __init__(self, keep: int = 4000) -> None:
         self._lock = threading.Lock()
         self._history: list[Event] = []
         self._listeners: list[queue.Queue] = []
@@ -65,10 +65,22 @@ class Feed:
                 pass
 
     def listen(self) -> queue.Queue:
-        q: queue.Queue = queue.Queue(maxsize=500)
+        """A new viewer, handed everything that has happened so far.
+
+        The queue has to be big enough for the whole replay and then some,
+        because the run keeps emitting while the browser is still reading
+        it. Sized off the history rather than a constant: a long job used to
+        overflow this on the first refresh, and the viewer got an error
+        instead of the job it was watching.
+        """
         with self._lock:
-            for event in self._history:
-                q.put_nowait(event)
+            history = list(self._history)
+            q: queue.Queue = queue.Queue(maxsize=len(history) + 1000)
+            for event in history:
+                try:
+                    q.put_nowait(event)
+                except queue.Full:  # pragma: no cover - cannot happen now
+                    break
             self._listeners.append(q)
         return q
 
