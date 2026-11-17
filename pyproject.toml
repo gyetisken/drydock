@@ -1,0 +1,30 @@
+[project]
+name = "drydock"
+version = "0.1.0"
+description = "A crew of agents that changes an existing codebase and proves it still works"
+readme = "README.md"
+authors = [
+    { name = "gyetisken", email = "gyetisken@gmail.com" }
+]
+requires-python = ">=3.13"
+dependencies = [
+    "anthropic>=2.9.0",
+    "fastapi>=0.163.1",
+    "pydantic>=2.14.3",
+    "python-dotenv>=1.2.4",
+    "pyyaml>=6.0.3",
+    "uvicorn[standard]>=0.54.0",
+]
+
+[project.scripts]
+drydock = "drydock.cli:main"
+
+[build-system]
+requires = ["uv_build>=0.13.8,<0.14.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.2.0",
+    "ruff>=0.17.5",
+]
