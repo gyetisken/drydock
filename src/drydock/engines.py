@@ -187,7 +187,9 @@ class ClaudeCodeEngine:
 
     name = "claude"
 
-    def __init__(self, model: str = "opus", max_turns: int = 60) -> None:
+    def __init__(
+        self, model: str = "opus", max_turns: int = 60, minutes: float = 12.0
+    ) -> None:
         self.binary = shutil.which("claude")
         if not self.binary:
             raise EngineUnavailable(
@@ -196,6 +198,12 @@ class ClaudeCodeEngine:
             )
         self.model = model
         self.max_turns = max_turns
+        # A wall clock as well as a turn count. Turns bound how much a worker
+        # does; nothing bounded how long it took, so a worker that stopped
+        # producing output stalled the run with no end to it. A run that is
+        # over its time is a run that has gone wrong, and saying so beats
+        # waiting for an answer that is not coming.
+        self.seconds = minutes * 60
 
     def work(
         self,
@@ -263,20 +271,9 @@ class ClaudeCodeEngine:
         process.stdin.write(instruction)
         process.stdin.close()
 
-        dollars, turns = 0.0, 0
-        for line in process.stdout:
-            line = line.strip()
-            if not line.startswith("{"):
-                continue
-            try:
-                event = json.loads(line)
-            except json.JSONDecodeError:
-                continue
-            dollars = event.get("total_cost_usd", dollars)
-            turns = event.get("num_turns", turns)
-            if on_event:
-                _report(event, on_event)
-        process.wait(timeout=60)
+        dollars, turns, overran = self._read(process, on_event)
+        if overran and on_event:
+            on_event("engine", f"stopped after {self.seconds / 60:.0f} minutes")
         _forget(process)
 
         if not report_file.exists():
@@ -313,6 +310,48 @@ class ClaudeCodeEngine:
             dollars=dollars,
             turns=turns,
         )
+
+    def _read(self, process, on_event) -> tuple[float, int, bool]:
+        """Drain the worker's output, and stop it if it runs over its time.
+
+        The timer runs on its own thread because reading a pipe blocks: a
+        worker that has gone quiet is exactly the case this has to catch, and
+        a quiet pipe gives nothing to check a deadline against.
+        """
+        overran = threading.Event()
+
+        def ran_out() -> None:
+            if process.poll() is None:
+                overran.set()
+                process.terminate()
+
+        alarm = threading.Timer(self.seconds, ran_out)
+        alarm.daemon = True
+        alarm.start()
+
+        dollars, turns = 0.0, 0
+        try:
+            for line in process.stdout:
+                line = line.strip()
+                if not line.startswith("{"):
+                    continue
+                try:
+                    event = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                dollars = event.get("total_cost_usd", dollars)
+                turns = event.get("num_turns", turns)
+                if on_event:
+                    _report(event, on_event)
+        finally:
+            alarm.cancel()
+
+        try:
+            process.wait(timeout=30)
+        except subprocess.TimeoutExpired:
+            process.kill()
+        _forget(process)
+        return dollars, turns, overran.is_set()
 
     def structured(
         self,
@@ -385,20 +424,9 @@ class ClaudeCodeEngine:
         process.stdin.write(instruction)
         process.stdin.close()
 
-        dollars, turns = 0.0, 0
-        for line in process.stdout:
-            line = line.strip()
-            if not line.startswith("{"):
-                continue
-            try:
-                event = json.loads(line)
-            except json.JSONDecodeError:
-                continue
-            dollars = event.get("total_cost_usd", dollars)
-            turns = event.get("num_turns", turns)
-            if on_event:
-                _report(event, on_event)
-        process.wait(timeout=60)
+        dollars, turns, overran = self._read(process, on_event)
+        if overran and on_event:
+            on_event("engine", f"stopped after {self.seconds / 60:.0f} minutes")
         _forget(process)
 
         if not out.exists():
