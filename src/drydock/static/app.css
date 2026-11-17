@@ -501,3 +501,19 @@ textarea#inst:focus { border-color:var(--accent-dim) }
 .past.unfinished .outcome { color:var(--warn) }
 .past .btn { grid-row:1/3; grid-column:3; align-self:center }
 .pal-row .kind.job { color:var(--warn) }
+
+/* the technical half of an item, for whoever wants it */
+.more { margin-top:5px }
+.more summary { cursor:pointer; list-style:none; font-size:10.5px;
+  color:var(--faint); letter-spacing:.06em; text-transform:uppercase;
+  display:inline-block; padding:2px 0 }
+.more summary::-webkit-details-marker { display:none }
+.more summary:hover { color:var(--accent) }
+.more summary::after { content:" +" }
+.more[open] summary::after { content:" −" }
+.tech { margin-top:5px; padding:9px 11px; background:var(--input);
+  border-radius:8px; border:1px solid var(--line-soft) }
+.tech b { font:12px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;
+  color:var(--fg); display:block; word-break:break-word }
+.tech p { margin:6px 0 0; font-size:12px; line-height:1.55; color:var(--muted) }
+.step .ttl { font-size:13.5px; line-height:1.5 }

@@ -628,6 +628,7 @@ def one_run(run_id: str) -> dict:
             {
                 "id": i.id,
                 "title": i.title,
+                "plain": i.plain,
                 "rationale": i.rationale,
                 "verify_with": i.verify_with,
             }

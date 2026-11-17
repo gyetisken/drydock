@@ -19,7 +19,8 @@ from .agent import API_MODEL, Agent, Tool
 from .engines import ClaudeCodeEngine
 
 SYSTEM = """You review one change against the one sentence it was supposed to
-carry out. You are not reviewing style, naming, or how you would have done it,
+carry out. The change is in front of you as a diff and that is all you get;
+you cannot read the repository and you do not need to. You are not reviewing style, naming, or how you would have done it,
 and you do not ask for improvements. You answer two questions and nothing else:
 
 1. Does this diff do what the item said?
@@ -103,12 +104,18 @@ def review(
     )
 
     if engine == "claude":
-        found, dollars, turns = ClaudeCodeEngine(model=model, max_turns=3).structured(
+        found, dollars, turns = ClaudeCodeEngine(model=model, max_turns=6).structured(
             repo,
             SYSTEM,
             prompt,
             '{"approved": true, "reason": "...", "noticed": ["..."]}',
             on_event=on_event,
+            # The diff is in the prompt. Everything this station needs is
+            # already in front of it, and a reviewer that goes and reads the
+            # repository is reviewing the result rather than the change - and
+            # spends its turns doing it.
+            tools="",
+            without="Bash Read Glob Grep Edit NotebookEdit WebFetch WebSearch Task",
         )
         return _verdict(found), _Spend(dollars, turns)
 

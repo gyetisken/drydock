@@ -64,6 +64,11 @@ class Item(BaseModel):
 
     id: int
     title: str
+    # The same item said once for somebody who is not going to open the
+    # files. A plan nobody outside the work can read is a plan that gets
+    # approved without being read, which is the opposite of what asking for
+    # approval is for.
+    plain: str = ""
     rationale: str
     files: list[str]
     verify_with: str = Field(description="build or tests")

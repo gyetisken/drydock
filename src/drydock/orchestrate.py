@@ -138,7 +138,7 @@ def execute(
                     opinion, spend = review(
                         repo_path,
                         item,
-                        diff,
+                        repo.pending_for_review(),
                         report.get("summary", ""),
                         engine=engine,
                         model=model,

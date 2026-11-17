@@ -1,0 +1,52 @@
+"""Reading the working tree.
+
+The review diff exists separately from the commit diff for one reason: a
+lockfile of two thousand lines is in the commit and must not be in the
+review, where it pushes the three files somebody actually wrote out of the
+window entirely.
+"""
+
+import subprocess
+from pathlib import Path
+
+from drydock.repo import Repo
+
+
+def make(tmp_path: Path) -> Repo:
+    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+    subprocess.run(["git", "config", "user.email", "t@t"], cwd=tmp_path, check=True)
+    subprocess.run(["git", "config", "user.name", "t"], cwd=tmp_path, check=True)
+    subprocess.run(
+        ["git", "commit", "-q", "--allow-empty", "-m", "start"], cwd=tmp_path, check=True
+    )
+    return Repo(tmp_path)
+
+
+def test_the_review_diff_leaves_out_what_nobody_wrote(tmp_path):
+    repo = make(tmp_path)
+    (tmp_path / "app.js").write_text("export const x = 1;\n")
+    (tmp_path / "package-lock.json").write_text("{\n" + '  "x": 1,\n' * 400 + "}\n")
+
+    full = repo.pending()
+    lean = repo.pending_for_review()
+
+    assert "app.js" in full and "app.js" in lean
+    assert "package-lock.json" in full
+    assert "package-lock.json" not in lean
+    assert len(lean) < len(full) / 5
+
+
+def test_every_lockfile_this_knows_about_is_left_out(tmp_path):
+    repo = make(tmp_path)
+    for name in ("yarn.lock", "poetry.lock", "uv.lock", "go.sum", "Cargo.lock"):
+        (tmp_path / name).write_text("generated\n")
+    (tmp_path / "real.py").write_text("x = 1\n")
+
+    lean = repo.pending_for_review()
+    assert "real.py" in lean
+    for name in ("yarn.lock", "poetry.lock", "uv.lock", "go.sum", "Cargo.lock"):
+        assert name not in lean, name
+
+
+def test_a_clean_tree_has_nothing_pending(tmp_path):
+    assert make(tmp_path).pending_for_review().strip() == ""

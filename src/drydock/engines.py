@@ -322,6 +322,8 @@ class ClaudeCodeEngine:
         shape: str,
         read_only: bool = True,
         on_event=None,
+        tools: str | None = None,
+        without: str = "",
     ) -> tuple[dict, float, int]:
         """Ask for an answer in a given shape, and get it as a file.
 
@@ -337,7 +339,16 @@ class ClaudeCodeEngine:
             f"root as exactly this JSON and nothing else:\n{shape}\n"
             "Write no other file and change nothing else."
         )
-        tools = "Read Glob Grep" + ("" if read_only else " Edit Write")
+        # `tools` is the allowance; `without` is the refusal. Both are needed,
+        # because naming the allowed tools only pre-approves them - it does
+        # not stop the worker reaching for something else. A reviewer given
+        # the diff in its prompt went and read the files anyway, then ran the
+        # test suite, and was cut off before it could answer.
+        tools = (
+            tools
+            if tools is not None
+            else ("Read Glob Grep" + ("" if read_only else " Edit Write"))
+        )
         command = [
             self.binary,
             "-p",
@@ -351,7 +362,8 @@ class ClaudeCodeEngine:
             "--permission-mode",
             "acceptEdits",
             "--allowedTools",
-            f"{tools} Write(.drydock-out.json)",
+            f"{tools} Write(.drydock-out.json)".strip(),
+            *(["--disallowedTools", without] if without else []),
             "--append-system-prompt",
             system,
         ]

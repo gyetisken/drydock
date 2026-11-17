@@ -39,6 +39,7 @@ class Session:
         standing: str = "",
     ) -> None:
         self.feed = Feed()
+        self.feed.also(self._write_log)
         self.repo = repo
         self.task = task
         self.skills = skills
@@ -68,6 +69,25 @@ class Session:
     @property
     def running(self) -> bool:
         return bool(self._thread and self._thread.is_alive())
+
+    def _write_log(self, event) -> None:
+        """Keep the feed on disk as well as in memory.
+
+        The feed is a browser's view of a run and it lives as long as the
+        process does. When something goes wrong at three in the morning the
+        question is what happened, and the honest answer has to come from a
+        file rather than from whichever tab happened to be open.
+        """
+        try:
+            path = Path("runs") / f"{self.run.id}.log" if self.run else None
+            if path is None:
+                return
+            path.parent.mkdir(exist_ok=True)
+            with path.open("a") as out:
+                out.write(event.sse()[6:])
+        except OSError:
+            # A run must not fail because its log could not be written.
+            pass
 
     def _agent_event(self, who: str):
         def report(what: str, text: str) -> None:
@@ -516,6 +536,7 @@ class Session:
                     {
                         "id": i.id,
                         "title": i.title,
+                        "plain": i.plain,
                         "verify_with": i.verify_with,
                         "rationale": i.rationale,
                     }
@@ -537,5 +558,13 @@ class Session:
         return session
 
     def approve(self) -> None:
+        """Start working the plan. Approving twice does not start it twice.
+
+        A double click, a retried request, or two tabs on the same run used to
+        start two threads on one repository, both committing into it. The
+        second one is not a second worker; it is a corrupted run.
+        """
+        if self.running:
+            return
         self._thread = threading.Thread(target=self.work_the_plan, daemon=True)
         self._thread.start()

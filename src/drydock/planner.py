@@ -25,12 +25,34 @@ when it did not, reverting it loses an hour rather than a day.
 
 Rules for the plan:
 
+As few items as the work honestly needs. An item exists because it is a
+separate thing that can fail on its own, not because the work can be sliced
+there. Three data modules that are each a list of facts are one item; a
+layout and the page that uses it are one item. Splitting further does not
+make anything safer, it makes a plan nobody reads and a run that spends most
+of its time starting and stopping. A small site is five or six items. Twelve
+means the knife went in at every joint it could find rather than at the
+joints that matter.
+
+The test for a seam: if two pieces would always be written in the same
+sitting and would always fail together, they are one item.
+
 Order by what would hide a problem. If one change could make the test suite
 stop reporting failures honestly, it comes first, because everything after it
 is judged by that suite.
 
 Name files. "The test classes" is not a plan. If the survey counted them, the
 item says which ones or how many and on what pattern.
+
+Say each item twice. The title and the rationale are for whoever does the
+work and are as specific as they need to be. The plain line is for the person
+deciding whether to let this happen at all, who is not going to open the
+files: one short sentence, no paths, no symbol names, no jargon, saying what
+will be true afterwards that is not true now. "The menu page lists the real
+dishes" rather than "src/menu.js data and GET /menu rendering it". A plan
+nobody outside the work can read is a plan that gets approved without being
+read, and the approval is the one thing standing between a suggestion and
+somebody's repository.
 
 Separate the mechanical from the judged. A rename that a tool can do belongs in
 its own item. A rewrite that changes meaning belongs in another, on its own,
@@ -79,6 +101,16 @@ def _plan_tool() -> Tool:
                         "properties": {
                             "id": {"type": "integer"},
                             "title": {"type": "string"},
+                            "plain": {
+                                "type": "string",
+                                "description": (
+                                    "The same item in one short sentence for "
+                                    "somebody who will not open the files. No "
+                                    "paths, no symbol names, no jargon. Say "
+                                    "what will be true afterwards that is not "
+                                    "true now. Under 80 characters."
+                                ),
+                            },
                             "rationale": {
                                 "type": "string",
                                 "description": "Why this item exists and which risk it answers.",
@@ -105,6 +137,7 @@ def _plan_tool() -> Tool:
                         "required": [
                             "id",
                             "title",
+                            "plain",
                             "rationale",
                             "files",
                             "verify_with",
@@ -156,8 +189,8 @@ def plan(
             SYSTEM + briefing(chosen, "plan") + briefing(chosen, "verify"),
             filled,
             '{"summary": "...", "items": [{"id": 1, "title": "...", '
-            '"rationale": "...", "files": ["..."], "verify_with": "build|tests", '
-            '"removes_tests": false}]}',
+            '"plain": "...", "rationale": "...", "files": ["..."], '
+            '"verify_with": "build|tests", "removes_tests": false}]}',
             on_event=on_event,
         )
         return Plan.model_validate(result), _Spend(dollars, turns)

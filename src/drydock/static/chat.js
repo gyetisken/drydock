@@ -38,9 +38,14 @@ function renderPlan() {
         <span class="mk">${i.status === "working"
           ? '<span class="spin"></span>' : (MK[i.status] || "·")}</span>
         <span class="n mono">${i.id}</span>
-        <div><div class="ttl">${esc(i.title)}</div>
-        ${i.note ? `<div class="why">${esc(i.note)}</div>` : ""}
-        ${i.gates ? `<div class="gates">${i.gates}</div>` : ""}</div>
+        <div>
+          <div class="ttl">${esc(i.plain || i.title)}</div>
+          ${i.note ? `<div class="why">${esc(i.note)}</div>` : ""}
+          ${i.gates ? `<div class="gates">${i.gates}</div>` : ""}
+          ${i.plain ? `<details class="more"><summary>how</summary>
+            <div class="tech"><b>${esc(i.title)}</b>
+            <p>${esc(i.rationale || "")}</p></div></details>` : ""}
+        </div>
       </div>`).join("");
 
   // The item being worked on is the one thing anyone is looking for, so it
@@ -177,8 +182,9 @@ const on = {
       <span class="hint" id="planhint">Nothing is changed until you approve.</span></div></div>`);
     live.el.plan = msg.querySelector(".card");
     station("Planner", "done", `${e.items.length} items, waiting for you`);
-    e.items.forEach(i => live.items.set(i.id,
-      { ...i, status: "waiting", note: i.rationale.split(". ")[0] }));
+    // The note under an item is its state, not its reasoning. The reasoning
+    // is behind "how", where somebody who wants it can go and get it.
+    e.items.forEach(i => live.items.set(i.id, { ...i, status: "waiting", note: "" }));
     renderPlan(); renderStats();
     msg.querySelector("#approve").onclick = async (ev) => {
       ev.target.disabled = true;
@@ -630,8 +636,12 @@ async function replay(id) {
         const res = by[i.id];
         const st = res ? res.outcome : "waiting";
         return `<div class="step ${st}"><span class="mk">${MK[st] || "·"}</span>
-          <span class="n mono">${i.id}</span><div><div class="ttl">${esc(i.title)}</div>
-          <div class="why">${esc(res ? res.note : "never reached")}</div></div></div>`;
+          <span class="n mono">${i.id}</span><div>
+          <div class="ttl">${esc(i.plain || i.title)}</div>
+          <div class="why">${esc(res ? res.note : "never reached")}</div>
+          ${i.plain ? `<details class="more"><summary>how</summary>
+            <div class="tech"><b>${esc(i.title)}</b><p>${esc(i.rationale || "")}</p>
+            </div></details>` : ""}</div></div>`;
       }).join("")}</div></div></div>`);
   }
   const landed = r.results.filter(x => x.outcome === "done").length;

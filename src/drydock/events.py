@@ -37,6 +37,11 @@ class Feed:
         self._listeners: list[queue.Queue] = []
         self._keep = keep
         self.finished = False
+        self._sinks: list = []
+
+    def also(self, sink) -> None:
+        """Send every event somewhere else as well - a file, usually."""
+        self._sinks.append(sink)
 
     def emit(self, kind: str, **data) -> None:
         event = Event(kind, data)
@@ -44,6 +49,11 @@ class Feed:
             self._history.append(event)
             del self._history[: -self._keep]
             listeners = list(self._listeners)
+        for sink in self._sinks:
+            try:
+                sink(event)
+            except Exception as exc:  # noqa: BLE001 - a sink must not stop a run
+                print(f"event sink failed: {exc}")
         for listener in listeners:
             try:
                 listener.put_nowait(event)

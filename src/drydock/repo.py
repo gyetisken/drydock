@@ -42,6 +42,30 @@ class Repo:
         self._git("reset --hard -q HEAD")
         self._git("clean -fdq")
 
+    # Files that are generated rather than written. They belong in the commit
+    # and they do not belong in a review: a lockfile of two thousand lines
+    # pushes the three files somebody actually wrote out of the diff entirely.
+    GENERATED = (
+        "package-lock.json",
+        "yarn.lock",
+        "pnpm-lock.yaml",
+        "bun.lockb",
+        "Cargo.lock",
+        "poetry.lock",
+        "uv.lock",
+        "Gemfile.lock",
+        "composer.lock",
+        "go.sum",
+        "*.min.js",
+        "*.min.css",
+    )
+
+    def pending_for_review(self) -> str:
+        """The uncommitted change, without the parts nobody wrote by hand."""
+        self._git("add -A -N")
+        excludes = " ".join(f"':(exclude){name}'" for name in self.GENERATED)
+        return self._git(f"diff --no-color HEAD -- . {excludes}")[1]
+
     def pending(self) -> str:
         """Everything changed but not yet committed, including new files.
 
