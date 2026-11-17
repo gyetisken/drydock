@@ -14,7 +14,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import intent, preview, publish
+from . import crew, intent, preview, publish
 from .commands import available, match
 from .engines import stop_workers
 from .repo import Repo
@@ -508,6 +508,7 @@ def state() -> dict:
             for p in workspace.projects
         ],
         "engines": _engines(),
+        "crew": crew.as_rows(),
         "models": MODELS,
         "usage": _usage(),
         "commands": [

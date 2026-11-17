@@ -735,7 +735,7 @@ async function refresh() {
   const full = await (await fetch("/api/state")).json();
   S.projects = full.projects;
   S.commands = full.commands; S.runs = full.runs;
-  S.engines = full.engines; S.models = full.models;
+  S.engines = full.engines; S.models = full.models; S.crew = full.crew || [];
   S.model = localStorage.getItem("drydock.model") || S.model;
   const saved = localStorage.getItem("drydock.engine");
   if (saved && S.engines.some(e => e.id === saved && e.ready)) S.engine = saved;
@@ -1158,10 +1158,33 @@ function drawMenu() {
   if (!list.length) { $("menu").style.display = "none"; S.menu = -1; return; }
   if (S.menu < 0 || S.menu >= list.length) S.menu = 0;
   $("menu").style.display = "block";
-  $("menu").innerHTML = list.map((c, i) => `
-    <div class="mi ${i === S.menu ? "on" : ""}" data-cmd="${esc(c.name)}">
-      <span class="c">${esc(c.name)}</span><span class="s">${esc(c.summary)}</span></div>`).join("");
-  document.querySelectorAll(".mi").forEach(el => {
+
+  // The commands, and then who carries them out. Somebody typing "/" is
+  // asking what this can do, and half the answer is the crew - which until
+  // now was drawn in the office and named nowhere you would think to look.
+  const bare = $("box").value.trim() === "/";
+  $("menu").innerHTML = `
+    <div class="mh">What you can ask for</div>
+    ${list.map((c, i) => `
+      <div class="mi ${i === S.menu ? "on" : ""}" data-cmd="${esc(c.name)}">
+        <span class="c">${esc(c.name)}</span>
+        <span class="s">${esc(c.summary)}</span></div>`).join("")}
+    ${bare && (S.crew || []).length ? `
+      <div class="mh second">Who does it
+        <i>four of them can send a change back</i></div>
+      ${S.crew.map(p => `
+        <div class="ci-crew">
+          <span class="who">${esc(p.name)}</span>
+          <span class="what">${esc(p.does)}</span>
+          <span class="tags">
+            ${p.is_code ? '<em class="code">no model</em>' : ""}
+            ${p.can_refuse ? '<em class="no">can refuse</em>' : ""}
+          </span>
+        </div>`).join("")}
+      <div class="mf">Each of them is given one thing and hands on one thing.
+        The four that can refuse are not the one that writes the code.</div>
+    ` : ""}`;
+  $("menu").querySelectorAll(".mi").forEach(el => {
     el.onclick = () => pick(el.dataset.cmd);
   });
 }

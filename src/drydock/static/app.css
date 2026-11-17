@@ -161,11 +161,13 @@ input:focus { border-color:var(--accent-dim) }
 select { background:transparent; color:var(--muted); border:1px solid var(--line);
   border-radius:8px; padding:6px 9px; font-size:11.5px; font-family:inherit; outline:none }
 
-.menu { position:absolute; bottom:calc(100% + 9px); left:0; right:0; background:var(--panel);
-  border:1px solid var(--line); border-radius:13px; padding:6px; max-height:320px;
+.menu { position:absolute; bottom:calc(100% + 9px); left:0; right:0;
+  background:var(--panel); border:1px solid var(--line); border-radius:13px;
+  padding:6px; max-height:min(560px, calc(100vh - 220px));
   overflow-y:auto; box-shadow:0 16px 44px rgba(0,0,0,.4) }
-.mi { display:flex; gap:14px; align-items:baseline; padding:9px 12px;
+.mi { display:flex; gap:14px; align-items:baseline; padding:7px 12px;
   border-radius:9px; cursor:pointer }
+.mi .s { overflow:hidden; text-overflow:ellipsis; white-space:nowrap }
 .mi.on { background:var(--raise) }
 .mi .c { color:var(--accent); font-family:ui-monospace,Menlo,monospace;
   font-size:13px; min-width:128px; font-weight:550 }
@@ -642,3 +644,24 @@ body.split .composer .cwrap { max-width:none }
 .choice b { font-size:12.5px; font-weight:600; display:block }
 .choice i { font-style:normal; font-size:11.5px; color:var(--faint);
   line-height:1.55; display:block; margin-top:3px }
+
+/* the slash menu: what you can ask for, and who does it */
+.mh { padding:9px 12px 5px; font-size:10px; letter-spacing:.11em;
+  text-transform:uppercase; color:var(--faint); font-weight:600;
+  display:flex; align-items:baseline; gap:9px }
+.mh.second { margin-top:5px; border-top:1px solid var(--line-soft); padding-top:11px }
+.mh i { font-style:normal; letter-spacing:0; text-transform:none;
+  font-weight:400; font-size:10.5px; color:var(--faint); opacity:.75 }
+.ci-crew { display:flex; align-items:baseline; gap:11px; padding:5px 12px;
+  font-size:12px }
+.ci-crew .who { flex:none; width:74px; font-weight:600; color:var(--fg) }
+.ci-crew .what { flex:1; min-width:0; color:var(--muted); overflow:hidden;
+  text-overflow:ellipsis; white-space:nowrap }
+.ci-crew .tags { flex:none; display:flex; gap:5px }
+.ci-crew em { font-style:normal; font-size:9.5px; padding:1px 6px;
+  border-radius:999px; background:var(--raise); color:var(--faint) }
+.ci-crew em.no { color:var(--bad) }
+.ci-crew em.code { color:var(--ok) }
+.mf { padding:9px 12px 4px; font-size:10.5px; color:var(--faint);
+  line-height:1.5; border-top:1px solid var(--line-soft); margin-top:5px }
+
