@@ -149,8 +149,19 @@ def work(
     )
     if retry_of:
         prompt += (
-            "\n\nThis item was attempted and the verification failed. The output "
-            f"is below. Work out what broke before changing anything else.\n\n{retry_of}"
+            "\n\nThis item was attempted and sent back. What was said is below. "
+            "Work out what broke before changing anything else.\n\n"
+            f"{retry_of}\n\n"
+            # An item came back with two complaints, the engineer fixed the
+            # one it had already been thinking about, and the second refusal
+            # named the other one again, word for word. There is nothing
+            # subtle to fix there: it had been told, and it answered half.
+            "Read that again and count the separate complaints in it. There "
+            "is usually more than one, and the one you find least "
+            "interesting is the one that gets left. Deal with every one of "
+            "them, and in your summary say what you did about each - by "
+            "number, in the order they were raised. An item is not done "
+            "while any of them still stands, however small."
         )
 
     if engine == "claude":
