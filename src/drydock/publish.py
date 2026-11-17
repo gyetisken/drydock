@@ -201,6 +201,20 @@ def open_pull_request(
         made, said = _make_it_private(repo, binary)
         if not made:
             return False, said
+        # The branch somebody is meant to review has to be reviewed against
+        # something. Pushed first and alone, it becomes the repository's
+        # default branch and there is nothing left to open a request
+        # against, so the base goes up before it does.
+        base = _base_branch(git, branch)
+        if not base:
+            return False, (
+                f"{said} was created, but {branch} is the only branch in this "
+                "repository, so there is nothing to open a pull request "
+                "against. The work is committed on it either way."
+            )
+        failed, why = git._git(f"push -u origin {base}")
+        if failed:
+            return False, f"could not push {base}:\n{why[-400:]}"
         code, out = git._git(f"push -u origin {branch}")
     if code:
         return False, f"could not push the branch:\n{out[-600:]}"
@@ -222,6 +236,23 @@ def open_pull_request(
     if made.returncode:
         return False, (made.stderr or made.stdout).strip()[-600:]
     return True, made.stdout.strip().splitlines()[-1]
+
+
+def _base_branch(git: Repo, working: str) -> str:
+    """The branch the work is meant to be reviewed against.
+
+    Only consulted when the repository has just been created and is empty,
+    where the question is simply which local branch is the trunk. The usual
+    names first, then any branch that is not the one being published.
+    """
+    code, said = git._git("branch --format=%(refname:short)")
+    if code:
+        return ""
+    here = [b.strip() for b in said.splitlines() if b.strip() and b.strip() != working]
+    for usual in ("main", "master", "trunk", "develop"):
+        if usual in here:
+            return usual
+    return here[0] if here else ""
 
 
 def _which_repository(repo: Path) -> str:

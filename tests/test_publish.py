@@ -257,3 +257,50 @@ class TestARepositoryThatDoesNotExistYet:
         ok, said = publish._make_it_private(tmp_path, "gh")
         assert not ok
         assert "already exists" in said
+
+
+class TestWhatTheWorkIsReviewedAgainst:
+    """A branch pushed first and alone into an empty repository becomes its
+    default branch, and then there is nothing left to open a pull request
+    against. So the trunk goes up before it does."""
+
+    def test_the_usual_trunk_names_are_preferred(self, tmp_path, monkeypatch):
+        from drydock import publish
+
+        monkeypatch.setattr(
+            publish.Repo,
+            "_git",
+            lambda self, cmd: (0, "drydock/20261117-151055\nfeature/x\nmain\n"),
+        )
+        assert (
+            publish._base_branch(publish.Repo(tmp_path), "drydock/20261117-151055")
+            == "main"
+        )
+
+    def test_the_branch_being_published_is_never_its_own_base(
+        self, tmp_path, monkeypatch
+    ):
+        from drydock import publish
+
+        monkeypatch.setattr(
+            publish.Repo, "_git", lambda self, cmd: (0, "main\nmaster\n")
+        )
+        assert publish._base_branch(publish.Repo(tmp_path), "main") == "master"
+
+    def test_anything_else_will_do_if_there_is_no_usual_name(
+        self, tmp_path, monkeypatch
+    ):
+        from drydock import publish
+
+        monkeypatch.setattr(
+            publish.Repo, "_git", lambda self, cmd: (0, "drydock/x\nthe-trunk\n")
+        )
+        assert publish._base_branch(publish.Repo(tmp_path), "drydock/x") == "the-trunk"
+
+    def test_one_branch_and_nothing_else_has_no_base(self, tmp_path, monkeypatch):
+        """Reported rather than guessed at: the work is committed either
+        way, and a request against itself is not a thing."""
+        from drydock import publish
+
+        monkeypatch.setattr(publish.Repo, "_git", lambda self, cmd: (0, "drydock/x\n"))
+        assert publish._base_branch(publish.Repo(tmp_path), "drydock/x") == ""
