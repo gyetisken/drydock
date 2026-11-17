@@ -42,6 +42,12 @@ class Project:
     # is pointing at that path.
     label: str = ""
     pinned: bool = False
+    # A standing instruction for this repository: the thing somebody would
+    # otherwise retype at the end of every command. It is kept here rather
+    # than in the repository because it is how *this person* wants the crew
+    # to behave, which is not a fact about the code and does not belong in
+    # somebody else's checkout.
+    instructions: str = ""
 
     @property
     def name(self) -> str:
@@ -122,6 +128,12 @@ class Workspace:
         self.save()
         self._order()
 
+    def instruct(self, path: str, text: str) -> None:
+        for project in self.projects:
+            if str(project.path) == path:
+                project.instructions = text.strip()[:4000]
+        self.save()
+
     def pin(self, path: str, pinned: bool) -> None:
         for project in self.projects:
             if str(project.path) == path:
@@ -155,6 +167,7 @@ class Workspace:
         engine: str = "claude",
         model: str = "opus",
         stop_after: str = "planner",
+        standing: str = "",
     ) -> Session:
         session = Session(
             repo,
@@ -164,6 +177,7 @@ class Workspace:
             engine=engine,
             model=model,
             stop_after=stop_after,
+            standing=standing,
         )
         session.start(auto_run=False)
         # The session has an id only once its run exists, so it is keyed by the

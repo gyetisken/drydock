@@ -518,9 +518,35 @@ function drawSide() {
   const seen = S.runs.filter(r =>
     !q || (r.task + " " + r.repo).toLowerCase().includes(q));
   $("history").innerHTML = seen.slice(0, 40).map(r => `
-    <a class="side-item" title="${esc(r.task)}">${esc(r.task)}<small>${esc(r.repo)} · ${r.done}/${r.items} items · $${r.cost.toFixed(2)}</small></a>`).join("")
+    <a class="side-item ${r.unfinished ? "unfinished" : ""}" data-run="${esc(r.id)}"
+       title="${esc(r.task)}">${esc(r.task)}<small>${esc(r.repo)} ·
+       ${r.done}/${r.items} items · $${r.cost.toFixed(2)}${
+         r.unfinished ? " · stopped partway" : ""}</small></a>`).join("")
     || `<p class="empty">${q ? "Nothing matches that." : "No runs yet."}</p>`;
+  document.querySelectorAll("#history .side-item[data-run]").forEach(el => {
+    el.onclick = () => carryOn(el.dataset.run);
+  });
   drawTop();
+}
+
+// A run whose plan has items with no result was cut off - the application
+// closed, the machine slept, the server restarted. The work that landed is
+// still landed, because each item is its own commit, so there is nothing to
+// do but start the same loop again at the next item.
+async function carryOn(id) {
+  const r = S.runs.find(x => x.id === id);
+  if (!r || !r.unfinished) return;
+  const res = await fetch("/api/resume/" + id, { method: "POST" });
+  const body = await res.json();
+  if (!body.ok) { fail(body.reason); return; }
+  view("thread");
+  $("thread-inner").innerHTML = "";
+  youSaid(r.task);
+  say("crew", `<div class="body"><p>Carrying on where this stopped.
+    <b>${body.left} items</b> still have no result; everything that landed is
+    already committed.</p></div>`, "dim");
+  watch(body.key);
+  running(true, "resuming");
 }
 
 function drawTop() {
@@ -544,6 +570,8 @@ function menuFor(path, ev) {
     { id: "open", label: "Open" },
     { id: "pin", label: p.pinned ? "Unpin" : "Pin to the top" },
     { id: "rename", label: "Rename" },
+    { id: "instruct", label: "Standing instructions",
+      note: p.instructions ? "set" : "nothing set yet" },
     { id: "copy", label: "Copy path" },
     { id: "forget", label: "Remove from drydock", danger: true,
       note: "the folder stays where it is" },
@@ -575,6 +603,7 @@ function act(what, p) {
   if (what === "pin") patch(p.path, { pinned: !p.pinned });
   if (what === "copy") navigator.clipboard?.writeText(p.path);
   if (what === "rename") rename(p);
+  if (what === "instruct") instruct(p);
   if (what === "forget") forget(p);
 }
 
@@ -589,6 +618,37 @@ function rename(p) {
   box.onkeydown = (e) => {
     if (e.key === "Enter") save();
     if (e.key === "Escape") { box.onblur = null; drawSide(); }
+  };
+}
+
+// What this person always wants true of work in this repository - the thing
+// they would otherwise retype at the end of every command. It is appended to
+// the task rather than hidden in a system prompt, so it shows up in the run
+// record as part of what was actually asked for.
+function instruct(p) {
+  $("sheet").style.display = "flex";
+  $("sheet").querySelector(".sheet-card").innerHTML = `
+    <div class="sheet-top"><b>${esc(p.name)}</b>
+      <button class="btn small ghost" id="inst-close">Close</button></div>
+    <section>
+      <h4>Standing instructions</h4>
+      <textarea id="inst" rows="8" spellcheck="false"
+        placeholder="Anything that is true of every job in this repository.&#10;&#10;For example: never touch the files under legacy/. Prefer standard library over new dependencies. British spelling in user-facing text."></textarea>
+      <p class="why">Added to the end of every command you run here, and
+      recorded with the run so it is clear what was asked for. Leave it empty
+      and nothing is added.</p>
+      <div class="row"><button class="btn" id="inst-save">Save</button>
+        <span class="hint" id="inst-said"></span></div>
+    </section>`;
+  const box = $("inst");
+  box.value = p.instructions || "";
+  box.focus();
+  $("inst-close").onclick = () => { $("sheet").style.display = "none"; refresh(); };
+  $("inst-save").onclick = async () => {
+    await patch(p.path, { instructions: box.value });
+    $("inst-said").textContent = box.value.trim()
+      ? "Saved. Every job here will carry this."
+      : "Cleared. Nothing will be added.";
   };
 }
 

@@ -454,3 +454,12 @@ body.tucked .topbar::before { content:"\\203A"; color:var(--faint); font-size:16
 .dl.del { background:color-mix(in srgb,var(--bad) 14%,transparent); color:var(--fg) }
 .dl.hunk { color:var(--accent); background:var(--raise) }
 .dl.meta { color:var(--faint) }
+
+textarea#inst { width:100%; background:var(--input); color:var(--fg);
+  border:1px solid var(--line); border-radius:9px; padding:11px 12px;
+  font:12.5px/1.6 ui-sans-serif,-apple-system,sans-serif; resize:vertical;
+  outline:none; margin-bottom:10px }
+textarea#inst:focus { border-color:var(--accent-dim) }
+.sheet-card .row { display:flex; gap:11px; align-items:center; margin-top:12px }
+.side-item.unfinished { border-left:2px solid var(--warn); padding-left:9px }
+.side-item.unfinished small { color:var(--warn) }

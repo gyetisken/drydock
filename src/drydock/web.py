@@ -16,6 +16,7 @@ from pydantic import BaseModel
 from .commands import available, match
 from .repo import Repo
 from .run import Run
+from .session import Session
 from .skills import load as load_skill
 from .workspace import Workspace
 
@@ -401,6 +402,7 @@ def state() -> dict:
                 "name": p.name,
                 "folder": p.path.name,
                 "pinned": p.pinned,
+                "instructions": p.instructions,
                 "toolchain": p.toolchain(),
                 "last_used": p.last_used,
                 "ok": p.exists,
@@ -429,6 +431,15 @@ def state() -> dict:
                 "done": sum(1 for x in r.results if x.outcome.value == "done"),
                 "cost": round(r.cost, 2),
                 "started": r.started[:16].replace("T", " "),
+                # A plan with items that have no result at all was cut off
+                # rather than finished. An item that was reverted has a
+                # result, so a run that stopped because something failed is
+                # finished, not unfinished.
+                "unfinished": bool(
+                    r.plan
+                    and len(r.results) < len(r.plan.items)
+                    and all(x.outcome.value == "done" for x in r.results)
+                ),
             }
             for r in workspace.history()
         ],
@@ -464,6 +475,7 @@ class EditProject(BaseModel):
     path: str
     label: str | None = None
     pinned: bool | None = None
+    instructions: str | None = None
 
 
 @app.patch("/api/projects")
@@ -472,6 +484,8 @@ def edit_project(body: EditProject) -> dict:
         workspace.rename(body.path, body.label)
     if body.pinned is not None:
         workspace.pin(body.path, body.pinned)
+    if body.instructions is not None:
+        workspace.instruct(body.path, body.instructions)
     return {"ok": True}
 
 
@@ -499,6 +513,10 @@ def start(body: StartJob) -> JSONResponse:
         )
 
     skills = [load_skill(command.skill)] if command.skill else []
+    standing = next(
+        (p.instructions for p in workspace.projects if str(p.path) == body.project),
+        "",
+    )
     session = workspace.start(
         Path(body.project),
         command.task_for(rest),
@@ -507,6 +525,7 @@ def start(body: StartJob) -> JSONResponse:
         body.engine,
         body.model,
         command.stop_after,
+        standing,
     )
     key = next(k for k, v in workspace.sessions.items() if v is session)
     return JSONResponse({"ok": True, "key": key})
@@ -541,6 +560,31 @@ def item_diff(run_id: str, item_id: int) -> dict:
         "patch": patch[:120_000],
         "clipped": len(patch) > 120_000,
     }
+
+
+@app.post("/api/resume/{run_id}")
+def resume(run_id: str) -> JSONResponse:
+    """Carry on a plan that was interrupted."""
+    try:
+        run = Run.load(run_id)
+    except (OSError, ValueError):
+        return JSONResponse({"ok": False, "reason": "no such run"}, status_code=404)
+    if run.plan is None:
+        return JSONResponse(
+            {"ok": False, "reason": "that run never got as far as a plan"},
+            status_code=400,
+        )
+    left = [i for i in run.plan.items if i.id not in {r.item.id for r in run.results}]
+    if not left:
+        return JSONResponse(
+            {"ok": False, "reason": "every item in that plan already has a result"},
+            status_code=400,
+        )
+
+    session = Session.resume(run, engine=run.engine, model=run.model)
+    key = f"{run.id}-resumed"
+    workspace.sessions[key] = session
+    return JSONResponse({"ok": True, "key": key, "left": len(left)})
 
 
 @app.post("/api/stop/{key}")

@@ -35,6 +35,7 @@ class Session:
         engine: str = "api",
         model: str = "opus",
         stop_after: str = "planner",
+        standing: str = "",
     ) -> None:
         self.feed = Feed()
         self.repo = repo
@@ -47,6 +48,10 @@ class Session:
         # run, so nothing downstream is ever asked to speak about a repository
         # nobody has read.
         self.stop_after = stop_after
+        # Whatever this person always wants true of work in this repository.
+        # Appended to the task rather than mixed into the system prompt, so
+        # it is visible in the run record as part of what was asked for.
+        self.standing = standing.strip()
         self.stopping = False
         self.memory = Memory.about(repo)
         self.run: Run | None = None
@@ -75,6 +80,11 @@ class Session:
     def _work(self, auto_run: bool) -> None:
         try:
             chain = detect(self.repo)
+            if self.standing:
+                self.task = (
+                    f"{self.task}\n\nStanding instructions for this repository, "
+                    f"which hold for every job here:\n{self.standing}"
+                )
             self.run = Run.start(self.repo, self.task, [s.name for s in self.skills])
             self.run.budget = self.budget
             self.run.engine = self.engine
@@ -424,6 +434,73 @@ class Session:
             "stopping",
             note="will stop after the current item, so nothing is left half done",
         )
+
+    @classmethod
+    def resume(cls, run: Run, engine: str = "claude", model: str = "opus") -> "Session":
+        """Pick a saved run back up where it stopped.
+
+        A job takes twenty minutes and the thread it runs on does not survive
+        the application closing, a crash, or somebody restarting the server
+        mid-flight. The run on disk does survive all three, and each item is
+        its own commit, so the work that landed is still landed and the only
+        question is which item is next. `execute` already skips items that
+        have results, so resuming is the same loop started again.
+        """
+        session = cls(
+            Path(run.repo),
+            run.task,
+            [],
+            budget=run.budget,
+            engine=engine or run.engine,
+            model=model or run.model,
+        )
+        session.run = run
+        session.feed.emit(
+            "run.started",
+            repo=Path(run.repo).name,
+            task=run.task,
+            skills=run.skills,
+            toolchain="",
+            stages=STAGES,
+            resumed=True,
+        )
+        if run.baseline:
+            b = run.baseline
+            session.feed.emit(
+                "baseline",
+                builds=b.builds,
+                tests=b.tests_run,
+                failed=b.tests_failed,
+                skipped=b.tests_skipped,
+                green=b.green,
+            )
+        if run.plan:
+            session.feed.emit(
+                "plan.ready",
+                summary=run.plan.summary,
+                items=[
+                    {
+                        "id": i.id,
+                        "title": i.title,
+                        "verify_with": i.verify_with,
+                        "rationale": i.rationale,
+                    }
+                    for i in run.plan.items
+                ],
+                cost=round(run.cost, 2),
+            )
+            for r in run.results:
+                session.feed.emit(
+                    "item.done",
+                    id=r.item.id,
+                    outcome=r.outcome.value,
+                    note=r.note,
+                    attempts=r.attempts,
+                    cost=round(run.cost, 2),
+                    tests_detail="",
+                )
+        session.approve()
+        return session
 
     def approve(self) -> None:
         self._thread = threading.Thread(target=self.work_the_plan, daemon=True)
