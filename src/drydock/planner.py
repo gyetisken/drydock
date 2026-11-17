@@ -272,3 +272,97 @@ class _Spend:
         self.input_tokens = self.output_tokens = self.cached_tokens = 0
         self.turns = turns
         self.dollars = dollars
+
+
+ANSWER_SYSTEM = """You wrote this plan, and the engineer doing one of its
+items has stopped to ask you something.
+
+It stopped because the item contradicts itself, or turns on a decision
+nobody has taken. It has changed nothing and is waiting. Settle it.
+
+Answer the question and nothing else. One or two sentences, in the
+imperative, naming what to do: "Use the opening hours from src/hours.js and
+leave the holiday list alone" rather than "either approach could work". An
+answer that lists options is the question asked back, and the engineer
+cannot act on it.
+
+You may decide something the plan did not say. That is the point - you are
+the one who gets to. What you must not do is widen the item: if the honest
+answer is that this needs work outside what the item was given, say so
+plainly and say it belongs in another item, and the item will be stopped
+rather than quietly grown.
+
+You are not reviewing the work. Nothing has been written yet."""
+
+ANSWER_PROMPT = """The plan, in summary: {summary}
+
+The item being worked on:
+
+    {id}. {title}
+    Why it exists: {rationale}
+    Files it was given: {files}
+
+The rest of the plan, for context:
+{others}
+{direction}
+The engineer asks:
+
+    {question}
+
+Settle it."""
+
+
+def answer(
+    repo: Path,
+    run_plan,
+    item,
+    question: str,
+    direction: str = "",
+    engine: str = "api",
+    model: str = "opus",
+    on_event=None,
+) -> tuple[str, object]:
+    """Settle one question about one item. Returns the answer and the spend.
+
+    Narrow on purpose: one question, one answer, no conversation. A loop in
+    which the engineer and the planner talk until they agree is a loop with
+    no bound on it, and the thing being decided is usually one sentence.
+    """
+    others = "\n".join(
+        f"    {i.id}. {i.plain or i.title}" for i in run_plan.items if i.id != item.id
+    )
+    prompt = ANSWER_PROMPT.format(
+        summary=run_plan.summary,
+        id=item.id,
+        title=item.title,
+        rationale=item.rationale,
+        files=", ".join(item.files) or "none named",
+        others=others or "    (this is the only item)",
+        direction=f"\n{direction}\n" if direction else "",
+        question=question,
+    )
+
+    if engine == "claude":
+        found, dollars, turns = ClaudeCodeEngine(model=model, max_turns=4).structured(
+            repo,
+            ANSWER_SYSTEM,
+            prompt,
+            '{"answer": "...", "belongs_elsewhere": false}',
+            on_event=on_event,
+            tools="",
+            without="Bash Read Glob Grep Edit NotebookEdit WebFetch WebSearch Task",
+        )
+        said = str(found.get("answer") or "").strip()
+        if found.get("belongs_elsewhere"):
+            said = f"[this belongs in another item] {said}"
+        return said, _Spend(dollars, turns)
+
+    agent = Agent(
+        name="Planner",
+        model=API_MODEL.get(model, JUDGEMENT),
+        system=ANSWER_SYSTEM,
+        tools=[],
+        max_turns=1,
+        on_event=on_event,
+    )
+    return agent.run(prompt), agent.usage

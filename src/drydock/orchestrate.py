@@ -20,6 +20,7 @@ from .detect import detect
 from .engineer import work
 from .inspect import look
 from .models import ItemResult, Outcome
+from .planner import answer
 from .repo import Repo
 from .reviewer import review
 from .run import Run
@@ -180,6 +181,10 @@ def _one_item(
     """
     here = Repo(where)
     attempt, failure, result = 1, "", None
+    # One question per item. A loop in which the engineer and the planner
+    # talk until they agree has no bound on it, and the thing being settled
+    # is usually one sentence.
+    settled = ""
 
     def commands_now() -> dict:
         chain = detect(where)
@@ -207,6 +212,47 @@ def _one_item(
             ), None
 
         run.spend(usage)
+
+        # It stopped to ask rather than to guess. Nothing was written, so
+        # this does not count as an attempt - the item has not been tried
+        # yet, it has been read and found unanswerable.
+        asked = str(report.get("question") or "").strip()
+        if asked and not settled:
+            if on_gate:
+                on_gate(item, "asked", True, asked)
+            said, spend = answer(
+                where,
+                run.plan,
+                item,
+                asked,
+                direction=run.direction,
+                engine=engine,
+                model=model,
+                on_event=on_event,
+            )
+            run.spend(spend)
+            settled = said
+            if on_gate:
+                on_gate(item, "answered", True, said)
+
+            if said.startswith("[this belongs in another item]"):
+                return ItemResult(
+                    item=item,
+                    outcome=Outcome.BLOCKED,
+                    attempts=attempt,
+                    note=(
+                        "stopped before writing anything. The engineer asked "
+                        f"whether this item covers it:\n\n{asked}\n\n"
+                        f"and the planner said it does not:\n\n{said}"
+                    ),
+                ), None
+
+            failure = (
+                f"You asked:\n\n{asked}\n\n"
+                f"The answer, from whoever wrote the item:\n\n{said}\n\n"
+                "Carry on with that settled."
+            )
+            continue
 
         if not report.get("done"):
             here.discard()

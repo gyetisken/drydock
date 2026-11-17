@@ -38,6 +38,10 @@ class EngineResult:
     summary: str
     files_changed: list[str]
     noticed: list[str]
+    # Something the engineer could not settle on its own. Empty almost
+    # always; when it is not, nothing was changed and the item is waiting
+    # on an answer rather than on another attempt.
+    question: str = ""
     dollars: float = 0.0
     turns: int = 0
 
@@ -228,10 +232,18 @@ class ClaudeCodeEngine:
             "The last thing you do is write .drydock-report.json in the "
             "repository root, containing exactly this JSON and nothing else:\n"
             '{"done": true, "summary": "...", "files_changed": ["..."], '
-            '"noticed": ["..."]}\n'
+            '"noticed": ["..."], "question": ""}\n'
             "Set done to false if the item could not be done as written. Put "
             "anything outside the item's scope into noticed rather than fixing "
-            "it. An item that was finished and not reported is thrown away."
+            "it. An item that was finished and not reported is thrown away.\n\n"
+            "If the item cannot be done because it contradicts itself or the "
+            "direction, or because it turns on something nobody has decided, "
+            "do not guess and do not do half of it. Put the one thing you "
+            "need settled into `question`, as a question with the options you "
+            "can see, and change nothing. Whoever wrote the item will answer "
+            "and you will be asked again. Use this once and only for a "
+            "decision that is not yours to make - not for anything you could "
+            "find out by reading the repository."
         )
 
         command = [
@@ -282,10 +294,18 @@ class ClaudeCodeEngine:
             # obvious, while the actual reason - a turn limit, a refused
             # permission, a crash - sat unread in a pipe.
             why = (process.stderr.read() or "").strip()[-1200:]
-            reason = "the worker stopped without writing a report"
-            if process.returncode:
-                reason += f" and exited {process.returncode}"
-            if turns >= self.max_turns:
+            if overran:
+                # It was this program that killed it, so the exit code is our
+                # own signal and says nothing. The fact is the clock.
+                reason = (
+                    f"it ran for {self.seconds / 60:.0f} minutes without "
+                    f"finishing and was stopped. It got through {turns} turns"
+                )
+            else:
+                reason = "the worker stopped without writing a report"
+                if process.returncode:
+                    reason += f" and exited {process.returncode}"
+            if not overran and turns >= self.max_turns:
                 reason += (
                     f". It used all {self.max_turns} turns it was given, which "
                     "usually means the item is too large to be one item"
@@ -307,6 +327,7 @@ class ClaudeCodeEngine:
             summary=payload.get("summary", ""),
             files_changed=payload.get("files_changed", []),
             noticed=payload.get("noticed", []),
+            question=str(payload.get("question") or "").strip(),
             dollars=dollars,
             turns=turns,
         )

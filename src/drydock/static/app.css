@@ -665,3 +665,12 @@ body.split .composer .cwrap { max-width:none }
 .mf { padding:9px 12px 4px; font-size:10.5px; color:var(--faint);
   line-height:1.5; border-top:1px solid var(--line-soft); margin-top:5px }
 
+
+/* the one place two stations talk to each other */
+.talk { margin-top:7px; border-left:2px solid var(--accent-dim);
+  padding-left:11px; display:flex; flex-direction:column; gap:7px }
+.talk div { font-size:11.5px; line-height:1.55; color:var(--muted) }
+.talk b { display:block; font-size:10px; letter-spacing:.08em;
+  text-transform:uppercase; color:var(--faint); margin-bottom:2px }
+.talk .answered b { color:var(--ok) }
+.body p.asking { font-size:13.5px; line-height:1.6 }

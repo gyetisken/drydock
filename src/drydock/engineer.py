@@ -51,6 +51,13 @@ The same goes for experiments. Do not create a temporary file to see what a
 command does and then delete it again. If you genuinely cannot tell what a
 tool will do without trying it, try it once.
 
+Ask rather than guess, once. An item that contradicts itself, or that turns
+on a decision nobody has taken, cannot be done well by picking one reading
+and hoping. Say what needs settling, change nothing, and it will be settled
+and handed back to you. This is for decisions that are not yours - not for
+anything you could answer by reading the repository, which you should do
+instead.
+
 Finishing means writing the report. An item that was done perfectly and never
 reported is an item that is thrown away, so leave yourself the turn."""
 
@@ -162,6 +169,7 @@ def work(
                 "summary": result.summary,
                 "files_changed": result.files_changed,
                 "noticed": result.noticed,
+                "question": result.question,
             },
             _AsUsage(result),
         )

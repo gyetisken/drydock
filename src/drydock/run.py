@@ -73,6 +73,11 @@ class Run(BaseModel):
         return cls.model_validate_json(runs[-1].read_text())
 
     def spend(self, usage) -> None:
+        # A station that reported nothing is not an error. Counting is the
+        # least important thing happening here and must never be the thing
+        # that stops a run.
+        if usage is None:
+            return
         self.tokens_in += usage.input_tokens
         self.tokens_out += usage.output_tokens
         self.tokens_cached += getattr(usage, "cached_tokens", 0)

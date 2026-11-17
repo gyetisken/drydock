@@ -49,6 +49,11 @@ function renderPlan() {
             : ""}
           ${i.note ? `<div class="why">${esc(i.note)}</div>` : ""}
           ${i.gates ? `<div class="gates">${i.gates}</div>` : ""}
+          ${(i.talk || []).length ? `<div class="talk">${
+            i.talk.map(t => `<div class="${t.who}"><b>${
+              t.who === "asked" ? "Engineer asked" : "Planner settled it"
+            }</b> ${esc(t.said)}</div>`).join("")
+          }</div>` : ""}
           ${i.plain || (i.steps || []).length ? `<details class="more"
             data-item="${i.id}" ${
               // Open while it is working, unless somebody closed it. The
@@ -373,6 +378,24 @@ const on = {
     drawOffice();
   },
   "gate": (e) => {
+    // Not a gate: the engineer stopping to ask, and the planner settling
+    // it. Shown because it is the one place two stations actually talk, and
+    // because an item that was about to be done twice and reverted is
+    // instead done once.
+    if (e.who === "asked" || e.who === "answered") {
+      const item = live.items.get(e.id);
+      if (item) {
+        item.talk = (item.talk || []).concat({ who: e.who, said: e.note });
+        renderPlan();
+      }
+      say(e.who === "asked" ? "engineer" : "planner",
+        `<div class="body"><p class="${e.who === "asked" ? "asking" : ""}">${
+          esc(e.note)}</p>${e.who === "asked"
+            ? '<p class="why">Nothing was written. It is waiting to be told.</p>'
+            : '<p class="why">Settled. The engineer carries on with that.</p>'
+        }</div>`, "dim");
+      return;
+    }
     const who = { inspector: "Inspector", reviewer: "Reviewer",
                   critic: "Critic" }[e.who] || "Reviewer";
     // Each gate reports itself on the item it judged, so the plan shows how
