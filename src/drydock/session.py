@@ -15,6 +15,7 @@ from .analyst import baseline, survey
 from .architect import as_briefing, design
 from .commands import STAGES
 from .detect import detect
+from .engines import stop_workers
 from .events import Feed
 from .memory import Memory
 from .models import Inventory
@@ -460,6 +461,10 @@ class Session:
         # that never landed, and an item that never landed is one whose
         # changes are thrown away. Leaving them would also mean the next
         # item's commit quietly contains someone else's half-finished work.
+        # Anything still working in this repository is an orphan from the run
+        # that was interrupted, and it will happily write files back in
+        # behind the clean-up. Stop it first, then clean.
+        orphans = stop_workers(Path(run.repo))
         repo = Repo(Path(run.repo))
         dirty = not repo.is_clean()
         if dirty:
@@ -474,13 +479,18 @@ class Session:
             stages=STAGES,
             resumed=True,
         )
-        if dirty:
-            session.feed.emit(
-                "resumed",
-                note="A half-finished item was left on disk when this stopped. "
-                "It was thrown away, which is what happens to any item that "
-                "does not land. Everything already committed is untouched.",
+        if dirty or orphans:
+            note = (
+                "A half-finished item was left on disk when this stopped. It "
+                "was thrown away, which is what happens to any item that does "
+                "not land. Everything already committed is untouched."
             )
+            if orphans:
+                note += (
+                    f" {orphans} worker(s) were still running in this "
+                    "repository and were stopped first."
+                )
+            session.feed.emit("resumed", note=note)
         if run.baseline:
             b = run.baseline
             session.feed.emit(

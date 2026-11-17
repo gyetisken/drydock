@@ -43,11 +43,16 @@ const Palette = (() => {
         run: () => { view("thread"); pick(c.name); },
       });
     }
-    for (const r of S.runs.slice(0, 40)) {
-      out.push({
-        kind: "run", label: r.task, hint: `${r.repo} · ${r.done}/${r.items} items`,
-        run: () => { view("thread"); },
-      });
+    // Past jobs, each remembered with the project it belongs to, so choosing
+    // one opens that project and reads the job back.
+    for (const p of S.projects) {
+      for (const r of p.runs.slice(0, 20)) {
+        out.push({
+          kind: "job", label: r.task.split("\n")[0],
+          hint: `${p.name} · ${r.done}/${r.items} items · ${r.started}`,
+          run: () => { openProject(p.path); replay(r.id); },
+        });
+      }
     }
     for (const a of [
       { label: "Settings", hint: "account, usage, appearance, GitHub",

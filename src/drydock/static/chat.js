@@ -401,7 +401,11 @@ async function refresh() {
   if (saved && S.engines.some(e => e.id === saved && e.ready)) S.engine = saved;
   else S.engine = (S.engines.find(e => e.ready) || S.engines[0]).id;
   drawPicks();
-  if (!S.project && S.projects.length) S.project = S.projects[0].path;
+  if (!S.project && S.projects.length) {
+    drawSide();
+    openProject(S.projects[0].path);
+    return;
+  }
   drawSide();
 }
 
@@ -531,26 +535,110 @@ function drawSide() {
     <a class="side-item ${p.path === S.project ? "on" : ""}" data-path="${esc(p.path)}"
        title="${esc(p.path)}">
       ${p.pinned ? '<span class="pin">&#9679;</span>' : ""}${esc(p.name)}
-      <small>${p.ok ? esc(p.toolchain) : "not a git repository"}</small></a>`).join("")
+      <small>${p.ok ? esc(p.toolchain) : "not a git repository"}${
+        p.runs.length ? ` · ${p.runs.length} ${p.runs.length === 1 ? "job" : "jobs"}` : ""
+      }</small></a>`).join("")
     || `<p class="empty">Nothing here yet. Press + and give it the path to a
-        git repository, empty or not.</p>`;
+        folder - a git repository, or an empty folder to start something in.</p>`;
   document.querySelectorAll("#projects .side-item").forEach(el => {
-    el.onclick = () => { S.project = el.dataset.path; drawSide(); drawTop(); };
+    el.onclick = () => openProject(el.dataset.path);
     el.oncontextmenu = (ev) => { ev.preventDefault(); menuFor(el.dataset.path, ev); };
   });
-  const q = ($("find").value || "").toLowerCase();
-  const seen = S.runs.filter(r =>
-    !q || (r.task + " " + r.repo).toLowerCase().includes(q));
-  $("history").innerHTML = seen.slice(0, 40).map(r => `
-    <a class="side-item ${r.unfinished ? "unfinished" : ""}" data-run="${esc(r.id)}"
-       title="${esc(r.task)}">${esc(r.task)}<small>${esc(r.repo)} ·
-       ${r.done}/${r.items} items · $${r.cost.toFixed(2)}${
-         r.unfinished ? " · stopped partway" : ""}</small></a>`).join("")
-    || `<p class="empty">${q ? "Nothing matches that." : "No runs yet."}</p>`;
-  document.querySelectorAll("#history .side-item[data-run]").forEach(el => {
-    el.onclick = () => carryOn(el.dataset.run);
-  });
   drawTop();
+}
+
+// Opening a project shows what has happened in it. Somebody coming back two
+// days later wants the work on this repository, not a global list of
+// everything that has ever run on this machine.
+function openProject(path) {
+  S.project = path;
+  S.key = null;
+  drawSide();
+  view("thread");
+  const p = S.projects.find(x => x.path === path);
+  if (!p) return;
+  Office.reset();
+  live.items.clear(); live.tests = null; live.baseline = null; live.cost = 0; live.el = {};
+
+  $("thread-inner").innerHTML = "";
+  say("", `<div class="body">
+    <h3 class="proj-h">${esc(p.name)}</h3>
+    <p class="why">${p.ok ? esc(p.toolchain) : "not a git repository yet"} ·
+      <span class="mono dim">${esc(p.path)}</span></p>
+    ${p.instructions ? `<div class="standing"><b>Standing instructions</b>
+      <p>${esc(p.instructions)}</p></div>` : ""}
+    <p>Type a command below. <code>/</code> shows what the crew can do. Work
+    happens on its own branch, one item at a time, and nothing is changed until
+    you approve the plan.</p>
+  </div>`, "intro");
+
+  if (!p.runs.length) return;
+  const rows = p.runs.map(r => `
+    <div class="past ${r.unfinished ? "unfinished" : ""}" data-run="${esc(r.id)}">
+      <div class="when">${esc(r.started)}</div>
+      <div class="what">${esc(r.task.split("\n")[0])}</div>
+      <div class="outcome">${r.items
+        ? `${r.done} of ${r.items} items${r.unfinished ? " · stopped partway" : ""}`
+        : "nothing was planned"} · $${r.cost.toFixed(2)}</div>
+      ${r.unfinished ? `<button class="btn small" data-carry="${esc(r.id)}">Carry on</button>` : ""}
+    </div>`).join("");
+  const msg = say("", `<div class="body"><div class="card">
+    <h4>Earlier in this project</h4>${rows}</div></div>`, "dim");
+  msg.querySelectorAll(".past").forEach(row => {
+    row.onclick = (ev) => {
+      if (ev.target.dataset.carry) return;
+      replay(row.dataset.run);
+    };
+  });
+  msg.querySelectorAll("[data-carry]").forEach(b => {
+    b.onclick = (ev) => { ev.stopPropagation(); carryOn(b.dataset.carry); };
+  });
+  // Opening a project should start at the top of it, not at the bottom of
+  // its history. say() scrolls down because a live run belongs at the end.
+  $("thread").scrollTop = 0;
+}
+
+// Reading back a finished job. Built from the run on disk rather than from
+// the event stream, because the stream is gone and the run is not.
+async function replay(id) {
+  const r = await (await fetch("/api/run/" + id)).json();
+  if (!r.ok) { fail(r.reason); return; }
+  S.key = id;
+  $("thread-inner").innerHTML = "";
+  youSaid(r.task);
+  say("crew", `<div class="body"><p>${esc(r.started)} · ${esc(r.repo)}${
+    r.skills.length ? ` · skill <code>${esc(r.skills[0])}</code>` : ""}</p></div>`, "dim");
+
+  if (r.baseline) {
+    const b = r.baseline;
+    say("crew", `<div class="body"><p>${b.tests_run
+      ? `The suite ran <b>${b.tests_run} tests</b> before anything was touched.`
+      : "There was nothing to run before this started."}</p></div>`);
+  }
+  if (r.findings.length) {
+    say("analyst", `<div class="body"><p>${r.findings.length} findings,
+      ${r.risks.length} risks.</p><div class="card"><h4>What could go wrong</h4>
+      ${r.risks.slice(0, 4).map(x => `<p class="why">${esc(x.slice(0, 260))}</p>`).join("")}
+      </div></div>`, "dim");
+  }
+  if (r.items.length) {
+    const by = Object.fromEntries(r.results.map(x => [x.id, x]));
+    say("planner", `<div class="body"><p>${esc(r.summary)}</p>
+      <div class="card"><h4>${r.items.length} items</h4><div class="steps">
+      ${r.items.map(i => {
+        const res = by[i.id];
+        const st = res ? res.outcome : "waiting";
+        return `<div class="step ${st}"><span class="mk">${MK[st] || "·"}</span>
+          <span class="n mono">${i.id}</span><div><div class="ttl">${esc(i.title)}</div>
+          <div class="why">${esc(res ? res.note : "never reached")}</div></div></div>`;
+      }).join("")}</div></div></div>`);
+  }
+  const landed = r.results.filter(x => x.outcome === "done").length;
+  say("crew", `<div class="body"><p><b>${landed} of ${r.items.length} items
+    landed.</b> $${r.cost.toFixed(2)} of work on ${
+      r.engine === "claude" ? "your Claude plan" : "an API key"}.</p>
+    <p class="why">Every item that landed is its own commit on the branch
+    <code>drydock/${esc(r.id)}</code>.</p></div>`);
 }
 
 // A run whose plan has items with no result was cut off - the application
@@ -559,7 +647,7 @@ function drawSide() {
 // do but start the same loop again at the next item.
 async function carryOn(id) {
   const r = S.runs.find(x => x.id === id);
-  if (!r || !r.unfinished) return;
+  if (!r) return;
   const res = await fetch("/api/resume/" + id, { method: "POST" });
   const body = await res.json();
   if (!body.ok) { fail(body.reason); return; }
@@ -623,7 +711,7 @@ async function patch(path, body) {
 }
 
 function act(what, p) {
-  if (what === "open") { S.project = p.path; drawSide(); drawTop(); }
+  if (what === "open") openProject(p.path);
   if (what === "pin") patch(p.path, { pinned: !p.pinned });
   if (what === "copy") navigator.clipboard?.writeText(p.path);
   if (what === "rename") rename(p);
@@ -790,7 +878,7 @@ document.addEventListener("keydown", (e) => {
     e.preventDefault(); if (S.running) halt(); return;
   }
   if (Keys.hit(e) && e.key.toLowerCase() === "f") {
-    e.preventDefault(); $("find").focus(); $("find").select(); return;
+    e.preventDefault(); Palette.show(); return;
   }
   if (Keys.hit(e) && (e.key === "1" || e.key === "2")) {
     e.preventDefault(); view(e.key === "1" ? "thread" : "office"); return;
@@ -817,11 +905,6 @@ function collapse() {
 $("collapse").onclick = collapse;
 if (localStorage.getItem("drydock.sidebar") === "tucked")
   document.body.classList.add("tucked");
-
-$("find").addEventListener("input", drawSide);
-$("find").addEventListener("keydown", (e) => {
-  if (e.key === "Escape") { $("find").value = ""; drawSide(); $("find").blur(); }
-});
 
 $("box").addEventListener("input", drawMenu);
 $("box").addEventListener("keydown", (e) => {

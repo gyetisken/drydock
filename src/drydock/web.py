@@ -14,6 +14,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from .commands import available, match
+from .engines import stop_workers
 from .repo import Repo
 from .run import Run
 from .session import Session
@@ -76,9 +77,7 @@ PAGE = """<!doctype html><html lang="en"><head><meta charset="utf-8">
     </div>
     <div class="side-list" id="projects"></div>
 
-    <div class="side-h">Earlier
-      <input id="find" placeholder="filter" spellcheck="false"></div>
-    <div class="side-list grow" id="history"></div>
+    <div class="side-list grow" id="projects-rest"></div>
 
     <button class="account" id="open-settings">
       <span class="dot" id="acct-dot"></span>
@@ -104,16 +103,7 @@ PAGE = """<!doctype html><html lang="en"><head><meta charset="utf-8">
     </div>
 
     <div class="thread" id="thread">
-      <div class="inner" id="thread-inner">
-        <div class="msg"><div class="body">
-          <p>Pick a project on the left, then type a command. <code>/</code> shows
-          what the crew can do.</p>
-          <p class="why">Work happens on its own branch, one item at a time. Each
-          item has to leave the test suite at least as healthy as it found it, and
-          one that does not is rolled back before the next begins. Nothing is
-          changed until you approve the plan.</p>
-        </div></div>
-      </div>
+      <div class="inner" id="thread-inner"></div>
     </div>
 
     <div class="office" id="office" style="display:none">
@@ -421,6 +411,8 @@ def _engines() -> list[dict]:
 
 @app.get("/api/state")
 def state() -> dict:
+    # Read once and hand out per project, rather than once per project.
+    history = workspace.history(limit=400)
     return {
         "projects": [
             {
@@ -429,6 +421,27 @@ def state() -> dict:
                 "folder": p.path.name,
                 "pinned": p.pinned,
                 "instructions": p.instructions,
+                "runs": [
+                    {
+                        "id": r.id,
+                        "task": r.task,
+                        "items": len(r.plan.items) if r.plan else 0,
+                        "done": sum(1 for x in r.results if x.outcome.value == "done"),
+                        "cost": round(r.cost, 2),
+                        "started": r.started[:16].replace("T", " "),
+                        "unfinished": bool(
+                            r.plan
+                            and len(r.results) < len(r.plan.items)
+                            and all(x.outcome.value == "done" for x in r.results)
+                        ),
+                    }
+                    for r in history
+                    if Path(r.repo) == p.path
+                    # A run that never reached a plan and never spent anything
+                    # did not happen. Keeping those turns the project's own
+                    # history into the noise the global list used to be.
+                    and (r.plan or r.cost or r.results)
+                ],
                 "toolchain": p.toolchain(),
                 "last_used": p.last_used,
                 "ok": p.exists,
@@ -467,7 +480,7 @@ def state() -> dict:
                     and all(x.outcome.value == "done" for x in r.results)
                 ),
             }
-            for r in workspace.history()
+            for r in history
         ],
     }
 
@@ -555,6 +568,68 @@ def start(body: StartJob) -> JSONResponse:
     )
     key = next(k for k, v in workspace.sessions.items() if v is session)
     return JSONResponse({"ok": True, "key": key})
+
+
+@app.get("/api/run/{run_id}")
+def one_run(run_id: str) -> dict:
+    """A finished run, in enough detail to read it back.
+
+    Conversations belong to the project they happened in, and someone coming
+    back two days later wants the one about this repository - not a global
+    list of everything that has ever run.
+    """
+    try:
+        run = Run.load(run_id)
+    except (OSError, ValueError):
+        return {"ok": False, "reason": "no such run"}
+
+    return {
+        "ok": True,
+        "id": run.id,
+        "task": run.task,
+        "repo": Path(run.repo).name,
+        "started": run.started[:16].replace("T", " "),
+        "engine": run.engine,
+        "model": run.model,
+        "cost": round(run.cost, 2),
+        "skills": run.skills,
+        "baseline": run.baseline.model_dump() if run.baseline else None,
+        "findings": run.inventory.findings if run.inventory else [],
+        "risks": run.inventory.risks if run.inventory else [],
+        "summary": run.plan.summary if run.plan else "",
+        "items": [
+            {
+                "id": i.id,
+                "title": i.title,
+                "rationale": i.rationale,
+                "verify_with": i.verify_with,
+            }
+            for i in (run.plan.items if run.plan else [])
+        ],
+        "results": [
+            {
+                "id": r.item.id,
+                "outcome": r.outcome.value,
+                "note": r.note,
+                "attempts": r.attempts,
+                "commit": r.commit,
+            }
+            for r in run.results
+        ],
+    }
+
+
+@app.on_event("shutdown")
+def _stop_everything() -> None:
+    """Nothing this application started outlives it.
+
+    Without this, closing drydock leaves its workers running, holding the
+    repository and still writing to it - which looks, from the next run, like
+    a repository that dirties itself.
+    """
+    stopped = stop_workers()
+    if stopped:
+        print(f"stopped {stopped} worker(s) still running")
 
 
 @app.get("/api/diff/{run_id}/{item_id}")

@@ -23,6 +23,7 @@ import os
 import shutil
 import subprocess
 import sys
+import threading
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -81,6 +82,59 @@ def _shell_rule(build_command: str) -> str:
     if tool:
         return f"Bash({tool} *)"
     return " ".join(f"Bash({name} *)" for name in BOOTSTRAP)
+
+
+# Every worker currently running, so they can be stopped.
+#
+# subprocess.Popen does not tie a child to its parent: killing this
+# application leaves the `claude` process alive, still holding the repository
+# and still writing files into it. That is how a resumed run found its tree
+# dirty seconds after cleaning it - an orphan from the previous run was
+# recreating the files behind it. A process nobody can stop is not a worker,
+# it is a leak with a shell.
+_WORKERS: set[subprocess.Popen] = set()
+_WORKERS_LOCK = threading.Lock()
+
+
+def _watch(process: subprocess.Popen) -> None:
+    with _WORKERS_LOCK:
+        _WORKERS.add(process)
+
+
+def _forget(process: subprocess.Popen) -> None:
+    with _WORKERS_LOCK:
+        _WORKERS.discard(process)
+
+
+def stop_workers(repo: Path | None = None) -> int:
+    """Stop every running worker, or only those working in one repository.
+
+    Asked first, then told. A worker given a moment to exit closes its own
+    files; one that is killed outright can leave a half-written report behind,
+    which the engine would then read as a finished answer.
+    """
+    with _WORKERS_LOCK:
+        targets = [
+            p
+            for p in _WORKERS
+            if p.poll() is None
+            and (repo is None or getattr(p, "drydock_repo", None) == str(repo))
+        ]
+    for process in targets:
+        try:
+            process.terminate()
+        except OSError:
+            pass
+    for process in targets:
+        try:
+            process.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            try:
+                process.kill()
+            except OSError:
+                pass
+        _forget(process)
+    return len(targets)
 
 
 def _confinement(repo: Path) -> tuple[str, dict]:
@@ -196,6 +250,8 @@ class ClaudeCodeEngine:
             text=True,
             bufsize=1,
         )
+        process.drydock_repo = str(repo)
+        _watch(process)
         process.stdin.write(instruction)
         process.stdin.close()
 
@@ -213,6 +269,7 @@ class ClaudeCodeEngine:
             if on_event:
                 _report(event, on_event)
         process.wait(timeout=60)
+        _forget(process)
 
         if not report_file.exists():
             return EngineResult(
@@ -288,6 +345,8 @@ class ClaudeCodeEngine:
             text=True,
             bufsize=1,
         )
+        process.drydock_repo = str(repo)
+        _watch(process)
         process.stdin.write(instruction)
         process.stdin.close()
 
@@ -305,6 +364,7 @@ class ClaudeCodeEngine:
             if on_event:
                 _report(event, on_event)
         process.wait(timeout=60)
+        _forget(process)
 
         if not out.exists():
             raise EngineUnavailable(
