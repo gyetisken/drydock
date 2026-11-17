@@ -14,12 +14,22 @@ no longer current: a stale fact stated confidently is worse than no fact.
 
 import hashlib
 import json
+import os
 import re
 from dataclasses import asdict, dataclass, field, fields
 from datetime import UTC, datetime
 from pathlib import Path
 
-HOME = Path.home() / ".drydock" / "memory"
+
+def _home() -> Path:
+    """Where memories live.
+
+    Read each time rather than fixed at import, so a test can point it
+    somewhere else. They could not: every test that saved a memory wrote
+    into the real one, and one of them left a deliberately corrupt file
+    there for the next real run to trip over.
+    """
+    return Path(os.environ.get("DRYDOCK_HOME") or (Path.home() / ".drydock")) / "memory"
 
 
 @dataclass
@@ -132,7 +142,7 @@ class Memory:
     @property
     def path(self) -> Path:
         key = hashlib.sha256(self.repo.encode()).hexdigest()[:16]
-        return HOME / f"{key}.json"
+        return _home() / f"{key}.json"
 
     @classmethod
     def about(cls, repo: Path) -> "Memory":
