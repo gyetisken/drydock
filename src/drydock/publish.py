@@ -183,6 +183,12 @@ def open_pull_request(
 
     code, out = git._git(f"push -u origin {branch}")
     if code:
+        if _no_such_repository(out):
+            return False, (
+                "the remote points at a repository that does not exist yet. "
+                "Create it on GitHub - private - and this will push into it:"
+                f"\n{out[-400:]}"
+            )
         return False, f"could not push the branch:\n{out[-600:]}"
 
     title = run.task.splitlines()[0][:72]
@@ -202,6 +208,18 @@ def open_pull_request(
     if made.returncode:
         return False, (made.stderr or made.stdout).strip()[-600:]
     return True, made.stdout.strip().splitlines()[-1]
+
+
+def _no_such_repository(said: str) -> bool:
+    """Whether a failed push means the repository is not there.
+
+    Deliberately narrow, and it only changes what gets said. A push fails
+    for a dozen reasons - no network, a rejected non-fast-forward, an
+    expired token - and "go and make it" is the wrong advice for all of
+    them except this one.
+    """
+    low = said.lower()
+    return "repository not found" in low or "does not appear to be a git repo" in low
 
 
 def evidence_from(run, gate_log: Path | None = None) -> list[Evidence]:
