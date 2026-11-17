@@ -135,7 +135,7 @@ class Session:
                 task=self.task,
                 skills=[s.name for s in self.skills],
                 toolchain=f"{chain.build_tool} / {chain.language}",
-                stages=STAGES[: STAGES.index(self.stop_after) + 1],
+                stages=self._stages(),
             )
 
             self.feed.emit(
@@ -411,6 +411,20 @@ class Session:
             for name in ("public", "static", "views", "templates", "src/pages")
         )
 
+    def _stages(self) -> list[str]:
+        """Which stations this job reaches.
+
+        Not every job walks the line. `/ask` answers and leaves; `/fix` does
+        one change with no planning. Indexing STAGES by the stopping point
+        assumed it always did, and raised on anything that does not appear
+        there - which took the whole run down on the first /fix.
+        """
+        if self.stop_after == "ask":
+            return ["ask"]
+        if self.stop_after == "straight":
+            return ["baseline", "engineer"]
+        return STAGES[: STAGES.index(self.stop_after) + 1]
+
     def _answer(self) -> None:
         """Read the repository and say what it says."""
         self.run = Run.start(self.repo, self.task, [])
@@ -535,7 +549,8 @@ class Session:
         keeping even though nothing was built on it.
         """
         self.run.save()
-        after = STAGES[STAGES.index(self.stop_after) + 1 :]
+        reached = self._stages()
+        after = [stage for stage in STAGES if stage not in reached]
         for stage in after:
             for who in self.OWNERS[stage]:
                 self.feed.emit(

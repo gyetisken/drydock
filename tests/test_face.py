@@ -43,3 +43,23 @@ def test_a_repository_that_already_serves_pages_has_a_face(tmp_path):
     assert not asking("add retries to the payment client", tmp_path)
     (tmp_path / "views").mkdir()
     assert asking("add retries to the payment client", tmp_path)
+
+
+class TestWhichStationsAJobReaches:
+    """Not every job walks the line. Indexing the stage list by the stopping
+    point assumed it always did, and raised on the first /fix."""
+
+    def reaching(self, stop_after: str) -> list:
+        session = Session.__new__(Session)
+        session.stop_after = stop_after
+        return session._stages()
+
+    def test_a_question_reaches_nothing(self):
+        assert self.reaching("ask") == ["ask"]
+
+    def test_one_change_skips_the_planning(self):
+        assert self.reaching("straight") == ["baseline", "engineer"]
+
+    def test_the_ordinary_path_is_unchanged(self):
+        assert self.reaching("planner") == ["baseline", "analyst", "planner"]
+        assert self.reaching("baseline") == ["baseline"]
