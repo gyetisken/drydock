@@ -104,6 +104,14 @@ def _shell_rule(build_command: str) -> str:
 QUIET_EVERY = 30
 QUIET_AFTER = 90
 
+# How long a worker may say absolutely nothing before it is treated as
+# stopped rather than busy. Working looks like a tool call every few
+# seconds; five minutes of silence is not a long turn, it is a worker that
+# has come off the rails. One did exactly this and held an item for ten
+# minutes before the twelve-minute clock reached it, and the whole of that
+# was waiting for something that was never coming.
+SILENT_LIMIT = 300
+
 _WORKERS: set[subprocess.Popen] = set()
 _WORKERS_LOCK = threading.Lock()
 
@@ -399,7 +407,7 @@ class ClaudeCodeEngine:
 
         dollars, turns, overran = self._read(process, on_event)
         if overran and on_event:
-            on_event("engine", f"stopped after {self.seconds / 60:.0f} minutes")
+            on_event("engine", _why_it_stopped(overran, self.seconds))
         _forget(process)
 
         if not report_file.exists():
@@ -408,9 +416,17 @@ class ClaudeCodeEngine:
             # obvious, while the actual reason - a turn limit, a refused
             # permission, a crash - sat unread in a pipe.
             why = (process.stderr.read() or "").strip()[-1200:]
-            if overran:
+            if overran == "silence":
                 # It was this program that killed it, so the exit code is our
-                # own signal and says nothing. The fact is the clock.
+                # own signal and says nothing.
+                reason = (
+                    f"it stopped producing anything at all for "
+                    f"{SILENT_LIMIT // 60} minutes and was stopped. It got "
+                    f"through {turns} turns first. This is not an item that "
+                    "was too large; it is a worker that came off the rails, "
+                    "and the same item is worth trying again"
+                )
+            elif overran:
                 reason = (
                     f"it ran for {self.seconds / 60:.0f} minutes without "
                     f"finishing and was stopped. It got through {turns} turns"
@@ -446,7 +462,7 @@ class ClaudeCodeEngine:
             turns=turns,
         )
 
-    def _read(self, process, on_event) -> tuple[float, int, bool]:
+    def _read(self, process, on_event) -> tuple[float, int, str]:
         """Drain the worker's output, and stop it if it runs over its time.
 
         The timer runs on its own thread because reading a pipe blocks: a
@@ -471,17 +487,25 @@ class ClaudeCodeEngine:
         # looks exactly like working.
         spoke_at = [time.monotonic()]
         quiet = threading.Event()
+        silent = threading.Event()
 
         def still_there() -> None:
             while not quiet.wait(QUIET_EVERY):
                 since = time.monotonic() - spoke_at[0]
+                if since >= SILENT_LIMIT and process.poll() is None:
+                    silent.set()
+                    process.terminate()
+                    return
                 if since >= QUIET_AFTER and on_event:
+                    left = min(
+                        self.seconds - (time.monotonic() - began),
+                        SILENT_LIMIT - since,
+                    )
                     on_event(
                         "engine",
                         f"still working - nothing said for {int(since // 60)}m "
                         f"{int(since % 60):02d}s, "
-                        f"{int((self.seconds - (time.monotonic() - began)) // 60)}m "
-                        "left before it is stopped",
+                        f"{max(0, int(left // 60))}m left before it is stopped",
                     )
 
         began = time.monotonic()
@@ -519,7 +543,12 @@ class ClaudeCodeEngine:
         except subprocess.TimeoutExpired:
             process.kill()
         _forget(process)
-        return dollars, turns, overran.is_set()
+        # Which clock reached it first is the difference between "this item
+        # is too large" and "this worker stopped working", so the caller is
+        # told which rather than that one of them did.
+        if silent.is_set():
+            return dollars, turns, "silence"
+        return dollars, turns, "clock" if overran.is_set() else ""
 
     def structured(
         self,
@@ -594,7 +623,7 @@ class ClaudeCodeEngine:
 
         dollars, turns, overran = self._read(process, on_event)
         if overran and on_event:
-            on_event("engine", f"stopped after {self.seconds / 60:.0f} minutes")
+            on_event("engine", _why_it_stopped(overran, self.seconds))
         _forget(process)
 
         if not out.exists():
@@ -607,6 +636,12 @@ class ClaudeCodeEngine:
         payload = json.loads(out.read_text())
         out.unlink(missing_ok=True)
         return payload, dollars, turns
+
+
+def _why_it_stopped(which: str, seconds: float) -> str:
+    if which == "silence":
+        return f"stopped - nothing at all for {SILENT_LIMIT // 60} minutes"
+    return f"stopped after {seconds / 60:.0f} minutes"
 
 
 def _report(event: dict, on_event) -> None:

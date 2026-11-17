@@ -58,7 +58,7 @@ def engine(minutes=0.02):
 def test_a_worker_that_answers_is_read_normally():
     fake = Fake(['{"total_cost_usd": 0.4, "num_turns": 7}\n'])
     dollars, turns, overran = engine(minutes=5)._read(fake, None)
-    assert (dollars, turns, overran) == (0.4, 7, False)
+    assert (dollars, turns, overran) == (0.4, 7, "")
     assert not fake.terminated
 
 
@@ -68,7 +68,7 @@ def test_a_worker_that_goes_quiet_is_stopped():
     fake = Fake(['{"num_turns": 1}\n'] * 50, linger=0.1)
     started = time.time()
     _dollars, _turns, overran = engine(minutes=0.01)._read(fake, None)
-    assert overran
+    assert overran == "clock"
     assert fake.terminated
     assert time.time() - started < 5
 
@@ -214,3 +214,46 @@ class _Says:
 
     def terminate(self):
         pass
+
+
+class TestAWorkerThatStopsProducingAnything:
+    """Working looks like a tool call every few seconds. Five minutes of
+    complete silence is not a long turn; it is a worker that has come off
+    the rails. One did exactly this and held an item for ten minutes before
+    the twelve-minute clock reached it, and the whole of that was spent
+    waiting for something that was never coming."""
+
+    def test_it_is_stopped_before_the_long_clock_reaches_it(self, monkeypatch):
+        from drydock import engines
+
+        monkeypatch.setattr(engines, "QUIET_EVERY", 0.05)
+        monkeypatch.setattr(engines, "QUIET_AFTER", 1000)
+        monkeypatch.setattr(engines, "SILENT_LIMIT", 0.1)
+
+        worker = _Silent(for_seconds=0.5)
+        _, _, stopped = engines.ClaudeCodeEngine(minutes=10)._read(worker, None)
+        assert stopped == "silence"
+
+    def test_the_two_reasons_are_told_apart(self, monkeypatch):
+        """'This item is too large' and 'this worker stopped working' call
+        for opposite responses, and both used to read as the same sentence."""
+        from drydock import engines
+
+        monkeypatch.setattr(engines, "QUIET_EVERY", 0.05)
+        monkeypatch.setattr(engines, "SILENT_LIMIT", 1000)
+
+        worker = _Silent(for_seconds=0.5)
+        _, _, stopped = engines.ClaudeCodeEngine(minutes=0.002)._read(worker, None)
+        assert stopped == "clock"
+
+    def test_a_worker_that_keeps_talking_is_not_stopped(self, monkeypatch):
+        import json
+
+        from drydock import engines
+
+        monkeypatch.setattr(engines, "QUIET_EVERY", 0.05)
+        monkeypatch.setattr(engines, "SILENT_LIMIT", 0.1)
+
+        lines = [json.dumps({"type": "assistant", "message": {"content": []}})] * 3
+        _, _, stopped = engines.ClaudeCodeEngine(minutes=10)._read(_Says(lines), None)
+        assert stopped == ""
