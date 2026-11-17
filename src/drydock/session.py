@@ -315,7 +315,29 @@ class Session:
         self.feed.close()
 
     def work_the_plan(self) -> None:
-        """Approved. Do the items."""
+        """Approved. Do the items.
+
+        Everything here runs on a thread of its own, which means an exception
+        escaping it kills the thread and nothing else. The page keeps its
+        spinner and waits for events that will never arrive, which is the
+        worst failure this program can have: it looks exactly like working.
+        """
+        try:
+            self._work_the_plan()
+        except Exception as exc:  # noqa: BLE001 - the page has to be told
+            self.error = f"{type(exc).__name__}: {exc}"
+            self.feed.emit("run.error", detail=self.error)
+            self.feed.emit(
+                "run.summary",
+                done=sum(1 for r in self.run.results if r.outcome.value == "done"),
+                total=len(self.run.plan.items) if self.run.plan else 0,
+                cost=round(self.run.cost, 2),
+                engine=self.engine,
+                remembered=len(self.memory.notes),
+            )
+            self.feed.close()
+
+    def _work_the_plan(self) -> None:
 
         def on_item(item, phase):
             if phase == "start":

@@ -73,7 +73,8 @@ const on = {
     DESKS.forEach(d => {
       const needed = {
         Verifier: "baseline", Analyst: "analyst",
-        Planner: "planner", Engineer: "engineer",
+        Architect: "planner", Planner: "planner",
+        Engineer: "engineer", Inspector: "engineer", Reviewer: "engineer",
       }[d.id];
       if (e.stages && !e.stages.includes(needed)) {
         const s = desks.get(d.id);
@@ -340,7 +341,7 @@ function drawOffice() {
   const held = b ? now >= b.tests : null;
 
   $("room").innerHTML = `
-    <svg viewBox="0 0 800 556" preserveAspectRatio="xMidYMid meet" class="scene">
+    <svg viewBox="0 0 800 574" preserveAspectRatio="xMidYMid meet" class="scene">
       <defs>
         <pattern id="tiles" width="40" height="40" patternUnits="userSpaceOnUse">
           <rect width="40" height="40" fill="var(--bg)"/>
@@ -348,7 +349,7 @@ function drawOffice() {
         </pattern>
       </defs>
 
-      <rect x="0" y="74" width="800" height="482" fill="url(#tiles)"/>
+      <rect x="0" y="74" width="800" height="500" fill="url(#tiles)"/>
       <rect x="0" y="0" width="800" height="74" fill="var(--side)"/>
       <rect x="0" y="70" width="800" height="5" fill="var(--line)"/>
 
@@ -392,12 +393,12 @@ function drawOffice() {
 
       <!-- the gates, on their own row, because they are the only stations
            that can send work back rather than passing it on -->
-      <line x1="40" y1="318" x2="760" y2="318" stroke="var(--line)"
+      <text x="400" y="314" text-anchor="middle" class="svg-h">ANY OF THESE CAN SEND AN ITEM BACK</text>
+      <line x1="40" y1="330" x2="760" y2="330" stroke="var(--line)"
         stroke-width="1.5" stroke-dasharray="5 5"/>
-      <text x="40" y="340" class="svg-h">ANY OF THESE CAN SEND AN ITEM BACK</text>
 
       ${DESKS.filter(d => d.row === 1)
-        .map((d, i) => workstation(i, desks.get(d.id), 364)).join("")}
+        .map((d, i) => workstation(i, desks.get(d.id), 382)).join("")}
     </svg>`;
 
   const mark = { done: "✓", working: "▸", skipped: "–", failed: "✗", idle: "·" };

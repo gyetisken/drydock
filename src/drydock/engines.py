@@ -39,6 +39,48 @@ class EngineResult:
     turns: int = 0
 
 
+# What may be run when the project does not have a build command yet. A
+# greenfield item has to be able to create one, and a repository with no
+# toolchain cannot name the tool it is about to install. This is the list of
+# things that bring a project into existence - not a shell. Nothing here
+# fetches from the network except a package manager doing its job, and
+# nothing here deletes.
+BOOTSTRAP = (
+    "npm",
+    "npx",
+    "pnpm",
+    "yarn",
+    "node",
+    "python",
+    "python3",
+    "uv",
+    "pip",
+    "pip3",
+    "go",
+    "cargo",
+    "mvn",
+    "gradle",
+    "dotnet",
+    "mkdir",
+    "ls",
+    "cat",
+)
+
+
+def _shell_rule(build_command: str) -> str:
+    """Which shell commands the worker may run.
+
+    Once a project has a build command the worker is held to it, which is as
+    narrow as this gets. Before then it would be held to nothing, and the
+    earlier version of this line simply crashed on the empty string - which
+    is how greenfield jobs died the moment they reached the first item.
+    """
+    tool = build_command.split()[0] if build_command.strip() else ""
+    if tool:
+        return f"Bash({tool} *)"
+    return " ".join(f"Bash({name} *)" for name in BOOTSTRAP)
+
+
 class ClaudeCodeEngine:
     """Drive the Claude Code CLI as the worker.
 
@@ -67,7 +109,6 @@ class ClaudeCodeEngine:
         build_command: str,
         on_event=None,
     ) -> EngineResult:
-        build_tool = build_command.split()[0]
         report_file = repo / ".drydock-report.json"
         report_file.unlink(missing_ok=True)
 
@@ -96,7 +137,7 @@ class ClaudeCodeEngine:
             # Bounded on purpose: it may read, edit and run the project's own
             # build, and nothing else. Without this it has a shell.
             "--allowedTools",
-            f"Read Edit Write Glob Grep Bash({build_tool} *)",
+            "Read Edit Write Glob Grep " + _shell_rule(build_command),
             "--append-system-prompt",
             system,
         ]
