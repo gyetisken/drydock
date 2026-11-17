@@ -684,3 +684,8 @@ body.split .composer .cwrap { max-width:none }
 .step .ttl .took { margin-left:8px; font-size:10.5px; color:var(--faint);
   font-variant-numeric:tabular-nums; letter-spacing:0 }
 .step.working .ttl .took { color:var(--accent) }
+
+/* a message that is worth keeping but not worth reading twice */
+.msg.dim { opacity: .74 }
+.msg.dim:hover { opacity: 1 }
+.msg.dim .from { color: var(--faint) }
