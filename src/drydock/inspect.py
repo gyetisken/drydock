@@ -46,6 +46,45 @@ SILENCER = re.compile(
 
 ASSERTION = re.compile(r"\bassert|\bexpect\s*\(|\bshould\b", re.IGNORECASE)
 
+# An assertion that names the value it expects. Removing one of these and
+# putting back something from WEAK is the quietest way to make a failing
+# test pass: the test is still there, still runs, still counted, and no
+# longer says anything about what the code produces.
+EXACTING = re.compile(
+    r"""
+      assertEquals | assertArrayEquals | assertSame
+    | \.toBe\s*\( | \.toEqual\s*\( | \.toStrictEqual\s*\(
+    | \.toHaveBeenCalledWith\s*\( | \.toMatchObject\s*\(
+    | isEqualTo\s*\( | containsExactly\s*\(
+    | assert_eq! | assert_ne!
+    | Assert\.AreEqual | Assert\.AreSame
+    | assert\s+[^\n]*\s(?:==|!=)\s
+    | assertRaises | pytest\.raises | assertThrows
+    """,
+    re.VERBOSE | re.IGNORECASE,
+)
+
+# An assertion that is true of almost any value. Each of these is a real
+# assertion in its own right - there is nothing wrong with checking that
+# something is not null - which is why this is only reported when exacting
+# ones disappeared in the same change.
+WEAK = re.compile(
+    r"""
+      assertNotNull | assertTrue\s*\(\s*true\s*\) | assertTrue\s*\(\s*\w+\s*\)
+    | \.toBeDefined\s*\( | \.toBeTruthy\s*\( | \.toBeFalsy\s*\(
+    | \.not\.toBeNull\s*\( | \.toBeInstanceOf\s*\(
+    | isNotNull\s*\( | isNotEmpty\s*\(
+    | assert\s+[^\n]*\bis\s+not\s+None\s*$
+    | assert\s+[^\n=<>!]+$              # bare truthiness, no comparison in it
+    | assert\s+True\s*$
+    | assert!\s*\(\s*true\s*\)
+    | assert!\s*\([^\n]*\.is_(?:some|ok|empty)\(\)
+    | \.isPresent\(\) | \.isNotBlank\(\)
+    | Assert\.IsNotNull | Assert\.IsTrue\s*\(\s*true\s*\)
+    """,
+    re.VERBOSE,
+)
+
 # Things that must never be committed, whatever the item was about.
 # Credentials that are recognisable on sight. Each of these is a prefix a
 # provider chose precisely so that a leaked key can be spotted, which is the
@@ -224,6 +263,27 @@ def look(
                 "tests silenced",
                 f"{len(silenced)} test(s) were switched off rather than fixed: "
                 + "; ".join(s[:70] for s in silenced[:3]),
+            )
+        )
+
+    # An assertion swapped for a weaker one in the same place. The counts
+    # do not move, the suite stays the same size, every test still runs -
+    # and the test no longer says anything about what the code produces.
+    # This is the quietest way there is to make a failing test pass.
+    gave_up = sum(1 for ln in removed if EXACTING.search(ln)) - sum(
+        1 for ln in added if EXACTING.search(ln)
+    )
+    settled_for = sum(1 for ln in added if WEAK.search(ln)) - sum(
+        1 for ln in removed if WEAK.search(ln)
+    )
+    if gave_up >= 1 and settled_for >= 1:
+        findings.append(
+            Finding(
+                "assertions weakened",
+                f"{gave_up} assertion(s) that named the value they expected were "
+                f"removed, and {settled_for} that hold for almost any value were "
+                "put in their place. The tests still run and still pass; they no "
+                "longer say what the code should produce.",
             )
         )
 

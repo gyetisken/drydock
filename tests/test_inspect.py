@@ -193,3 +193,90 @@ class TestCredentialsAreRecognisedOnSight:
         costs an attempt and teaches the engineer nothing."""
         report = look(f"+++ b/app.css\n+{innocent}\n")
         assert report.clean, report.reason
+
+
+class TestAnAssertionSwappedForAWeakerOne:
+    """The quietest way there is to make a failing test pass. The counts do
+    not move, the suite stays the same size, every test still runs - and
+    the test no longer says anything about what the code produces. A
+    reviewer reading a diff of three hundred lines does not see it, and no
+    runner in the world reports it.
+
+    The README claimed this was caught before anything caught it.
+    """
+
+    @pytest.mark.parametrize(
+        ("language", "diff"),
+        [
+            (
+                "javascript",
+                "-  expect(total(cart)).toBe(42);\n"
+                "+  expect(total(cart)).toBeDefined();\n",
+            ),
+            (
+                "java",
+                "-    assertEquals(42, total(cart));\n"
+                "+    assertNotNull(total(cart));\n",
+            ),
+            (
+                "python",
+                "-    assert total(cart) == 42\n+    assert total(cart) is not None\n",
+            ),
+            (
+                "python, bare",
+                "-    assert total(cart) == 42\n+    assert total(cart)\n",
+            ),
+            (
+                "rust",
+                "-    assert_eq!(total(&cart), 42);\n"
+                "+    assert!(total(&cart).is_some());\n",
+            ),
+            (
+                "c#",
+                "-    Assert.AreEqual(42, Total(cart));\n"
+                "+    Assert.IsNotNull(Total(cart));\n",
+            ),
+        ],
+    )
+    def test_it_is_caught(self, language, diff):
+        report = look(f"+++ b/src/total.test\n{diff}")
+        assert not report.clean, language
+        assert "weakened" in report.reason or "no longer say" in report.reason
+
+    def test_making_an_assertion_stronger_is_not_a_complaint(self):
+        """The same two lines the other way round. A rule that cannot tell
+        these apart would refuse every improvement to a test."""
+        report = look(
+            "+++ b/src/total.test.js\n"
+            "-  expect(total(cart)).toBeDefined();\n"
+            "+  expect(total(cart)).toBe(42);\n"
+        )
+        assert report.clean, report.reason
+
+    def test_a_new_test_with_a_loose_assertion_is_fine(self):
+        """Checking that something is not null is a real assertion. This is
+        only a complaint when an exacting one disappeared to make room."""
+        report = look(
+            "+++ b/src/total.test.js\n"
+            "+  it('returns something', () => {\n"
+            "+    expect(total(cart)).toBeDefined();\n"
+            "+  });\n"
+        )
+        assert report.clean, report.reason
+
+    def test_changing_what_an_assertion_looks_at_is_fine(self):
+        report = look(
+            "+++ b/src/total.test.js\n-  expect(a).toBe(1);\n+  expect(b).toBe(1);\n"
+        )
+        assert report.clean, report.reason
+
+    def test_it_says_both_halves_of_what_happened(self):
+        """So the engineer knows which assertion to put back, rather than
+        being told its diff was rejected."""
+        report = look(
+            "+++ b/src/total.test.js\n"
+            "-  expect(total(cart)).toBe(42);\n"
+            "+  expect(total(cart)).toBeTruthy();\n"
+        )
+        assert "named the value they expected" in report.reason
+        assert "almost any value" in report.reason
