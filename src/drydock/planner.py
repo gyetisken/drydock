@@ -121,7 +121,7 @@ def plan(
     on_event=None,
     budget: float = 0.0,
     engine: str = "api",
-    model: str = "sonnet",
+    model: str = "opus",
 ) -> tuple[Plan, object]:
     chosen = skills or []
     filled = PROMPT.format(

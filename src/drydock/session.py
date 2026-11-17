@@ -31,7 +31,7 @@ class Session:
         skills: list[Skill],
         budget: float = 0.0,
         engine: str = "api",
-        model: str = "sonnet",
+        model: str = "opus",
         stop_after: str = "planner",
     ) -> None:
         self.feed = Feed()

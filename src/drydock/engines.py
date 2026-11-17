@@ -49,7 +49,7 @@ class ClaudeCodeEngine:
 
     name = "claude"
 
-    def __init__(self, model: str = "sonnet", max_turns: int = 40) -> None:
+    def __init__(self, model: str = "opus", max_turns: int = 40) -> None:
         self.binary = shutil.which("claude")
         if not self.binary:
             raise EngineUnavailable(

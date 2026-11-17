@@ -104,7 +104,7 @@ def survey(
     engine: str = "api",
     memory: Memory | None = None,
     commit: str = "",
-    model: str = "sonnet",
+    model: str = "opus",
 ) -> tuple[Inventory, object]:
     chain = detect(repo)
     known = memory.briefing(commit) if memory and commit else ""

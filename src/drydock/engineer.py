@@ -112,7 +112,7 @@ def work(
     on_event=None,
     budget: float = 0.0,
     engine: str = "api",
-    model: str = "sonnet",
+    model: str = "opus",
 ) -> tuple[dict, object]:
     prompt = PROMPT.format(
         repo=repo.name,

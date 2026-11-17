@@ -3,7 +3,7 @@
 // event from the server, so nothing here can claim progress that was not made.
 
 const S = { projects: [], commands: [], runs: [], project: null, key: null, menu: -1,
-  engines: [], models: [], engine: "claude", model: "sonnet" };
+  engines: [], models: [], engine: "claude", model: "opus" };
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, c =>
   ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
@@ -103,7 +103,10 @@ const on = {
     renderStats();
   },
   "agent.tool": (e) => toolLine(e.agent, e.detail),
-  "agent.state": (e) => station(e.agent, e.state, e.note),
+  "agent.state": (e) => {
+    station(e.agent, e.state, e.note);
+    if (e.state === "working") running(true, `${e.agent}: ${e.note}`);
+  },
   "survey": (e) => {
     say("analyst", `<div class="body"><p>${e.findings.length} findings,
       ${e.risks.length} risks.</p>
@@ -125,6 +128,7 @@ const on = {
     msg.querySelector("#approve").onclick = async (ev) => {
       ev.target.disabled = true;
       msg.querySelector("#planhint").textContent = "working, one item at a time";
+      running(true, "working through the plan");
       await fetch("/api/approve/" + S.key, { method: "POST" });
     };
   },
@@ -157,7 +161,8 @@ const on = {
     say("crew", `<div class="body"><p>Stopping. ${esc(e.note)}</p></div>`, "dim");
   },
   "run.summary": (e) => {
-    $("stop").style.display = "none";
+    running(false);
+    $("go").disabled = false;
     drawOffice();
     if (e.read_only) {
       const kept = e.remembered
@@ -185,8 +190,8 @@ const on = {
       ev.preventDefault(); $("sheet").style.display = "flex"; drawSettings();
     };
   },
-  "run.error": (e) => say("crew", `<div class="body"><p class="why">${esc(e.detail)}</p></div>`),
-  "awaiting.approval": () => {},
+  "run.error": (e) => (running(false), say("crew", `<div class="body"><p class="why">${esc(e.detail)}</p></div>`)),
+  "awaiting.approval": () => running(false),
 };
 
 function watch(key) {
@@ -207,10 +212,10 @@ function watch(key) {
 // allowed to stay, which is the only opinion in the room that is not a guess.
 
 const DESKS = [
-  { id: "Analyst", role: "reads the repository", icon: "🔍" },
-  { id: "Planner", role: "turns it into items", icon: "📋" },
-  { id: "Engineer", role: "makes one change at a time", icon: "🔧" },
-  { id: "Verifier", role: "builds, tests, and decides", icon: "⚖️", code: true },
+  { id: "Analyst",  role: "reads the repository",        shirt: "#5b8ddb" },
+  { id: "Planner",  role: "turns it into items",         shirt: "#8a7fd0" },
+  { id: "Engineer", role: "makes one change at a time",  shirt: "#5fc08a" },
+  { id: "Verifier", role: "builds, tests, and decides",  shirt: "#d6ac5c", code: true },
 ];
 
 const WORDS = {
@@ -231,51 +236,148 @@ function station(id, state, note) {
   drawOffice();
 }
 
+// The room is drawn rather than described, because four cards in a row is a
+// table pretending to be a picture. One inline SVG, using the page's own
+// colour tokens so it follows the theme, and loading nothing from anywhere.
+
+const SKIN = "#d7a87f";
+const HAIR = "#46516b";   // reads against both grounds; pure dark vanishes on navy
+
+function person(x, y, d) {
+  const s = d.state;
+  if (s === "skipped") {
+    return `<g opacity=".4">
+      <ellipse cx="${x}" cy="${y + 20}" rx="15" ry="6" fill="var(--line)"/>
+      <rect x="${x - 13}" y="${y + 6}" width="26" height="12" rx="5" fill="var(--line)"/>
+      <rect x="${x - 2}" y="${y + 16}" width="4" height="9" fill="var(--line)"/>
+    </g>`;
+  }
+  const lit = s === "working";
+  return `<g>
+    <ellipse cx="${x}" cy="${y + 30}" rx="19" ry="7" fill="var(--line-soft)"/>
+    <rect x="${x - 17}" y="${y + 4}" width="34" height="26" rx="12" fill="${d.shirt}"
+      opacity="${lit ? 1 : 0.8}"/>
+    <circle cx="${x}" cy="${y - 8}" r="12" fill="${SKIN}"/>
+    <path d="M ${x - 12} ${y - 10} a 12 12 0 0 1 24 0 q -12 -5 -24 0 z" fill="${HAIR}"/>
+    ${lit ? `<g>
+      <circle cx="${x + 25}" cy="${y - 26}" r="2.8" fill="var(--live)">
+        <animate attributeName="opacity" values="1;.15;1" dur="1.1s" repeatCount="indefinite"/></circle>
+      <circle cx="${x + 33}" cy="${y - 26}" r="2.8" fill="var(--live)">
+        <animate attributeName="opacity" values="1;.15;1" dur="1.1s" begin=".35s" repeatCount="indefinite"/></circle>
+      <circle cx="${x + 41}" cy="${y - 26}" r="2.8" fill="var(--live)">
+        <animate attributeName="opacity" values="1;.15;1" dur="1.1s" begin=".7s" repeatCount="indefinite"/></circle>
+    </g>` : ""}
+    ${s === "done" ? `
+      <circle cx="${x + 28}" cy="${y - 20}" r="10.5" fill="var(--ok)"/>
+      <path d="M ${x + 23} ${y - 20} l 3.5 3.6 l 6.2 -7.2" stroke="#fff" stroke-width="2.3"
+        fill="none" stroke-linecap="round" stroke-linejoin="round"/>` : ""}
+    ${s === "failed" ? `
+      <circle cx="${x + 28}" cy="${y - 20}" r="10.5" fill="var(--bad)"/>
+      <path d="M ${x + 24} ${y - 24} l 8 8 M ${x + 32} ${y - 24} l -8 8" stroke="#fff"
+        stroke-width="2.3" stroke-linecap="round"/>` : ""}
+  </g>`;
+}
+
+function workstation(i, d) {
+  const x = 96 + i * 178;
+  const top = 128;
+  const lit = d.state === "working";
+  const dim = d.state === "skipped" ? ".4" : "1";
+  return `<g opacity="${dim}">
+    <rect x="${x - 72}" y="${top}" width="144" height="52" rx="7"
+      fill="var(--raise)" stroke="var(--line)" stroke-width="1.5"/>
+    <rect x="${x - 72}" y="${top}" width="144" height="9" rx="4.5" fill="var(--line)"/>
+    <rect x="${x - 29}" y="${top - 34}" width="58" height="36" rx="4"
+      fill="${HAIR}" opacity="${lit ? ".9" : ".55"}"/>
+    <rect x="${x - 25}" y="${top - 30}" width="50" height="28" rx="2"
+      fill="${lit ? "var(--live)" : "var(--line)"}"/>
+    ${lit ? `<rect x="${x - 25}" y="${top - 30}" width="50" height="28" rx="2"
+      fill="var(--live)"><animate attributeName="opacity" values=".55;1;.55"
+      dur="2.4s" repeatCount="indefinite"/></rect>` : ""}
+    <rect x="${x - 7}" y="${top - 1}" width="14" height="6" fill="${HAIR}" opacity=".6"/>
+    <rect x="${x + 38}" y="${top + 14}" width="26" height="30" rx="3" fill="var(--line-soft)"
+      stroke="var(--line)"/>
+    <path d="M ${x + 44} ${top + 22} h 14 M ${x + 44} ${top + 29} h 14 M ${x + 44} ${top + 36} h 9"
+      stroke="var(--faint)" stroke-width="1.4" opacity=".7"/>
+    ${person(x, top + 76, d)}
+    <text x="${x}" y="${top + 142}" text-anchor="middle" class="svg-name">${esc(d.id)}</text>
+    <text x="${x}" y="${top + 158}" text-anchor="middle" class="svg-role">${esc(d.role)}</text>
+  </g>`;
+}
+
 function drawOffice() {
-  const mark = { done: "✓", working: "▸", skipped: "–", failed: "✗", idle: "" };
-  $("desks").innerHTML = DESKS.map((d, i) => {
+  const items = [...live.items.values()];
+  const landed = items.filter(i => i.status === "done").length;
+  const b = live.baseline;
+  const now = b ? (live.tests === null ? b.tests : live.tests) : null;
+  const held = b ? now >= b.tests : null;
+
+  $("room").innerHTML = `
+    <svg viewBox="0 0 800 320" preserveAspectRatio="xMidYMid meet" class="scene">
+      <defs>
+        <pattern id="tiles" width="40" height="40" patternUnits="userSpaceOnUse">
+          <rect width="40" height="40" fill="var(--bg)"/>
+          <path d="M40 0 V40 M0 40 H40" stroke="var(--line)" stroke-width="1" opacity=".55"/>
+        </pattern>
+      </defs>
+
+      <rect x="0" y="74" width="800" height="246" fill="url(#tiles)"/>
+      <rect x="0" y="0" width="800" height="74" fill="var(--side)"/>
+      <rect x="0" y="70" width="800" height="5" fill="var(--line)"/>
+
+      <!-- the board on the back wall: one tick per item, nothing else -->
+      <g>
+        <rect x="22" y="12" width="408" height="48" rx="6" fill="var(--panel)"
+          stroke="var(--line)" stroke-width="1.5"/>
+        <text x="36" y="30" class="svg-h">THE BOARD</text>
+        ${items.length
+          ? items.slice(0, 24).map((it, n) => {
+              const c = { done: "var(--ok)", working: "var(--live)",
+                          reverted: "var(--bad)", blocked: "var(--bad)" }[it.status]
+                        || "var(--line)";
+              return `<rect x="${36 + n * 14}" y="38" width="10" height="13" rx="2"
+                fill="${c}"><title>${esc(it.title)}</title></rect>`;
+            }).join("") +
+            `<text x="${36 + Math.min(items.length, 24) * 14 + 10}" y="49"
+              class="svg-small">${landed} of ${items.length} landed</text>`
+          : `<text x="36" y="49" class="svg-small">nothing pinned up yet</text>`}
+      </g>
+
+      <!-- the rule of the room, on a sign by the door -->
+      <g>
+        <rect x="446" y="12" width="332" height="48" rx="6" fill="var(--panel)"
+          stroke="${b ? (held ? "var(--ok)" : "var(--bad)") : "var(--line)"}" stroke-width="1.5"/>
+        <text x="460" y="30" class="svg-h">THE SUITE</text>
+        <text x="460" y="49" class="svg-small">${b
+          ? `${now} running now, ${b.tests} before anyone touched it`
+          : "not run yet"}</text>
+      </g>
+
+      <g opacity=".6">
+        <rect x="752" y="178" width="30" height="24" rx="4" fill="var(--line-soft)"
+          stroke="var(--line)"/>
+        <path d="M767 178 q -20 -16 -9 -34 q 16 7 9 34 z" fill="var(--ok)" opacity=".6"/>
+        <path d="M767 178 q 20 -14 11 -29 q -17 6 -11 29 z" fill="var(--ok)" opacity=".42"/>
+      </g>
+
+      ${DESKS.map((d, i) => workstation(i, desks.get(d.id))).join("")}
+    </svg>`;
+
+  const mark = { done: "✓", working: "▸", skipped: "–", failed: "✗", idle: "·" };
+  $("who-list").innerHTML = DESKS.map(d => {
     const s = desks.get(d.id);
     return `
-      ${i ? '<div class="flow"></div>' : ""}
-      <div class="desk ${s.state}">
-        <div class="head">
-          <span class="who">${d.icon}</span>
-          <span class="mk">${mark[s.state] || ""}</span>
-        </div>
-        <div class="name">${esc(d.id)}</div>
-        <div class="role">${esc(d.role)}</div>
-        <div class="state">${esc(s.note || WORDS[s.state])}</div>
-        ${d.code ? '<div class="tag">no model, just code</div>' : ""}
+      <div class="who-row ${s.state}">
+        <span class="mk">${mark[s.state]}</span>
+        <b>${esc(d.id)}</b>
+        <span class="st">${esc(s.note || WORDS[s.state])}</span>
+        ${d.code ? '<span class="tag">no model, just code</span>' : ""}
       </div>`;
   }).join("");
 
-  const items = [...live.items.values()];
-  $("board").innerHTML = items.length
-    ? items.map(i => `
-        <div class="bi ${i.status}">
-          <span class="mk">${MK[i.status] || "·"}</span>
-          <span class="t">${esc(i.title)}</span>
-        </div>`).join("")
-    : `<p class="why">Nothing on the board. A plan appears here once the
-       planner has written one.</p>`;
-
-  const b = live.baseline;
-  if (b) {
-    const now = live.tests === null ? b.tests : live.tests;
-    const held = now >= b.tests;
-    $("gauge").innerHTML = `
-      <div class="g ${held ? "ok" : "bad"}">
-        <b>${held ? "✓" : "✗"}</b>
-        <span>${now} tests running, ${b.tests} before anyone touched it</span>
-      </div>`;
-  } else {
-    $("gauge").innerHTML = `<div class="g"><b>·</b><span>the suite has not been
-      run yet</span></div>`;
-  }
-
   $("shelf").innerHTML = (S.skillsOn || []).length
     ? S.skillsOn.map(n => `<code>${esc(n)}</code>`).join("")
-    : `<i>none for this job — the crew is working from the repository alone</i>`;
+    : `<i>none for this job - the crew is working from the repository alone</i>`;
 }
 
 function view(which) {
@@ -287,6 +389,31 @@ function view(which) {
 }
 document.querySelectorAll("#views button").forEach(b =>
   (b.onclick = () => view(b.dataset.view)));
+
+/* ---------- is it running ---------- */
+
+// Without this the page is indistinguishable from a page that has crashed.
+// A job can sit for two minutes inside one tool call, so the question "is it
+// still going" has to be answered by something that moves.
+
+let ticker = null;
+
+function running(on, what) {
+  S.running = on;
+  $("running").style.display = on ? "" : "none";
+  $("go-icon").innerHTML = on ? "&#9632;" : "&#8593;";
+  $("go").className = on ? "go stopping" : "go";
+  $("go").title = on ? "stop after the current item" : "send";
+  if (what) $("running-what").textContent = what;
+  if (on && !ticker) {
+    S.since = Date.now();
+    ticker = setInterval(() => {
+      const t = Math.floor((Date.now() - S.since) / 1000);
+      $("clock").textContent = `${Math.floor(t / 60)}:${String(t % 60).padStart(2, "0")}`;
+    }, 1000);
+  }
+  if (!on && ticker) { clearInterval(ticker); ticker = null; }
+}
 
 /* ---------- sidebar ---------- */
 
@@ -495,9 +622,7 @@ async function send() {
   const body = await res.json();
   if (!body.ok) { fail(body.reason); return; }
   watch(body.key);
-  $("stop").style.display = "";
-  $("stop").disabled = false;
-  $("stop").textContent = "Stop";
+  running(true, "starting");
 }
 
 function fail(reason) {
@@ -528,11 +653,13 @@ $("plus").onclick = () => {
 $("cancel").onclick = () => { $("addbox").classList.remove("open"); $("newpath").value = ""; };
 $("newpath").onkeydown = (e) => { if (e.key === "Enter") $("add").click(); };
 
-$("stop").onclick = async () => {
-  $("stop").disabled = true;
-  $("stop").textContent = "stopping";
+async function halt() {
+  running(true, "stopping after this item");
+  $("go").disabled = true;
   await fetch("/api/stop/" + S.key, { method: "POST" });
-};
+}
+
+$("go").onclick = () => (S.running ? halt() : send());
 
 $("add").onclick = async () => {
   const path = $("newpath").value.trim();

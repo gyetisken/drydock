@@ -31,7 +31,19 @@ PAGE = """<!doctype html><html lang="en"><head><meta charset="utf-8">
 <body><div class="app">
 
   <aside>
-    <div class="brand"><b>drydock</b><i>changes code, proves it still works</i></div>
+    <div class="brand">
+      <svg class="mark" viewBox="0 0 48 48" aria-hidden="true">
+        <rect x="1.5" y="1.5" width="45" height="45" rx="12" fill="var(--accent-dim)"/>
+        <path d="M8 36 h32" stroke="var(--accent)" stroke-width="2.5" stroke-linecap="round"/>
+        <path d="M6 41 q 6 -3 12 0 t 12 0 t 12 0" stroke="var(--accent)" stroke-width="2"
+          fill="none" stroke-linecap="round" opacity=".55"/>
+        <rect x="14" y="30" width="5" height="6" rx="1.2" fill="var(--accent)" opacity=".8"/>
+        <rect x="29" y="30" width="5" height="6" rx="1.2" fill="var(--accent)" opacity=".8"/>
+        <path d="M10 18 h28 l-5 11 h-18 z" fill="var(--fg)" opacity=".95"/>
+        <path d="M23 18 v-10 l10 5 -10 5 z" fill="var(--fg)" opacity=".62"/>
+      </svg>
+      <span class="wordmark"><b>drydock</b><i>out of the water, where it can be checked</i></span>
+    </div>
 
     <div class="side-h">Projects <button id="plus" title="add a repository">+</button></div>
     <div class="addbox" id="addbox">
@@ -57,12 +69,15 @@ PAGE = """<!doctype html><html lang="en"><head><meta charset="utf-8">
     <div class="topbar">
       <b id="proj">no project</b><span class="sub" id="chain"></span>
       <div class="right">
+        <span class="running" id="running" style="display:none">
+          <span class="pulse"></span><b id="running-what">working</b>
+          <i id="clock">0:00</i>
+        </span>
         <div class="segmented tabs" id="views">
           <button data-view="thread" class="on">Thread</button>
           <button data-view="office">Office</button>
         </div>
         <span id="spend"></span>
-        <button class="btn small ghost" id="stop" style="display:none">Stop</button>
       </div>
     </div>
 
@@ -81,28 +96,14 @@ PAGE = """<!doctype html><html lang="en"><head><meta charset="utf-8">
 
     <div class="office" id="office" style="display:none">
       <div class="floor">
-
-        <div class="wall">
-          <div class="board">
-            <h5>On the board</h5>
-            <div class="board-items" id="board"></div>
-          </div>
-          <div class="board narrow">
-            <h5>The rule of this room</h5>
-            <p>A change stays only if the build still builds and the suite
-            still runs at least as many tests as it did before anyone
-            touched it. Nothing here can vote itself through.</p>
-            <div class="gauge" id="gauge"></div>
+        <div class="room" id="room"></div>
+        <div class="legend">
+          <div class="who-list" id="who-list"></div>
+          <div class="shelf">
+            <span class="shelf-h">Skills on the shelf</span>
+            <span class="shelf-items" id="shelf"></span>
           </div>
         </div>
-
-        <div class="desks" id="desks"></div>
-
-        <div class="shelf">
-          <span class="shelf-h">Skills on the shelf</span>
-          <span class="shelf-items" id="shelf"></span>
-        </div>
-
       </div>
     </div>
 
@@ -112,11 +113,12 @@ PAGE = """<!doctype html><html lang="en"><head><meta charset="utf-8">
         <textarea id="box" rows="1" placeholder="/ to see commands" spellcheck="false"></textarea>
         <div class="picks">
           <button class="pick" id="pick-model">
-            <span id="model-label">Sonnet</span><span class="caret">&#9662;</span>
+            <span id="model-label">Opus</span><span class="caret">&#9662;</span>
           </button>
           <button class="pick ghost" id="pick-engine">
             <span id="engine-label">Claude</span><span class="caret">&#9662;</span>
           </button>
+          <button class="go" id="go" title="send"><span id="go-icon">&#8593;</span></button>
         </div>
         <div class="pop" id="pop-model" style="display:none"></div>
         <div class="pop right" id="pop-engine" style="display:none"></div>
@@ -423,7 +425,7 @@ class StartJob(BaseModel):
     command: str
     budget: float = 4.0
     engine: str = "claude"
-    model: str = "sonnet"
+    model: str = "opus"
 
 
 @app.post("/api/start")

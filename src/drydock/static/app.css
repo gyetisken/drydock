@@ -1,28 +1,30 @@
-/* A warm neutral ground with one accent. The work is mostly text, so the type
-   scale and the spacing do the design; colour is kept for the three things
-   that actually need to be told apart: landed, rolled back, and still going. */
+/* A deep navy ground with one lifted blue. The work is mostly text, so the
+   type scale and the spacing do the design; colour is kept for the three
+   things that actually need to be told apart: landed, rolled back, and still
+   going. Navy because this is a room where things are inspected under
+   lights, and a dock at night is the picture the name is already asking for. */
 :root {
-  --bg:#1a1817; --side:#151312; --panel:#211e1c; --raise:#2a2624; --input:#171514;
-  --line:#322d29; --line-soft:#272320;
-  --fg:#f2eee9; --muted:#a79e94; --faint:#6e665e;
-  --accent:#c9764a; --accent-dim:#8f5334;
-  --ok:#72b98d; --bad:#d3766b; --live:#7ea7d1; --warn:#c6a05f;
+  --bg:#0e1420; --side:#0a0f19; --panel:#141c2b; --raise:#1c2639; --input:#101827;
+  --line:#28344a; --line-soft:#1b2537;
+  --fg:#e9eef7; --muted:#97a5bd; --faint:#64718a;
+  --accent:#5b8ddb; --accent-dim:#2f4f85;
+  --ok:#5fc08a; --bad:#e2796d; --live:#6aa5e8; --warn:#d6ac5c;
   --r:10px;
 }
 :root[data-theme="light"] {
-  --bg:#faf8f5; --side:#f3efe9; --panel:#ffffff; --raise:#f0ece6; --input:#ffffff;
-  --line:#e3ddd4; --line-soft:#eee9e2;
-  --fg:#211e1b; --muted:#6b645c; --faint:#9a9289;
-  --accent:#b35f31; --accent-dim:#d9a483;
-  --ok:#2d7a4f; --bad:#b4453a; --live:#3a6ea5; --warn:#8a6a1f;
+  --bg:#f5f8fc; --side:#eaf0f8; --panel:#ffffff; --raise:#e8eef7; --input:#ffffff;
+  --line:#d3ddeb; --line-soft:#e5ecf5;
+  --fg:#0d1626; --muted:#4f5f79; --faint:#8292aa;
+  --accent:#1f4786; --accent-dim:#a8c0e2;
+  --ok:#1f7a4d; --bad:#b4433a; --live:#2a5fa8; --warn:#8a6a1f;
 }
 @media (prefers-color-scheme: light) {
   :root:not([data-theme="dark"]):not([data-theme="light"]) {
-    --bg:#faf8f5; --side:#f3efe9; --panel:#ffffff; --raise:#f0ece6; --input:#ffffff;
-    --line:#e3ddd4; --line-soft:#eee9e2;
-    --fg:#211e1b; --muted:#6b645c; --faint:#9a9289;
-    --accent:#b35f31; --accent-dim:#d9a483;
-    --ok:#2d7a4f; --bad:#b4453a; --live:#3a6ea5; --warn:#8a6a1f;
+    --bg:#f5f8fc; --side:#eaf0f8; --panel:#ffffff; --raise:#e8eef7; --input:#ffffff;
+    --line:#d3ddeb; --line-soft:#e5ecf5;
+    --fg:#0d1626; --muted:#4f5f79; --faint:#8292aa;
+    --accent:#1f4786; --accent-dim:#a8c0e2;
+    --ok:#1f7a4d; --bad:#b4433a; --live:#2a5fa8; --warn:#8a6a1f;
   }
 }
 * { box-sizing:border-box }
@@ -39,9 +41,12 @@ button { font:inherit; cursor:pointer; border:0; background:none; color:inherit 
 /* ---------- sidebar ---------- */
 aside { width:264px; flex:none; background:var(--side);
   border-right:1px solid var(--line); display:flex; flex-direction:column }
-.brand { padding:20px 20px 16px; display:flex; align-items:baseline; gap:9px }
-.brand b { font-size:16.5px; font-weight:650; letter-spacing:-.015em }
-.brand i { font-style:normal; color:var(--faint); font-size:11.5px }
+.brand { padding:18px 18px 15px; display:flex; align-items:center; gap:10px }
+.mark { width:30px; height:30px; flex:none; border-radius:9px }
+.wordmark { display:flex; flex-direction:column; min-width:0 }
+.wordmark b { font-size:16.5px; font-weight:650; letter-spacing:-.02em; line-height:1.15 }
+.wordmark i { font-style:normal; color:var(--faint); font-size:10.5px; line-height:1.3;
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap }
 .side-h { padding:16px 20px 7px; color:var(--faint); font-size:10.5px;
   text-transform:uppercase; letter-spacing:.1em; font-weight:600;
   display:flex; align-items:center; justify-content:space-between }
@@ -227,81 +232,131 @@ select { background:transparent; color:var(--muted); border:1px solid var(--line
 .segmented button.on { background:var(--raise); color:var(--fg); font-weight:600 }
 
 
-/* ---------- the office ----------
-   A plan of the room rather than a dashboard. Every desk says what it is
-   doing in words, and a desk that has finished carries a tick. There are no
-   percentages anywhere: a job made of fifteen items that must each hold a
-   test suite does not have a meaningful halfway point, and a number that
-   looks precise while meaning nothing is worse than a sentence. */
-.office { flex:1; overflow-y:auto; padding:26px 30px 10px }
-.floor { max-width:900px; margin:0 auto; display:flex; flex-direction:column; gap:20px }
 
-.wall { display:grid; grid-template-columns:1.35fr 1fr; gap:16px }
-.board { background:var(--panel); border:1px solid var(--line);
-  border-radius:12px; padding:15px 17px; min-height:150px }
-.board h5 { margin:0 0 11px; font-size:10.5px; letter-spacing:.1em;
+
+/* ---------- account row ---------- */
+.account { width:100%; display:flex; align-items:center; gap:10px; text-align:left;
+  padding:13px 18px; border-top:1px solid var(--line); color:var(--muted);
+  transition:background .12s }
+.account:hover { background:var(--raise); color:var(--fg) }
+.account .who { flex:1; min-width:0; display:flex; flex-direction:column }
+.account .who b { font-size:12.5px; font-weight:600; color:var(--fg);
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap }
+.account .who i { font-style:normal; font-size:10.5px; color:var(--faint);
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap }
+.account .gear { font-size:15px; opacity:.6 }
+.dot { width:7px; height:7px; border-radius:50%; flex:none; background:var(--faint) }
+.dot.ok { background:var(--ok) } .dot.bad { background:var(--bad) }
+
+/* ---------- is it running ---------- */
+.running { display:flex; align-items:center; gap:7px; padding:4px 11px 4px 9px;
+  border:1px solid var(--line); border-radius:999px; background:var(--raise) }
+.running b { font-size:11.5px; font-weight:550; color:var(--fg); max-width:320px;
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap }
+.running i { font-style:normal; font-size:11px; color:var(--faint);
+  font-family:ui-monospace,Menlo,monospace }
+.pulse { width:7px; height:7px; border-radius:50%; background:var(--live); flex:none;
+  animation:breathe 1.4s ease-in-out infinite }
+@keyframes breathe { 0%,100% { opacity:1; transform:scale(1) }
+  50% { opacity:.35; transform:scale(.72) } }
+
+/* ---------- composer pickers ---------- */
+.picks { display:flex; gap:6px; justify-content:flex-end; align-items:center }
+.pick { display:flex; align-items:center; gap:5px; padding:4px 9px;
+  border:1px solid var(--line); border-radius:999px; background:var(--raise);
+  color:var(--fg); font-size:11.5px; font-weight:550; line-height:1.4;
+  transition:border-color .12s, background .12s }
+.pick:hover { border-color:var(--accent) }
+.pick.ghost { background:transparent; color:var(--muted) }
+.pick .caret { font-size:8px; opacity:.6 }
+.go { width:29px; height:29px; margin-left:3px; border-radius:50%; flex:none;
+  background:var(--accent); color:#fff; font-size:13px; line-height:1;
+  display:flex; align-items:center; justify-content:center;
+  transition:background .14s, transform .14s }
+.go:hover { transform:translateY(-1px) }
+.go.stopping { background:var(--bad) }
+.go:disabled { opacity:.45; transform:none }
+.pop { position:absolute; bottom:calc(100% + 9px); right:0; z-index:40; width:282px;
+  background:var(--panel); border:1px solid var(--line); border-radius:var(--r);
+  box-shadow:0 18px 44px rgba(0,0,0,.4); padding:5px; overflow:hidden }
+.pi { display:flex; gap:9px; padding:8px 9px; border-radius:7px; cursor:pointer }
+.pi:hover { background:var(--raise) }
+.pi .mk { width:13px; flex:none; color:var(--accent); font-size:12px; line-height:1.5 }
+.pi .t { font-size:12.5px; font-weight:600 }
+.pi .s { font-size:11px; color:var(--faint); line-height:1.45 }
+.pi.off { opacity:.45; cursor:default }
+.pi.off:hover { background:none }
+
+/* ---------- settings sheet ---------- */
+.sheet { position:fixed; inset:0; z-index:60; display:flex;
+  align-items:center; justify-content:center }
+.sheet-bg { position:absolute; inset:0; background:rgba(4,8,16,.6) }
+.sheet-card { position:relative; width:min(560px,92vw); max-height:86vh;
+  overflow:auto; background:var(--panel); border:1px solid var(--line);
+  border-radius:14px; box-shadow:0 30px 80px rgba(0,0,0,.5) }
+.sheet-top { position:sticky; top:0; background:var(--panel); display:flex;
+  align-items:center; justify-content:space-between; padding:16px 20px;
+  border-bottom:1px solid var(--line-soft); z-index:2 }
+.sheet-top b { font-size:14.5px; font-weight:650 }
+.sheet-card section { padding:17px 20px; border-bottom:1px solid var(--line-soft) }
+.sheet-card section:last-child { border-bottom:0 }
+.sheet-card h4 { margin:0 0 11px; font-size:10.5px; letter-spacing:.1em;
   text-transform:uppercase; color:var(--faint); font-weight:600 }
-.board p { margin:0 0 12px; font-size:12.5px; line-height:1.6; color:var(--muted) }
-.board-items { display:flex; flex-direction:column; gap:3px;
-  max-height:184px; overflow-y:auto }
-.bi { display:flex; gap:9px; align-items:baseline; font-size:12.5px; padding:3px 0 }
-.bi .mk { width:13px; flex:none; color:var(--faint) }
-.bi .t { color:var(--muted) }
-.bi.done .mk { color:var(--ok) } .bi.done .t { color:var(--fg) }
-.bi.working .mk { color:var(--live) } .bi.working .t { color:var(--fg) }
-.bi.reverted .mk, .bi.blocked .mk { color:var(--bad) }
+.kv > div { display:flex; justify-content:space-between; gap:14px;
+  padding:5px 0; font-size:12.5px }
+.kv span { color:var(--muted) }
+.kv b { font-weight:550; text-align:right; word-break:break-all }
+.save { margin-top:12px; padding:13px 14px; background:var(--raise);
+  border-radius:9px; border:1px solid var(--line-soft) }
+.save p { margin:0 0 9px; font-size:12.5px; line-height:1.6 }
+.save p:last-child { margin:0 }
+.segmented { display:flex; gap:4px; padding:3px; background:var(--input);
+  border:1px solid var(--line); border-radius:9px; width:fit-content }
+.segmented button { padding:6px 14px; border-radius:7px; font-size:12px;
+  color:var(--muted) }
+.segmented button.on { background:var(--raise); color:var(--fg); font-weight:600 }
+.tabs { padding:2px }
+.tabs button { padding:4px 11px; font-size:11.5px; border-radius:6px }
 
-.gauge .g { display:flex; gap:11px; align-items:center; padding:11px 13px;
-  background:var(--raise); border-radius:9px; border:1px solid var(--line-soft) }
-.gauge b { font-size:17px; line-height:1; color:var(--faint) }
-.gauge .g.ok b { color:var(--ok) } .gauge .g.bad b { color:var(--bad) }
-.gauge span { font-size:12px; color:var(--muted); line-height:1.45 }
+/* ---------- the office ----------
+   Drawn as a room rather than listed as a table, because four cards in a row
+   is a table pretending to be a picture. Every status is a sentence and every
+   finished desk carries a tick. There are no percentages: a job made of
+   fifteen items that must each hold a test suite has no meaningful halfway
+   point, and a number that looks precise while meaning nothing is worse than
+   a sentence that does not. */
+.office { flex:1; overflow-y:auto; padding:22px 30px 10px }
+.floor { max-width:860px; margin:0 auto; display:flex; flex-direction:column; gap:16px }
+.room { background:var(--panel); border:1px solid var(--line); border-radius:14px;
+  padding:10px; overflow:hidden }
+.scene { display:block; width:100%; height:auto }
+.svg-name { fill:var(--fg); font:600 12.5px ui-sans-serif,-apple-system,sans-serif }
+.svg-role { fill:var(--faint); font:11px ui-sans-serif,-apple-system,sans-serif }
+.svg-h { fill:var(--faint); font:600 9.5px ui-sans-serif,-apple-system,sans-serif;
+  letter-spacing:.1em }
+.svg-small { fill:var(--muted); font:11.5px ui-sans-serif,-apple-system,sans-serif }
 
-.desks { display:flex; align-items:stretch; gap:0 }
-.desk { flex:1; min-width:0; background:var(--panel); border:1px solid var(--line);
-  border-radius:12px; padding:14px 15px 15px; transition:border-color .18s, background .18s }
-.desk .head { display:flex; align-items:center; justify-content:space-between;
-  margin-bottom:9px }
-.desk .who { font-size:21px; line-height:1; filter:grayscale(1) opacity(.5);
-  transition:filter .18s }
-.desk .mk { font-size:14px; color:var(--faint); line-height:1 }
-.desk .name { font-size:13px; font-weight:650; letter-spacing:-.01em }
-.desk .role { font-size:11px; color:var(--faint); margin-top:1px; line-height:1.4 }
-.desk .state { margin-top:9px; padding-top:9px; border-top:1px solid var(--line-soft);
-  font-size:11.5px; line-height:1.5; color:var(--muted); min-height:36px }
-.desk .tag { margin-top:8px; display:inline-block; font-size:10px; padding:2px 7px;
-  border-radius:999px; background:var(--raise); color:var(--faint) }
+.legend { display:flex; flex-direction:column; gap:10px }
+.who-list { display:grid; grid-template-columns:1fr 1fr; gap:3px 18px }
+.who-row { display:flex; align-items:baseline; gap:9px; padding:6px 10px;
+  border-radius:8px; font-size:12.5px }
+.who-row .mk { width:13px; flex:none; color:var(--faint); text-align:center }
+.who-row b { font-weight:600; flex:none; min-width:66px }
+.who-row .st { color:var(--muted); line-height:1.45 }
+.who-row .tag { font-size:10px; padding:1px 7px; border-radius:999px;
+  background:var(--raise); color:var(--faint); flex:none }
+.who-row.working { background:var(--raise) }
+.who-row.working .mk { color:var(--live) }
+.who-row.working .st { color:var(--fg) }
+.who-row.done .mk { color:var(--ok) }
+.who-row.failed .mk { color:var(--bad) }
+.who-row.skipped { opacity:.5 }
 
-.desk.working { border-color:var(--live); background:var(--raise) }
-.desk.working .who { filter:none }
-.desk.working .mk { color:var(--live) }
-.desk.working .state { color:var(--fg) }
-.desk.done .who { filter:grayscale(.3) }
-.desk.done .mk { color:var(--ok) }
-.desk.done .state { color:var(--fg) }
-.desk.failed { border-color:var(--bad) }
-.desk.failed .mk { color:var(--bad) }
-.desk.skipped { opacity:.5 }
-
-/* the hand-off between desks, drawn rather than labelled */
-.flow { flex:none; width:26px; align-self:center; position:relative; height:1px;
-  background:var(--line) }
-.flow::after { content:""; position:absolute; right:0; top:-3px;
-  border:3.5px solid transparent; border-left-color:var(--line) }
-
-.shelf { display:flex; align-items:baseline; gap:11px; padding:12px 15px;
+.shelf { display:flex; align-items:baseline; gap:11px; padding:11px 14px;
   background:var(--side); border:1px solid var(--line-soft); border-radius:10px }
 .shelf-h { font-size:10.5px; letter-spacing:.1em; text-transform:uppercase;
   color:var(--faint); font-weight:600; flex:none }
 .shelf-items { display:flex; gap:7px; flex-wrap:wrap; font-size:12px }
 .shelf-items i { font-style:normal; color:var(--faint); font-size:12px }
 
-.tabs { padding:2px }
-.tabs button { padding:4px 11px; font-size:11.5px; border-radius:6px }
-
-@media (max-width:860px) {
-  .wall { grid-template-columns:1fr }
-  .desks { flex-wrap:wrap; gap:10px }
-  .desk { flex:1 1 44% }
-  .flow { display:none }
-}
+@media (max-width:820px) { .who-list { grid-template-columns:1fr } }

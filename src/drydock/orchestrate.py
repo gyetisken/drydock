@@ -26,7 +26,7 @@ def execute(
     stop_after: int | None = None,
     per_item: float = 2.5,
     engine: str = "api",
-    model: str = "sonnet",
+    model: str = "opus",
     skills=None,
     on_event=None,
     on_item=None,

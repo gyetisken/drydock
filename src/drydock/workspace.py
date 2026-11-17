@@ -118,7 +118,7 @@ class Workspace:
         skills: list[Skill],
         budget: float,
         engine: str = "claude",
-        model: str = "sonnet",
+        model: str = "opus",
         stop_after: str = "planner",
     ) -> Session:
         session = Session(
