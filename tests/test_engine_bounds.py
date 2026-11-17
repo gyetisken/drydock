@@ -440,3 +440,69 @@ class _Dribbles:
 
     def terminate(self):
         pass
+
+
+class TestARetryIsGivenMoreThanTheAttemptBeforeIt:
+    """It has more to do: the item, plus everything it was sent back for,
+    read and dealt with one by one. Twelve minutes bounds an ordinary
+    attempt and was being applied to the hardest one."""
+
+    def test_a_first_attempt_gets_the_ordinary_clock(self, monkeypatch):
+        assert _minutes_for(monkeypatch, retry_of="") == 12.0
+
+    def test_a_retry_gets_longer(self, monkeypatch):
+        assert _minutes_for(monkeypatch, retry_of="the critic sent it back") == 18.0
+
+    def test_a_retry_gets_the_judgement_model(self, monkeypatch):
+        """Another ten minutes of the same mistake costs more than the
+        difference between the models."""
+        assert _model_for(monkeypatch, retry_of="sent back") == "opus"
+        assert _model_for(monkeypatch, retry_of="") == "sonnet"
+
+
+def _built(monkeypatch, retry_of: str):
+    """The engine the engineer would build, without running anything."""
+    from drydock import engineer
+
+    seen = {}
+
+    class Fake:
+        def __init__(self, model="opus", max_turns=60, minutes=12.0):
+            seen["model"] = model
+            seen["minutes"] = minutes
+
+        def work(self, *a, **k):
+            class Result:
+                done = True
+                summary = ""
+                files_changed: list = []
+                noticed: list = []
+                question = ""
+                died = False
+                dollars = 0.0
+                turns = 1
+
+            return Result()
+
+    monkeypatch.setattr(engineer, "ClaudeCodeEngine", Fake)
+    monkeypatch.setattr(engineer, "briefing", lambda skills, role: "")
+    from drydock.models import Item
+
+    engineer.work(
+        __import__("pathlib").Path("/tmp"),
+        "a task",
+        Item(id=1, title="t", rationale="r", files=[], verify_with="tests"),
+        "npm run build",
+        retry_of=retry_of,
+        engine="claude",
+        model="opus",
+    )
+    return seen
+
+
+def _minutes_for(monkeypatch, retry_of: str) -> float:
+    return _built(monkeypatch, retry_of)["minutes"]
+
+
+def _model_for(monkeypatch, retry_of: str) -> str:
+    return _built(monkeypatch, retry_of)["model"]
