@@ -30,6 +30,37 @@ function youSaid(text) {
 
 const live = { items: new Map(), baseline: null, tests: null, reverted: 0, el: {} };
 
+function elapsed(item) {
+  if (!item.began) return "";
+  const seconds = Math.round(((item.ended || Date.now()) - item.began) / 1000);
+  if (seconds < 2) return "";
+  // Floored, not rounded: 392 seconds shown as 7m is a minute longer than
+  // it took and disagrees with the seconds beside it.
+  return seconds < 90
+    ? `${seconds}s`
+    : `${Math.floor(seconds / 60)}m ${String(seconds % 60).padStart(2, "0")}s`;
+}
+
+let ticking = 0;
+function tick() {
+  // One timer for the whole panel, started when something starts working
+  // and stopped when nothing is. A timer per item leaks one per item.
+  if (ticking) return;
+  ticking = setInterval(() => {
+    const working = [...live.items.values()].some(i => i.status === "working");
+    if (!working) {
+      clearInterval(ticking);
+      ticking = 0;
+      return;
+    }
+    live.el.plan?.querySelectorAll(".step.working .took").forEach(el => {
+      const item = live.items.get(Number(el.closest(".step")
+        ?.querySelector(".n")?.textContent));
+      if (item) el.textContent = elapsed(item);
+    });
+  }, 1000);
+}
+
 function renderPlan() {
   if (!live.el.plan) return;
   const items = [...live.items.values()];
@@ -39,7 +70,9 @@ function renderPlan() {
           ? '<span class="spin"></span>' : (MK[i.status] || "·")}</span>
         <span class="n mono">${i.id}</span>
         <div>
-          <div class="ttl">${esc(i.plain || i.title)}</div>
+          <div class="ttl">${esc(i.plain || i.title)}${
+            elapsed(i) ? `<span class="took mono">${elapsed(i)}</span>` : ""
+          }</div>
           ${i.status === "working" && i.doing
             ? `<div class="doing"><span class="now">${esc(i.doing)}</span>${
                 (i.steps || []).length > 1
@@ -371,6 +404,11 @@ const on = {
       i.gates = "";
       i.doing = "getting started";
       i.steps = [];
+      // "Is it still going" was the most asked question about this program,
+      // and the answer was a spinner, which answers a different one.
+      i.began = Date.now();
+      i.ended = 0;
+      tick();
       renderPlan();
     }
     Office.at("Engineer", "working", `item ${e.id}: ${e.title}`);
@@ -426,6 +464,7 @@ const on = {
     const i = live.items.get(e.id);
     if (i) {
       i.status = e.outcome;
+      i.ended = Date.now();
       i.note = e.note + (e.attempts > 1 ? ` · ${e.attempts} attempts` : "");
       renderPlan();
     }

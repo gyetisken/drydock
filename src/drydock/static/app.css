@@ -679,3 +679,8 @@ body.split .composer .cwrap { max-width:none }
 .body.pace ul { margin:6px 0 0; padding-left:16px; display:flex;
   flex-direction:column; gap:3px }
 .body.pace li { font-size:11.5px; color:var(--muted); line-height:1.5 }
+
+/* how long an item has been going, and how long it took */
+.step .ttl .took { margin-left:8px; font-size:10.5px; color:var(--faint);
+  font-variant-numeric:tabular-nums; letter-spacing:0 }
+.step.working .ttl .took { color:var(--accent) }
