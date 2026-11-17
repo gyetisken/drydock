@@ -175,6 +175,28 @@ function readable(detail) {
   return "";
 }
 
+// Just enough markdown for an answer: paragraphs, code, lists, bold. Not a
+// renderer - an answer that arrives as one wall of text is an answer nobody
+// reads, and pulling in a library for four shapes is not worth it.
+function marked(text) {
+  const safe = esc(text || "");
+  return safe
+    .replace(/```([\s\S]*?)```/g, (_, code) => `<pre class="block">${code.trim()}</pre>`)
+    .replace(/`([^`\n]+)`/g, "<code>$1</code>")
+    .replace(/\*\*([^*\n]+)\*\*/g, "<b>$1</b>")
+    .split(/\n{2,}/)
+    .map(para => {
+      if (para.startsWith("<pre")) return para;
+      const lines = para.split("\n");
+      if (lines.every(l => /^\s*[-*]\s/.test(l))) {
+        return "<ul>" + lines.map(l =>
+          `<li>${l.replace(/^\s*[-*]\s/, "")}</li>`).join("") + "</ul>";
+      }
+      return `<p>${para.replace(/\n/g, "<br>")}</p>`;
+    })
+    .join("");
+}
+
 function toolLine(agent, detail) {
   if (!live.el.tools) return;
   live.el.tools.querySelector("details").style.display = "";
@@ -384,6 +406,12 @@ const on = {
   },
   "stopping": (e) => {
     say("crew", `<div class="body"><p>Stopping. ${esc(e.note)}</p></div>`, "dim");
+  },
+  // An answer, not a job. No plan, no items, no branch.
+  "answer": (e) => {
+    say("crew", `<div class="body answer">${marked(e.text)}</div>`);
+    running(false);
+    $("go").disabled = false;
   },
   "run.summary": (e) => {
     running(false);

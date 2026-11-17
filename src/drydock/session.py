@@ -15,6 +15,7 @@ from typing import ClassVar
 
 from . import preview
 from .analyst import baseline, survey
+from .answer import ask
 from .architect import as_briefing, design
 from .commands import STAGES
 from .designer import as_briefing as look_briefing
@@ -23,7 +24,7 @@ from .detect import detect
 from .engines import stop_workers
 from .events import Feed
 from .memory import Memory
-from .models import Inventory
+from .models import Inventory, Item, Plan
 from .orchestrate import execute
 from .planner import plan
 from .repo import Repo
@@ -111,6 +112,13 @@ class Session:
 
     def _work(self, auto_run: bool) -> None:
         try:
+            # A question is not a job. No branch, no plan, no approval, no
+            # commit - and no baseline either, because nothing is going to
+            # be compared against it.
+            if self.stop_after == "ask":
+                self._answer()
+                return
+
             chain = detect(self.repo)
             if self.standing:
                 self.task = (
@@ -150,6 +158,50 @@ class Session:
 
             if self.stop_after == "baseline":
                 self._finish_early()
+                return
+
+            # One small change, straight to the work. The gates still run -
+            # it is the planning and the approval that are skipped, not the
+            # checking, because the checking is the point and a plan for a
+            # typo is a plan nobody reads.
+            if self.stop_after == "straight":
+                self.run.plan = Plan(
+                    summary="One change, done directly.",
+                    items=[
+                        Item(
+                            id=1,
+                            title=self.task,
+                            plain=self.task,
+                            rationale="Asked for directly, with no plan.",
+                            files=[],
+                            verify_with="tests" if b.tests_run else "build",
+                        )
+                    ],
+                )
+                self.run.save()
+                for who in ("Analyst", "Architect", "Designer", "Planner"):
+                    self.feed.emit(
+                        "agent.state",
+                        agent=who,
+                        state="skipped",
+                        note="not needed for one small change",
+                    )
+                self.feed.emit(
+                    "plan.ready",
+                    summary=self.run.plan.summary,
+                    items=[
+                        {
+                            "id": 1,
+                            "title": self.task,
+                            "plain": self.task,
+                            "verify_with": self.run.plan.items[0].verify_with,
+                            "rationale": "",
+                        }
+                    ],
+                    cost=0.0,
+                    approved=True,
+                )
+                self.work_the_plan()
                 return
 
             # An empty repository has nothing to survey, and a survey run
@@ -358,6 +410,40 @@ class Session:
             (self.repo / name).exists()
             for name in ("public", "static", "views", "templates", "src/pages")
         )
+
+    def _answer(self) -> None:
+        """Read the repository and say what it says."""
+        self.run = Run.start(self.repo, self.task, [])
+        self.run.engine = self.engine
+        self.run.model = self.model
+        self.feed.emit(
+            "run.started",
+            repo=self.repo.name,
+            task=self.task,
+            skills=[],
+            toolchain="",
+            stages=["ask"],
+        )
+        self.feed.emit(
+            "agent.state",
+            agent="Analyst",
+            state="working",
+            note="reading the repository",
+        )
+
+        said, usage = ask(
+            self.repo,
+            self.task,
+            engine=self.engine,
+            model=self.model,
+            on_event=self._agent_event("Analyst"),
+            memory=self.memory,
+            commit=Repo(self.repo).head(),
+        )
+        self._spent(usage, "Analyst")
+        self.feed.emit("agent.state", agent="Analyst", state="done", note="answered")
+        self.feed.emit("answer", text=said)
+        self.feed.close()
 
     def _survey(self, b, chain, commit: str) -> None:
         """Read the repository, and keep what was read."""

@@ -31,7 +31,21 @@ class Command:
 
     @property
     def stages(self) -> list[str]:
+        # Two commands are not stages of the line at all. `/ask` answers and
+        # changes nothing; `/fix` is one change with no plan and no approval,
+        # because a plan for a typo is a plan nobody reads and eight minutes
+        # of ceremony for twenty seconds of work is why somebody opens a
+        # terminal instead.
+        if self.stop_after == "ask":
+            return ["ask"]
+        if self.stop_after == "straight":
+            return ["baseline", "engineer"]
         return STAGES[: STAGES.index(self.stop_after) + 1]
+
+    @property
+    def ceremony(self) -> bool:
+        """Whether this goes through planning and approval."""
+        return self.stop_after not in ("ask", "straight")
 
     def task_for(self, answer: str) -> str:
         if not self.task_template:
@@ -42,6 +56,20 @@ class Command:
 
 
 BUILT_IN = [
+    Command(
+        name="/ask",
+        summary="A question about this project. Nothing is changed.",
+        asks="what you want to know",
+        task_template="{what}",
+        stop_after="ask",
+    ),
+    Command(
+        name="/fix",
+        summary="One small change, straight away. No plan, no approval.",
+        asks="what to change",
+        task_template="{what}",
+        stop_after="straight",
+    ),
     Command(
         name="/check",
         summary="Build it and run the suite. No model, no changes, no cost.",
