@@ -23,7 +23,7 @@ const Office = (() => {
     hair_spiky: "char/hair_spiky.png", hair_parted: "char/hair_parted.png",
     hair_mop: "char/hair_mop.png", hair_long_waves: "char/hair_long_waves.png",
     hair_slicked_back: "char/hair_slicked_back.png",
-    floor: "prop/floor.png", carpet: "prop/carpet.png", wall: "prop/wall.png",
+    floor: "prop/floor.png", wall: "prop/wall.png",
     desk: "prop/desk.png", chair: "prop/chair.png",
     pc_off: "prop/pc_off.png", pc_on1: "prop/pc_on1.png",
     pc_on2: "prop/pc_on2.png", pc_on3: "prop/pc_on3.png",
@@ -103,15 +103,17 @@ const Office = (() => {
 
   // The wall sheet is a 4x4 bitmask grid of 16x32 pieces; mask 10 is the piece
   // with a neighbour either side, which is the only one that tiles a long run
-  // without drawing its own end caps. The carpet sheet is marching squares and
-  // case 15 is its interior. Both were found by rendering all sixteen and
+  // without drawing its own end caps. Found by rendering all sixteen and
   // looking, which took less time than reading the packing code.
+  //
+  // A rug was tried here and taken out again: the carpet sheet is darker than
+  // the floor, so under every desk sat a band that read as a hole. A bad
+  // decoration removed beats a third attempt at it.
   const WALL_RUN = { sx: 32, sy: 64 };
-  const CARPET_IN = { sx: 48, sy: 48 };
 
   // The art is greyscale, so the room's colour is this program's, not the
   // pack's, and it follows the theme like everything else.
-  function wash(img, colour, key) {
+  function wash(img, colour, key, mode = "multiply") {
     if (tinted.has(key)) return tinted.get(key);
     // An image that has not arrived yet has no dimensions, and caching the
     // empty canvas made from it means it never arrives at all.
@@ -120,7 +122,7 @@ const Office = (() => {
     c.width = img.width; c.height = img.height;
     const g = c.getContext("2d");
     g.drawImage(img, 0, 0);
-    g.globalCompositeOperation = "multiply";
+    g.globalCompositeOperation = mode;
     g.fillStyle = colour;
     g.fillRect(0, 0, c.width, c.height);
     g.globalCompositeOperation = "destination-in";
@@ -135,23 +137,13 @@ const Office = (() => {
       : document.documentElement.getAttribute("data-theme") === "dark";
     const floorHue = dark ? "#6d5f54" : "#cbb9a6";
     const wallHue  = dark ? "#55627d" : "#cfd8e6";
-    const rugHue   = dark ? "#8d9bb8" : "#aebdd4";
 
     const floor = wash(art.floor, floorHue, "f" + floorHue);
     const wall = wash(art.wall, wallHue, "w" + wallHue);
-    const rug = wash(art.carpet, rugHue, "r" + rugHue);
 
     if (floor) {
       for (let y = 2; y < ROWS; y++) {
         for (let x = 0; x < COLS; x++) ctx.drawImage(floor, x * TILE, y * TILE);
-      }
-    }
-    if (rug) {
-      for (const [y0, x0, x1] of [[8, 1, 29], [15, 2, 26]]) {
-        for (let x = x0; x < x1; x++) {
-          ctx.drawImage(rug, CARPET_IN.sx, CARPET_IN.sy, TILE, TILE,
-            x * TILE, y0 * TILE, TILE, TILE);
-        }
       }
     }
     if (wall) {
@@ -160,10 +152,12 @@ const Office = (() => {
       }
     }
 
-    tile(art.bookshelf, 1, 1, 2, 1);
-    tile(art.clock, 21, 0, 1, 2);
+    tile(art.bookshelf, 0, 1, 2, 1);
+    tile(art.clock, 2, 0, 1, 2);
     tile(art.coffee, 30, 2, 1, 1);
     tile(art.plant_big, 32, 2, 2, 3);
+    tile(art.desk, 14, 10, 3, 2);
+    tile(art.coffee, 15, 9, 1, 1);
     tile(art.plant, 0, 17, 1, 2);
     tile(art.plant, 32, 17, 1, 2);
   }
