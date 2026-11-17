@@ -49,6 +49,19 @@ hard. If you have written seven, go back and find the three that were only
 split because they could be. If you have written ten, you have planned a
 list of files rather than a sequence of working states.
 
+**Say what each item actually needs.** Items are worked on at the same time
+when they need nothing from each other, so the dependencies are the
+difference between a run that takes twenty minutes and one that takes forty.
+
+An item needs another when it imports what that one writes, when it edits a
+file that one creates, or when it cannot be verified until that one has
+landed. It does not need another merely because it comes after it in the
+list. The first item - the one that makes the suite able to tell you
+anything - is needed by everything.
+
+Be honest in both directions. Claiming a dependency that is not there costs
+time; missing one that is there costs a conflict and a rolled-back item.
+
 Order by what would hide a problem. If one change could make the test suite
 stop reporting failures honestly, it comes first, because everything after it
 is judged by that suite.
@@ -142,6 +155,17 @@ def _plan_tool() -> Tool:
                                 "type": "string",
                                 "enum": ["build", "tests"],
                             },
+                            "needs": {
+                                "type": "array",
+                                "items": {"type": "integer"},
+                                "description": (
+                                    "The ids of items that must land before "
+                                    "this one can start. Empty when it can be "
+                                    "done from the state the run began in. "
+                                    "Two items that touch the same file need "
+                                    "each other; two that do not, do not."
+                                ),
+                            },
                             "removes_tests": {
                                 "type": "boolean",
                                 "description": (
@@ -159,6 +183,7 @@ def _plan_tool() -> Tool:
                             "rationale",
                             "files",
                             "verify_with",
+                            "needs",
                             "removes_tests",
                         ],
                         "additionalProperties": False,
@@ -208,7 +233,8 @@ def plan(
             filled,
             '{"summary": "...", "items": [{"id": 1, "title": "...", '
             '"plain": "...", "rationale": "...", "files": ["..."], '
-            '"verify_with": "build|tests", "removes_tests": false}]}',
+            '"verify_with": "build|tests", "needs": [], '
+            '"removes_tests": false}]}',
             on_event=on_event,
         )
         return Plan.model_validate(result), _Spend(dollars, turns)

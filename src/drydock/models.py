@@ -72,6 +72,17 @@ class Item(BaseModel):
     rationale: str
     files: list[str]
     verify_with: str = Field(description="build or tests")
+    needs: list[int] = Field(
+        default_factory=list,
+        description=(
+            "The items this one cannot be started before. Items that need "
+            "nothing from each other are worked on at the same time, so an "
+            "honest answer here is the difference between a run that takes "
+            "twenty minutes and one that takes forty. An item that touches "
+            "the same file as another, or that imports what another writes, "
+            "needs it."
+        ),
+    )
     removes_tests: bool = Field(
         default=False,
         description=(

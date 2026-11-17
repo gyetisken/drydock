@@ -28,6 +28,10 @@ class Run(BaseModel):
     # now only the planner ever saw it - which is why the accent colour that
     # was specified appeared nowhere on the page.
     direction: str = ""
+    # The loaded skill bodies for this run. Not written to disk - they come
+    # from files - but carried so a worker in a worktree can be handed the
+    # same briefing as one in the repository.
+    skills_loaded: list = Field(default_factory=list, exclude=True)
     baseline: Baseline | None = None
     inventory: Inventory | None = None
     plan: Plan | None = None

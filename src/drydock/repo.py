@@ -76,6 +76,42 @@ class Repo:
         "*.min.css",
     )
 
+    def worktree(self, name: str, at: str) -> Path:
+        """A second working copy of this repository, sharing its history.
+
+        Two workers cannot edit one checkout: they would see each other's
+        half-finished files and the diff of either would contain the other's
+        work. A worktree gives each one its own files and the same git, so
+        the commits land in the same place and nothing is copied.
+        """
+        where = self.path.parent / f".drydock-{self.path.name}-{name}"
+        if where.exists():
+            self._git(f"worktree remove --force {_quote(str(where))}")
+        code, out = self._git(
+            f"worktree add --detach {_quote(str(where))} {_quote(at)}"
+        )
+        if code:
+            raise RuntimeError(f"could not make a worktree: {out[-400:]}")
+        return where
+
+    def drop_worktree(self, where: Path) -> None:
+        self._git(f"worktree remove --force {_quote(str(where))}")
+
+    def take(self, commit: str) -> tuple[bool, str]:
+        """Bring one commit onto this branch. False when it will not apply.
+
+        cherry-pick rather than merge: each item is one commit and stays one
+        commit, which is what makes the history readable and a single item
+        revertable. A conflict means two items touched the same lines after
+        the planner said they would not, and the honest answer is to put that
+        item back in the queue rather than to resolve it blind.
+        """
+        code, out = self._git(f"cherry-pick --allow-empty {_quote(commit)}")
+        if code:
+            self._git("cherry-pick --abort")
+            return False, out[-500:]
+        return True, self._git("rev-parse --short HEAD")[1].strip()
+
     def pending_for_review(self) -> str:
         """The uncommitted change, without the parts nobody wrote by hand."""
         self._git("add -A -N")

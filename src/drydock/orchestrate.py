@@ -24,6 +24,7 @@ from .repo import Repo
 from .reviewer import review
 from .run import Run
 from .verify import verify
+from .waves import plan_waves
 
 
 class DirtyTree(Exception):
@@ -158,6 +159,222 @@ def _judge(
     return "\n\n".join(refusals)
 
 
+def _one_item(
+    where: Path,
+    main: Repo,
+    run,
+    item,
+    engine: str,
+    model: str,
+    reviewing: bool,
+    per_item: float,
+    on_event,
+    on_gate,
+):
+    """Work one item to a verdict, in `where`, and return what happened.
+
+    `where` is a working copy - the repository itself when items run one at
+    a time, or a worktree of it when several run together. Everything in
+    here is the same either way, which is the point: concurrency changed
+    where the work happens and nothing about how it is judged.
+    """
+    here = Repo(where)
+    attempt, failure, result = 1, "", None
+
+    def commands_now() -> dict:
+        chain = detect(where)
+        return {"build": chain.build_command, "tests": chain.test_command}
+
+    while attempt <= 2:
+        try:
+            report, usage = work(
+                where,
+                run.task,
+                item,
+                commands_now()["build"],
+                failure,
+                run.skills_loaded,
+                on_event,
+                budget=min(run.left, per_item) if run.budget else per_item,
+                engine=engine,
+                model=model,
+                direction=run.direction,
+            )
+        except BudgetExceeded as stop:
+            here.discard()
+            return ItemResult(
+                item=item, outcome=Outcome.BLOCKED, attempts=attempt, note=str(stop)
+            ), None
+
+        run.spend(usage)
+
+        if not report.get("done"):
+            here.discard()
+            return ItemResult(
+                item=item,
+                outcome=Outcome.BLOCKED,
+                attempts=attempt,
+                note=report.get("summary", "the engineer could not do this item"),
+            ), None
+
+        verdict = verify(where, item.verify_with, run.baseline, commands_now())
+
+        refusal = ""
+        if verdict.passed:
+            diff = here.pending()
+            report_card = look(diff, allow_removals=item.removes_tests, repo=where)
+            if on_gate:
+                on_gate(item, "inspector", report_card.clean, report_card.reason)
+            if not report_card.clean:
+                refusal = report_card.reason
+            else:
+                refusal = _judge(
+                    here,
+                    where,
+                    run,
+                    item,
+                    diff,
+                    report,
+                    reviewing,
+                    engine,
+                    model,
+                    on_event,
+                    on_gate,
+                )
+
+        if verdict.passed and not refusal:
+            commit = here.commit(f"{item.id}. {item.title}\n\n{report['summary']}")
+            return ItemResult(
+                item=item,
+                outcome=Outcome.DONE,
+                attempts=attempt,
+                files_changed=report.get("files_changed", []),
+                checks=[verdict.check],
+                note=verdict.reason,
+                commit=commit,
+            ), commit
+
+        why = refusal or verdict.reason
+        if attempt == 2:
+            here.discard()
+            return ItemResult(
+                item=item,
+                outcome=Outcome.REVERTED,
+                attempts=2,
+                checks=[verdict.check],
+                note=why,
+            ), None
+
+        failure = why if refusal else f"{verdict.reason}\n\n{verdict.check.detail}"
+        attempt += 1
+
+    return result, None
+
+
+def _work_a_wave(
+    repo: Repo,
+    repo_path: Path,
+    run,
+    items: list,
+    engine: str,
+    model: str,
+    reviewing: bool,
+    per_item: float,
+    on_event,
+    on_gate,
+) -> dict:
+    """Work every item in a wave, then bring the ones that landed home.
+
+    One item runs where it is. Several run in worktrees - separate files,
+    the same git - because two workers in one checkout would see each
+    other's half-finished edits and each diff would contain the other's
+    work.
+
+    They are brought back in the order they were planned, by cherry-pick, so
+    each item stays one commit. A cherry-pick that will not apply means two
+    items touched the same lines after the planner said they would not; that
+    item is reported as reverted rather than resolved blind, because
+    resolving a conflict nobody saw is how an agent silently loses work.
+    """
+    if len(items) == 1:
+        result, _commit = _one_item(
+            repo_path,
+            repo,
+            run,
+            items[0],
+            engine,
+            model,
+            reviewing,
+            per_item,
+            on_event,
+            on_gate,
+        )
+        return {items[0].id: result}
+
+    trees: dict[int, Path] = {}
+    at = repo.head()
+    try:
+        for item in items:
+            trees[item.id] = repo.worktree(f"item{item.id}", at)
+
+        done: dict[int, tuple] = {}
+        with ThreadPoolExecutor(max_workers=len(items)) as pool:
+            jobs = {
+                item.id: pool.submit(
+                    _one_item,
+                    trees[item.id],
+                    repo,
+                    run,
+                    item,
+                    engine,
+                    model,
+                    reviewing,
+                    per_item,
+                    on_event,
+                    on_gate,
+                )
+                for item in items
+            }
+        for item in items:
+            try:
+                done[item.id] = jobs[item.id].result()
+            except Exception as exc:  # noqa: BLE001 - one item failing is not the wave failing
+                done[item.id] = (
+                    ItemResult(
+                        item=item,
+                        outcome=Outcome.BLOCKED,
+                        note=f"the worker stopped: {exc}",
+                    ),
+                    None,
+                )
+
+        out: dict[int, ItemResult] = {}
+        for item in items:
+            result, commit = done[item.id]
+            if result.outcome is not Outcome.DONE or not commit:
+                out[item.id] = result
+                continue
+            ok, said = repo.take(commit)
+            if not ok:
+                out[item.id] = ItemResult(
+                    item=item,
+                    outcome=Outcome.REVERTED,
+                    attempts=result.attempts,
+                    note=(
+                        "this landed on its own but will not sit beside the "
+                        "other work in this round; two items touched the same "
+                        f"lines.\n\n{said}"
+                    ),
+                )
+                continue
+            result.commit = said
+            out[item.id] = result
+        return out
+    finally:
+        for where in trees.values():
+            repo.drop_worktree(where)
+
+
 def execute(
     run: Run,
     stop_after: int | None = None,
@@ -188,141 +405,59 @@ def execute(
 
     branch = f"drydock/{run.id}"
     repo.branch(branch)
-    done = {r.item.id for r in run.results}
+    run.skills_loaded = skills
+    landed = {r.item.id for r in run.results if r.outcome.value == "done"}
 
-    for item in run.plan.items:
-        if item.id in done:
-            continue
+    for wave in plan_waves(run.plan.items, landed):
+        if should_stop and should_stop():
+            if on_item:
+                on_item(wave.items[0], "stopped")
+            break
+        if run.budget and run.left <= 0:
+            if on_item:
+                on_item(wave.items[0], "out_of_budget")
+            break
         if stop_after is not None and len(run.results) >= stop_after:
             break
 
-        if should_stop and should_stop():
+        if on_event and len(wave.items) > 1:
+            on_event(
+                "wave",
+                f"{len(wave.items)} items at once: {wave.why}",
+            )
+        for item in wave.items:
             if on_item:
-                on_item(item, "stopped")
-            break
+                on_item(item, "start")
 
-        if run.budget and run.left <= 0:
-            # A run that has spent its budget stops between items, where the
-            # tree is clean and the next item can be resumed later, rather
-            # than halfway through an edit.
+        results = _work_a_wave(
+            repo,
+            repo_path,
+            run,
+            wave.items,
+            engine,
+            model,
+            reviewing,
+            per_item,
+            on_event,
+            on_gate,
+        )
+
+        stop_here = False
+        for item in wave.items:
+            result = results.get(item.id)
+            if result is None:
+                continue
+            run.results.append(result)
+            run.save()
             if on_item:
-                on_item(item, "out_of_budget")
-            break
+                on_item(item, result.outcome.value)
+            if result.outcome in (Outcome.REVERTED, Outcome.BLOCKED):
+                stop_here = True
 
-        if on_item:
-            on_item(item, "start")
-
-        attempt, failure, result = 1, "", None
-        while attempt <= 2:
-            try:
-                report, usage = work(
-                    repo_path,
-                    run.task,
-                    item,
-                    commands_now()["build"],
-                    failure,
-                    skills,
-                    on_event,
-                    budget=min(run.left, per_item) if run.budget else per_item,
-                    engine=engine,
-                    model=model,
-                    direction=run.direction,
-                )
-            except BudgetExceeded as stop:
-                repo.discard()
-                result = ItemResult(
-                    item=item, outcome=Outcome.BLOCKED, attempts=attempt, note=str(stop)
-                )
-                break
-            run.spend(usage)
-
-            if not report.get("done"):
-                result = ItemResult(
-                    item=item,
-                    outcome=Outcome.BLOCKED,
-                    attempts=attempt,
-                    note=report.get("summary", "the engineer could not do this item"),
-                )
-                repo.discard()
-                break
-
-            verdict = verify(repo_path, item.verify_with, run.baseline, commands_now())
-
-            # Three gates, cheapest first, and each one may send the item back.
-            # The suite says the change did not break what was watched. The
-            # inspector says it did not reach green by watching less. The
-            # reviewer says it did the item and not something else. A change
-            # has to pass all three to be allowed to stay.
-            refusal = ""
-            if verdict.passed:
-                diff = repo.pending()
-                report_card = look(
-                    diff, allow_removals=item.removes_tests, repo=repo_path
-                )
-                if on_gate:
-                    on_gate(item, "inspector", report_card.clean, report_card.reason)
-                if not report_card.clean:
-                    refusal = report_card.reason
-                else:
-                    # The reviewer reads the diff; the critic looks at the
-                    # rendered page. Neither needs the other's answer, and
-                    # waiting for one before starting the other was adding
-                    # about a hundred seconds to every visual item for no
-                    # reason at all.
-                    refusal = _judge(
-                        repo,
-                        repo_path,
-                        run,
-                        item,
-                        diff,
-                        report,
-                        reviewing,
-                        engine,
-                        model,
-                        on_event,
-                        on_gate,
-                    )
-
-            if verdict.passed and not refusal:
-                commit = repo.commit(f"{item.id}. {item.title}\n\n{report['summary']}")
-                result = ItemResult(
-                    item=item,
-                    outcome=Outcome.DONE,
-                    attempts=attempt,
-                    files_changed=report.get("files_changed", []),
-                    checks=[verdict.check],
-                    note=verdict.reason,
-                    commit=commit,
-                )
-                break
-
-            why = refusal or verdict.reason
-
-            if attempt == 2:
-                repo.discard()
-                result = ItemResult(
-                    item=item,
-                    outcome=Outcome.REVERTED,
-                    attempts=2,
-                    checks=[verdict.check],
-                    note=why,
-                )
-                break
-
-            # A refusal is handed back as what it is. Telling the engineer the
-            # suite failed when the reviewer objected would send it looking in
-            # the wrong place for the whole of the second attempt.
-            failure = why if refusal else f"{verdict.reason}\n\n{verdict.check.detail}"
-            attempt += 1
-
-        run.results.append(result)
-        run.save()
-        if on_item:
-            on_item(item, result.outcome.value)
-
-        if result.outcome in (Outcome.REVERTED, Outcome.BLOCKED):
-            # Items are ordered, so a later one usually assumes this one landed.
-            # Carrying on would pile changes onto a foundation that was removed.
+        # Items are ordered, and a later one usually assumes an earlier one
+        # landed. Carrying on past a failure would pile changes onto a
+        # foundation that was removed.
+        if stop_here:
             break
 
     return run

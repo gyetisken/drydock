@@ -96,7 +96,7 @@ CHANGE_VERBS = re.compile(
 
 def _jobs(text: str) -> int:
     """How many separate changes this is asking for."""
-    return len(set(m.group(0).lower() for m in CHANGE_VERBS.finditer(text)))
+    return len({m.group(0).lower() for m in CHANGE_VERBS.finditer(text)})
 
 
 def read(text: str, repo: Path | None = None) -> Guess:
