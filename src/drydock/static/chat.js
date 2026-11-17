@@ -99,6 +99,38 @@ function renderStats() {
 // Each landed item offers its own diff, read back out of git on demand. It
 // is not kept with the run: the commit is the record, and a second copy is a
 // copy that can disagree with it.
+async function offerPullRequest(msg, runId) {
+  const row = msg.querySelector("#pr-row");
+  if (!row) return;
+  const can = await (await fetch("/api/can-publish/" + runId)).json();
+  row.style.display = "flex";
+  if (!can.ok) {
+    row.innerHTML = `<span class="hint">${esc(can.reason)}. The work is on its
+      branch either way.</span>`;
+    return;
+  }
+  row.innerHTML = `<button class="btn" id="open-pr">Open a pull request</button>
+    <span class="hint" id="pr-said">As <b>${esc(can.author)}</b>, in draft.
+    The description carries what each gate said about each commit.</span>`;
+  row.querySelector("#open-pr").onclick = async (ev) => {
+    ev.target.disabled = true;
+    row.querySelector("#pr-said").textContent = "pushing the branch…";
+    const res = await fetch("/api/publish", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ run: runId, draft: true }),
+    });
+    const out = await res.json();
+    if (!out.ok) {
+      ev.target.disabled = false;
+      row.querySelector("#pr-said").className = "hint bad";
+      row.querySelector("#pr-said").textContent = out.reason;
+      return;
+    }
+    row.innerHTML = `<span class="hint">Opened:
+      <a href="${esc(out.url)}" target="_blank" rel="noopener">${esc(out.url)}</a></span>`;
+  };
+}
+
 function showDiffLink(e) {
   // The run id is taken now rather than when the panel is opened. A resumed
   // job has a different session key from the run it is continuing, and the
@@ -454,6 +486,7 @@ const on = {
       <p class="why">Each one is its own commit on
       <code>drydock/${esc((S.key || "").replace(/-resumed$/, ""))}</code>, and nothing
       touched your main branch. ${kept}</p>
+      <div class="pr" id="pr-row" style="display:none"></div>
       ${e.url ? `<div class="live-link">
         <span class="dot ok"></span>
         <span>It is running at
@@ -465,6 +498,10 @@ const on = {
       </div>` : ""}</div>`);
 
     if (e.url) { Pv.url = e.url; $("pv-url").value = e.url; Pv.refresh(); }
+
+    // A finished run is only finished when somebody else can look at it.
+    // Everything needed for that was recorded while the work happened.
+    if (e.done) offerPullRequest(msg, (S.key || "").replace(/-resumed$/, ""));
 
     const stopper = msg.querySelector("#stop-preview");
     if (stopper) stopper.onclick = async () => {

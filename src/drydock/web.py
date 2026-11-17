@@ -13,7 +13,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import intent, preview
+from . import intent, preview, publish
 from .commands import available, match
 from .engines import stop_workers
 from .repo import Repo
@@ -663,6 +663,59 @@ def open_preview(body: Preview) -> JSONResponse:
 @app.delete("/api/preview")
 def close_preview(body: Preview) -> dict:
     return {"ok": True, "stopped": preview.stop(Path(body.project))}
+
+
+class Publishing(BaseModel):
+    run: str
+    draft: bool = True
+
+
+@app.post("/api/publish")
+def publish_run(body: Publishing) -> JSONResponse:
+    """Push the branch and open a pull request carrying the evidence."""
+    try:
+        run = Run.load(body.run)
+    except (OSError, ValueError):
+        return JSONResponse({"ok": False, "reason": "no such run"}, status_code=404)
+
+    landed = [r for r in run.results if r.outcome.value == "done"]
+    if not landed:
+        return JSONResponse(
+            {"ok": False, "reason": "nothing landed, so there is nothing to open"},
+            status_code=400,
+        )
+
+    ready, who = publish.signed_in()
+    if not ready:
+        return JSONResponse({"ok": False, "reason": who}, status_code=400)
+
+    repo = Path(run.repo)
+    live = preview.running(repo)
+    ok, said = publish.open_pull_request(
+        repo,
+        run,
+        publish.evidence_from(run, Path("runs") / f"{run.id}.log"),
+        url=live.url if live else "",
+        draft=body.draft,
+    )
+    if not ok:
+        return JSONResponse({"ok": False, "reason": said}, status_code=400)
+    return JSONResponse({"ok": True, "url": said, "author": who})
+
+
+@app.get("/api/can-publish/{run_id}")
+def can_publish(run_id: str) -> dict:
+    """Whether a pull request is possible here, and why not if it is not."""
+    try:
+        run = Run.load(run_id)
+    except (OSError, ValueError):
+        return {"ok": False, "reason": "no such run"}
+    ready, who = publish.signed_in()
+    if not ready:
+        return {"ok": False, "reason": who}
+    if not publish.has_remote(Path(run.repo)):
+        return {"ok": False, "reason": "this repository has no remote to push to"}
+    return {"ok": True, "author": who}
 
 
 @app.get("/api/running")

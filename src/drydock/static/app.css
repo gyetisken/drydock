@@ -633,3 +633,5 @@ body.split .composer .cwrap { max-width:none }
 @keyframes settle { from { opacity:0; transform:translateY(-3px) } to { opacity:1 } }
 .remembered { margin-top:12px !important; padding-top:10px;
   border-top:1px solid var(--line-soft) }
+.pr { display:flex; align-items:center; gap:11px; margin-top:13px }
+.pr .hint a { color:var(--accent); font-weight:550 }
