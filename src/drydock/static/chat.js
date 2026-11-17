@@ -56,6 +56,7 @@ function renderStats() {
 
 function toolLine(agent, detail) {
   if (!live.el.tools) return;
+  live.el.tools.querySelector("details").style.display = "";
   const box = live.el.tools.querySelector(".lines");
   const row = document.createElement("div");
   row.className = "toolline";
@@ -67,13 +68,33 @@ function toolLine(agent, detail) {
 
 const on = {
   "run.started": (e) => {
+    S.skillsOn = e.skills || [];
+    desks.forEach(d => { d.state = "idle"; d.note = ""; });
+    DESKS.forEach(d => {
+      const needed = {
+        Verifier: "baseline", Analyst: "analyst",
+        Planner: "planner", Engineer: "engineer",
+      }[d.id];
+      if (e.stages && !e.stages.includes(needed)) {
+        const s = desks.get(d.id);
+        s.state = "skipped";
+        s.note = "this job stops before this desk";
+      }
+    });
+    drawOffice();
     say("crew", `<div class="body"><p>Looking at <b>${esc(e.repo)}</b> ·
       ${esc(e.toolchain)}${e.skills.length ? ` · skill <code>${esc(e.skills[0])}</code>` : ""}</p></div>`);
-    live.el.tools = say("", `<details class="tools"><summary>working</summary>
-      <div class="lines"></div></details>`).querySelector("details").parentElement;
+    // Hidden until there is something to put in it: a job that uses no tools
+    // should not leave an empty drawer sitting in the thread.
+    live.el.tools = say("", `<details class="tools" style="display:none">
+      <summary>working</summary><div class="lines"></div></details>`)
+      .querySelector("details").parentElement;
   },
   "baseline": (e) => {
     live.baseline = e;
+    station("Verifier", "done", e.green
+      ? `${e.tests} tests pass before anything is touched`
+      : `${e.failed} failing before anything is touched`);
     const msg = say("crew", `<div class="body"><p>${e.green
       ? `The suite is green before anything is touched: <b>${e.tests} tests</b> pass.`
       : `The suite is <b>not green</b>: ${e.failed} failing. Nothing after this can be called a regression.`}</p>
@@ -82,6 +103,7 @@ const on = {
     renderStats();
   },
   "agent.tool": (e) => toolLine(e.agent, e.detail),
+  "agent.state": (e) => station(e.agent, e.state, e.note),
   "survey": (e) => {
     say("analyst", `<div class="body"><p>${e.findings.length} findings,
       ${e.risks.length} risks.</p>
@@ -95,6 +117,7 @@ const on = {
       <div class="actions"><button class="btn" id="approve">Approve and start</button>
       <span class="hint" id="planhint">Nothing is changed until you approve.</span></div></div>`);
     live.el.plan = msg.querySelector(".card");
+    station("Planner", "done", `${e.items.length} items, waiting for you`);
     e.items.forEach(i => live.items.set(i.id,
       { ...i, status: "waiting", note: i.rationale.split(". ")[0] }));
     live.cost = e.cost || 0;
@@ -119,6 +142,10 @@ const on = {
     const m = /(\d+) tests/.exec(e.note || "");
     if (m) live.tests = parseInt(m[1], 10);
     live.cost = e.cost || live.cost;
+    station("Verifier", e.outcome === "done" ? "done" : "failed",
+      e.outcome === "done"
+        ? `item ${e.id} held the suite, so it stays`
+        : `item ${e.id} did not hold the suite, so it was rolled back`);
     renderStats();
     if (e.outcome !== "done") {
       say("crew", `<div class="body"><p><b>Item ${e.id} was rolled back.</b>
@@ -131,15 +158,28 @@ const on = {
   },
   "run.summary": (e) => {
     $("stop").style.display = "none";
+    drawOffice();
+    if (e.read_only) {
+      const kept = e.remembered
+        ? `<p class="why">${e.remembered} facts about this repository were kept,
+           so the next job here starts from them.</p>`
+        : "";
+      say("crew", `<div class="body"><p>That was a read, not a change. Nothing in
+        your repository was touched.</p>${kept}</div>`);
+      return;
+    }
+    const kept = e.remembered
+      ? `${e.remembered} facts about this repository were kept, so the next job
+         here starts from them instead of reading it all again. `
+      : "";
     const paid = e.engine === "claude"
       ? `It ran on your Claude plan, so the <b>$${e.cost.toFixed(2)}</b> of API-priced
          work was not billed to you.`
       : `<b>$${e.cost.toFixed(2)}</b> billed.`;
     say("crew", `<div class="body"><p><b>${e.done} of ${e.total} items landed.</b>
       ${paid} The work is on its own branch; nothing touched your main branch.</p>
-      <p class="why">${e.remembered} facts about this repository were kept, so the
-      next job here starts from them instead of reading it all again.
-      <a href="#" id="see-usage">See what this has cost in total.</a></p></div>`);
+      <p class="why">${kept}<a href="#" id="see-usage">See what this has cost in
+      total.</a></p></div>`);
     const link = $("see-usage");
     if (link) link.onclick = (ev) => {
       ev.preventDefault(); $("sheet").style.display = "flex"; drawSettings();
@@ -152,12 +192,101 @@ const on = {
 function watch(key) {
   S.key = key;
   live.items.clear(); live.tests = null; live.baseline = null; live.cost = 0; live.el = {};
+  desks.forEach(d => { d.state = "idle"; d.note = ""; });
   const src = new EventSource("/api/stream/" + key);
   src.onmessage = (m) => {
     const e = JSON.parse(m.data);
     (on[e.kind] || (() => {}))(e);
   };
 }
+
+/* ---------- the office ---------- */
+
+// Four stations in the order the work passes through them. The fourth is not
+// a model: it runs the build and the suite and decides whether the change is
+// allowed to stay, which is the only opinion in the room that is not a guess.
+
+const DESKS = [
+  { id: "Analyst", role: "reads the repository", icon: "🔍" },
+  { id: "Planner", role: "turns it into items", icon: "📋" },
+  { id: "Engineer", role: "makes one change at a time", icon: "🔧" },
+  { id: "Verifier", role: "builds, tests, and decides", icon: "⚖️", code: true },
+];
+
+const WORDS = {
+  idle: "waiting for the station before it",
+  working: "working",
+  done: "done",
+  skipped: "not needed for this job",
+  failed: "stopped",
+};
+
+const desks = new Map(DESKS.map(d => [d.id, { ...d, state: "idle", note: "" }]));
+
+function station(id, state, note) {
+  const d = desks.get(id);
+  if (!d) return;
+  d.state = state;
+  if (note !== undefined) d.note = note;
+  drawOffice();
+}
+
+function drawOffice() {
+  const mark = { done: "✓", working: "▸", skipped: "–", failed: "✗", idle: "" };
+  $("desks").innerHTML = DESKS.map((d, i) => {
+    const s = desks.get(d.id);
+    return `
+      ${i ? '<div class="flow"></div>' : ""}
+      <div class="desk ${s.state}">
+        <div class="head">
+          <span class="who">${d.icon}</span>
+          <span class="mk">${mark[s.state] || ""}</span>
+        </div>
+        <div class="name">${esc(d.id)}</div>
+        <div class="role">${esc(d.role)}</div>
+        <div class="state">${esc(s.note || WORDS[s.state])}</div>
+        ${d.code ? '<div class="tag">no model, just code</div>' : ""}
+      </div>`;
+  }).join("");
+
+  const items = [...live.items.values()];
+  $("board").innerHTML = items.length
+    ? items.map(i => `
+        <div class="bi ${i.status}">
+          <span class="mk">${MK[i.status] || "·"}</span>
+          <span class="t">${esc(i.title)}</span>
+        </div>`).join("")
+    : `<p class="why">Nothing on the board. A plan appears here once the
+       planner has written one.</p>`;
+
+  const b = live.baseline;
+  if (b) {
+    const now = live.tests === null ? b.tests : live.tests;
+    const held = now >= b.tests;
+    $("gauge").innerHTML = `
+      <div class="g ${held ? "ok" : "bad"}">
+        <b>${held ? "✓" : "✗"}</b>
+        <span>${now} tests running, ${b.tests} before anyone touched it</span>
+      </div>`;
+  } else {
+    $("gauge").innerHTML = `<div class="g"><b>·</b><span>the suite has not been
+      run yet</span></div>`;
+  }
+
+  $("shelf").innerHTML = (S.skillsOn || []).length
+    ? S.skillsOn.map(n => `<code>${esc(n)}</code>`).join("")
+    : `<i>none for this job — the crew is working from the repository alone</i>`;
+}
+
+function view(which) {
+  $("thread").style.display = which === "thread" ? "" : "none";
+  $("office").style.display = which === "office" ? "" : "none";
+  document.querySelectorAll("#views button").forEach(b =>
+    b.classList.toggle("on", b.dataset.view === which));
+  if (which === "office") drawOffice();
+}
+document.querySelectorAll("#views button").forEach(b =>
+  (b.onclick = () => view(b.dataset.view)));
 
 /* ---------- sidebar ---------- */
 
@@ -306,7 +435,7 @@ function drawSide() {
     el.onclick = () => { S.project = el.dataset.path; drawSide(); drawTop(); };
   });
   $("history").innerHTML = S.runs.slice(0, 12).map(r => `
-    <a class="side-item">${esc(r.task.slice(0, 38))}<small>${esc(r.repo)} · ${r.done}/${r.items} items · $${r.cost.toFixed(2)}</small></a>`).join("")
+    <a class="side-item" title="${esc(r.task)}">${esc(r.task)}<small>${esc(r.repo)} · ${r.done}/${r.items} items · $${r.cost.toFixed(2)}</small></a>`).join("")
     || `<p class="empty">No runs yet.</p>`;
   drawTop();
 }
@@ -322,7 +451,12 @@ function drawTop() {
 function matching() {
   const t = $("box").value.trim();
   if (!t.startsWith("/") || t.includes(" ")) return [];
-  return S.commands.filter(c => c.name.startsWith(t.toLowerCase()));
+  const list = S.commands.filter(c => c.name.startsWith(t.toLowerCase()));
+  // A command that is already complete and takes no argument is a finished
+  // sentence. Leaving the menu open over it means Enter keeps re-picking the
+  // thing that is already typed, and the job never starts.
+  if (list.length === 1 && list[0].name === t.toLowerCase() && !list[0].asks) return [];
+  return list;
 }
 
 function drawMenu() {
@@ -413,6 +547,8 @@ $("add").onclick = async () => {
   $("addbox").classList.remove("open");
   S.project = null;
   await refresh();
+drawSettings();
 };
 
 refresh();
+drawSettings();

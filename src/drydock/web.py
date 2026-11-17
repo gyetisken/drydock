@@ -57,6 +57,10 @@ PAGE = """<!doctype html><html lang="en"><head><meta charset="utf-8">
     <div class="topbar">
       <b id="proj">no project</b><span class="sub" id="chain"></span>
       <div class="right">
+        <div class="segmented tabs" id="views">
+          <button data-view="thread" class="on">Thread</button>
+          <button data-view="office">Office</button>
+        </div>
         <span id="spend"></span>
         <button class="btn small ghost" id="stop" style="display:none">Stop</button>
       </div>
@@ -72,6 +76,33 @@ PAGE = """<!doctype html><html lang="en"><head><meta charset="utf-8">
           one that does not is rolled back before the next begins. Nothing is
           changed until you approve the plan.</p>
         </div></div>
+      </div>
+    </div>
+
+    <div class="office" id="office" style="display:none">
+      <div class="floor">
+
+        <div class="wall">
+          <div class="board">
+            <h5>On the board</h5>
+            <div class="board-items" id="board"></div>
+          </div>
+          <div class="board narrow">
+            <h5>The rule of this room</h5>
+            <p>A change stays only if the build still builds and the suite
+            still runs at least as many tests as it did before anyone
+            touched it. Nothing here can vote itself through.</p>
+            <div class="gauge" id="gauge"></div>
+          </div>
+        </div>
+
+        <div class="desks" id="desks"></div>
+
+        <div class="shelf">
+          <span class="shelf-h">Skills on the shelf</span>
+          <span class="shelf-items" id="shelf"></span>
+        </div>
+
       </div>
     </div>
 
@@ -348,6 +379,7 @@ def state() -> dict:
                 "name": c.name,
                 "summary": c.summary,
                 "asks": c.asks,
+                "stages": c.stages,
                 "skill": c.skill.name if c.skill else None,
             }
             for c in available(SKILLS)
@@ -417,6 +449,7 @@ def start(body: StartJob) -> JSONResponse:
         body.budget,
         body.engine,
         body.model,
+        command.stop_after,
     )
     key = next(k for k, v in workspace.sessions.items() if v is session)
     return JSONResponse({"ok": True, "key": key})

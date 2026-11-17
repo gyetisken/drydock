@@ -49,8 +49,9 @@ aside { width:264px; flex:none; background:var(--side);
 .side-h button:hover { color:var(--accent) }
 .side-list { overflow-y:auto; padding:0 10px }
 .side-list.grow { flex:1 }
-.side-item { padding:9px 11px; border-radius:9px; cursor:pointer; font-size:13.5px;
-  color:var(--muted); display:block; margin-bottom:2px }
+.side-item { padding:8px 11px; border-radius:9px; cursor:pointer; font-size:13px;
+  color:var(--muted); display:block; margin-bottom:1px;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis }
 .side-item:hover { background:var(--raise); color:var(--fg) }
 .side-item.on { background:var(--raise); color:var(--fg); font-weight:550 }
 .side-item small { display:block; color:var(--faint); font-size:11px; margin-top:1px;
@@ -224,3 +225,83 @@ select { background:transparent; color:var(--muted); border:1px solid var(--line
 .segmented button { padding:6px 14px; border-radius:7px; font-size:12px;
   color:var(--muted) }
 .segmented button.on { background:var(--raise); color:var(--fg); font-weight:600 }
+
+
+/* ---------- the office ----------
+   A plan of the room rather than a dashboard. Every desk says what it is
+   doing in words, and a desk that has finished carries a tick. There are no
+   percentages anywhere: a job made of fifteen items that must each hold a
+   test suite does not have a meaningful halfway point, and a number that
+   looks precise while meaning nothing is worse than a sentence. */
+.office { flex:1; overflow-y:auto; padding:26px 30px 10px }
+.floor { max-width:900px; margin:0 auto; display:flex; flex-direction:column; gap:20px }
+
+.wall { display:grid; grid-template-columns:1.35fr 1fr; gap:16px }
+.board { background:var(--panel); border:1px solid var(--line);
+  border-radius:12px; padding:15px 17px; min-height:150px }
+.board h5 { margin:0 0 11px; font-size:10.5px; letter-spacing:.1em;
+  text-transform:uppercase; color:var(--faint); font-weight:600 }
+.board p { margin:0 0 12px; font-size:12.5px; line-height:1.6; color:var(--muted) }
+.board-items { display:flex; flex-direction:column; gap:3px;
+  max-height:184px; overflow-y:auto }
+.bi { display:flex; gap:9px; align-items:baseline; font-size:12.5px; padding:3px 0 }
+.bi .mk { width:13px; flex:none; color:var(--faint) }
+.bi .t { color:var(--muted) }
+.bi.done .mk { color:var(--ok) } .bi.done .t { color:var(--fg) }
+.bi.working .mk { color:var(--live) } .bi.working .t { color:var(--fg) }
+.bi.reverted .mk, .bi.blocked .mk { color:var(--bad) }
+
+.gauge .g { display:flex; gap:11px; align-items:center; padding:11px 13px;
+  background:var(--raise); border-radius:9px; border:1px solid var(--line-soft) }
+.gauge b { font-size:17px; line-height:1; color:var(--faint) }
+.gauge .g.ok b { color:var(--ok) } .gauge .g.bad b { color:var(--bad) }
+.gauge span { font-size:12px; color:var(--muted); line-height:1.45 }
+
+.desks { display:flex; align-items:stretch; gap:0 }
+.desk { flex:1; min-width:0; background:var(--panel); border:1px solid var(--line);
+  border-radius:12px; padding:14px 15px 15px; transition:border-color .18s, background .18s }
+.desk .head { display:flex; align-items:center; justify-content:space-between;
+  margin-bottom:9px }
+.desk .who { font-size:21px; line-height:1; filter:grayscale(1) opacity(.5);
+  transition:filter .18s }
+.desk .mk { font-size:14px; color:var(--faint); line-height:1 }
+.desk .name { font-size:13px; font-weight:650; letter-spacing:-.01em }
+.desk .role { font-size:11px; color:var(--faint); margin-top:1px; line-height:1.4 }
+.desk .state { margin-top:9px; padding-top:9px; border-top:1px solid var(--line-soft);
+  font-size:11.5px; line-height:1.5; color:var(--muted); min-height:36px }
+.desk .tag { margin-top:8px; display:inline-block; font-size:10px; padding:2px 7px;
+  border-radius:999px; background:var(--raise); color:var(--faint) }
+
+.desk.working { border-color:var(--live); background:var(--raise) }
+.desk.working .who { filter:none }
+.desk.working .mk { color:var(--live) }
+.desk.working .state { color:var(--fg) }
+.desk.done .who { filter:grayscale(.3) }
+.desk.done .mk { color:var(--ok) }
+.desk.done .state { color:var(--fg) }
+.desk.failed { border-color:var(--bad) }
+.desk.failed .mk { color:var(--bad) }
+.desk.skipped { opacity:.5 }
+
+/* the hand-off between desks, drawn rather than labelled */
+.flow { flex:none; width:26px; align-self:center; position:relative; height:1px;
+  background:var(--line) }
+.flow::after { content:""; position:absolute; right:0; top:-3px;
+  border:3.5px solid transparent; border-left-color:var(--line) }
+
+.shelf { display:flex; align-items:baseline; gap:11px; padding:12px 15px;
+  background:var(--side); border:1px solid var(--line-soft); border-radius:10px }
+.shelf-h { font-size:10.5px; letter-spacing:.1em; text-transform:uppercase;
+  color:var(--faint); font-weight:600; flex:none }
+.shelf-items { display:flex; gap:7px; flex-wrap:wrap; font-size:12px }
+.shelf-items i { font-style:normal; color:var(--faint); font-size:12px }
+
+.tabs { padding:2px }
+.tabs button { padding:4px 11px; font-size:11.5px; border-radius:6px }
+
+@media (max-width:860px) {
+  .wall { grid-template-columns:1fr }
+  .desks { flex-wrap:wrap; gap:10px }
+  .desk { flex:1 1 44% }
+  .flow { display:none }
+}

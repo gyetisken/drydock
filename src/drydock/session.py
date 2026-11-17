@@ -9,8 +9,10 @@ of something that takes twenty minutes and costs money.
 
 import threading
 from pathlib import Path
+from typing import ClassVar
 
 from .analyst import baseline, survey
+from .commands import STAGES
 from .detect import detect
 from .events import Feed
 from .memory import Memory
@@ -30,6 +32,7 @@ class Session:
         budget: float = 0.0,
         engine: str = "api",
         model: str = "sonnet",
+        stop_after: str = "planner",
     ) -> None:
         self.feed = Feed()
         self.repo = repo
@@ -38,6 +41,10 @@ class Session:
         self.budget = budget
         self.engine = engine
         self.model = model
+        # How far down the line this job goes. The stations before it always
+        # run, so nothing downstream is ever asked to speak about a repository
+        # nobody has read.
+        self.stop_after = stop_after
         self.stopping = False
         self.memory = Memory.about(repo)
         self.run: Run | None = None
@@ -76,11 +83,12 @@ class Session:
                 task=self.task,
                 skills=[s.name for s in self.skills],
                 toolchain=f"{chain.build_tool} / {chain.language}",
+                stages=STAGES[: STAGES.index(self.stop_after) + 1],
             )
 
             self.feed.emit(
                 "agent.state",
-                agent="Analyst",
+                agent="Verifier",
                 state="working",
                 note="running the build and the suite, untouched",
             )
@@ -95,6 +103,10 @@ class Session:
                 green=b.green,
             )
             self.run.save()
+
+            if self.stop_after == "baseline":
+                self._finish_early()
+                return
 
             self.feed.emit(
                 "agent.state",
@@ -139,6 +151,10 @@ class Session:
                 findings=self.run.inventory.findings,
                 risks=self.run.inventory.risks,
             )
+
+            if self.stop_after == "analyst":
+                self._finish_early()
+                return
 
             self.feed.emit(
                 "agent.state",
@@ -190,6 +206,44 @@ class Session:
         finally:
             if not self.running:
                 pass
+
+    # Which desk owns each stage. The verifier owns the baseline because the
+    # baseline is a build and a test run, and that is the one judgement in the
+    # room that is made by running something rather than by reading it.
+    OWNERS: ClassVar[dict[str, str]] = {
+        "baseline": "Verifier",
+        "analyst": "Analyst",
+        "planner": "Planner",
+        "engineer": "Engineer",
+    }
+
+    def _finish_early(self) -> None:
+        """End a job that was never meant to reach the end of the line.
+
+        `/check` and `/audit` are answers, not changes, so every desk after
+        them is told it is not needed rather than left looking as though it
+        had stalled. The run is still saved: the reading it did is worth
+        keeping even though nothing was built on it.
+        """
+        self.run.save()
+        after = STAGES[STAGES.index(self.stop_after) + 1 :]
+        for stage in after:
+            self.feed.emit(
+                "agent.state",
+                agent=self.OWNERS[stage],
+                state="skipped",
+                note="this job stops before this desk",
+            )
+        self.feed.emit(
+            "run.summary",
+            done=0,
+            total=0,
+            cost=round(self.run.cost, 2),
+            engine=self.engine,
+            remembered=len(self.memory.notes),
+            read_only=True,
+        )
+        self.feed.close()
 
     def work_the_plan(self) -> None:
         """Approved. Do the items."""

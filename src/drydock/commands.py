@@ -13,6 +13,12 @@ from pathlib import Path
 
 from .skills import Skill, discover
 
+# The crew is a line of four stations and each one needs the one before it.
+# A command says where it stops, never where it starts: asking for a plan runs
+# the survey first, because a plan written without reading the repository is
+# the thing this is meant to prevent.
+STAGES = ["baseline", "analyst", "planner", "engineer"]
+
 
 @dataclass(frozen=True)
 class Command:
@@ -21,6 +27,11 @@ class Command:
     asks: str = ""
     skill: Skill | None = None
     task_template: str = ""
+    stop_after: str = "planner"
+
+    @property
+    def stages(self) -> list[str]:
+        return STAGES[: STAGES.index(self.stop_after) + 1]
 
     def task_for(self, answer: str) -> str:
         if not self.task_template:
@@ -32,18 +43,32 @@ class Command:
 
 BUILT_IN = [
     Command(
-        name="/do",
-        summary="Describe a change in your own words. No packaged knowledge, just the crew.",
-        asks="what you want changed",
+        name="/check",
+        summary="Build it and run the suite. No model, no changes, no cost.",
+        task_template="Report the health of this repository as it stands.",
+        stop_after="baseline",
     ),
     Command(
         name="/audit",
-        summary="Read the project and report what is fragile, without changing anything.",
+        summary="Read the project and report what is fragile. Nothing is changed.",
         task_template=(
             "Survey this repository and report what is fragile: what would break "
             "first, what is untested, what is coupled to something it should not "
             "be. Change nothing."
         ),
+        stop_after="analyst",
+    ),
+    Command(
+        name="/plan",
+        summary="Work out how a change would be made, and stop before making it.",
+        asks="what you are considering",
+        task_template="{what}",
+        stop_after="planner",
+    ),
+    Command(
+        name="/do",
+        summary="Describe a change in your own words. No packaged knowledge, just the crew.",
+        asks="what you want changed",
     ),
 ]
 

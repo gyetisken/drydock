@@ -119,8 +119,17 @@ class Workspace:
         budget: float,
         engine: str = "claude",
         model: str = "sonnet",
+        stop_after: str = "planner",
     ) -> Session:
-        session = Session(repo, task, skills, budget=budget, engine=engine, model=model)
+        session = Session(
+            repo,
+            task,
+            skills,
+            budget=budget,
+            engine=engine,
+            model=model,
+            stop_after=stop_after,
+        )
         session.start(auto_run=False)
         # The session has an id only once its run exists, so it is keyed by the
         # same clock the run uses and reconciled when the run appears.

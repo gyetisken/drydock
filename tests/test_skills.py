@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from drydock.skills import briefing, discover, load
+from drydock.skills import Skill, briefing, discover, load
 
 SKILLS = Path("skills")
 
@@ -16,7 +16,7 @@ def installed():
 
 class TestDiscovery:
     def test_finds_the_installed_skills(self, installed):
-        assert {s.name for s in installed} >= {"junit4-to-junit5", "greenfield-service"}
+        assert {s.name for s in installed} >= {"migration", "greenfield"}
 
     def test_frontmatter_only_until_chosen(self, installed):
         """Progressive disclosure is the point: a hundred skills cost nothing
@@ -25,7 +25,7 @@ class TestDiscovery:
         assert all(s.description for s in installed)
 
     def test_body_arrives_when_loaded(self, installed):
-        skill = load(next(s for s in installed if s.name == "junit4-to-junit5"))
+        skill = load(next(s for s in installed if s.name == "migration"))
         assert skill.loaded
         assert set(skill.sections) == {"survey", "plan", "engineer", "verify"}
 
@@ -44,7 +44,7 @@ class TestGuidance:
 
     def test_briefing_names_its_source(self, installed):
         text = briefing([load(s) for s in installed], "plan")
-        assert "junit4-to-junit5" in text
+        assert "migration" in text
 
     def test_briefing_says_the_repository_wins(self, installed):
         """A skill is prior knowledge, not an override. If an agent trusts the
@@ -54,8 +54,10 @@ class TestGuidance:
 
 
 class TestApplicability:
-    def test_a_java_skill_fits_a_java_repo(self, installed):
-        skill = next(s for s in installed if s.name == "junit4-to-junit5")
+    def test_a_skill_that_names_targets_is_held_to_them(self):
+        skill = Skill(
+            name="x", description="", path=SKILLS, applies_to=("Java", "Maven")
+        )
         assert skill.fits("Java", "Maven")
         assert not skill.fits("Python", "uv")
 
@@ -63,3 +65,8 @@ class TestApplicability:
         skill = next(s for s in installed if s.name == "dependency-upgrade")
         assert skill.fits("Python", "uv")
         assert skill.fits("Java", "Gradle")
+
+    def test_no_installed_skill_is_tied_to_one_language(self, installed):
+        """The shipped skills describe a kind of work, not a stack. A skill
+        that only fires on Java is a skill most repositories cannot use."""
+        assert all(not s.applies_to for s in installed)

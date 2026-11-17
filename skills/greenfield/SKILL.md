@@ -1,12 +1,12 @@
 ---
-name: greenfield-service
-description: Build a new service from nothing, with tests from the first commit. Use when the repository is empty or holds only a README.
+name: greenfield
+description: Build something new from nothing - a service, a site, a tool, a library - with tests from the first commit. Use when the repository is empty or holds only a README.
 command: /new
 task: Build {what}. Tests from the first commit, and nothing is finished until they pass.
-asks: what the service should do
+asks: what should be built
 ---
 
-# Starting a service from nothing
+# Starting from nothing
 
 Everything else this crew does is verified against a suite that already exists.
 Here there is nothing to verify against, so the first thing built is the thing
@@ -38,7 +38,7 @@ Order by what other things depend on. The data shapes before the logic that
 uses them, the logic before the interface that exposes it.
 
 Leave deployment, packaging and documentation to the end, and say so, so that
-nobody mistakes an unfinished service for a finished one.
+nobody mistakes an unfinished thing for a finished one.
 
 ## Engineer
 
@@ -46,8 +46,8 @@ Write the test in the same item as the code, and make it fail before making it
 pass. A test written after the fact tends to assert what the code does rather
 than what it was supposed to do.
 
-Keep the first version small enough that it works. A service that does one
-thing end to end is a foundation; a half-built service with six features is a
+Keep the first version small enough that it works. Something that does one
+thing end to end is a foundation; a half-built thing with six features is a
 pile.
 
 Do not invent requirements. Where the task is silent, choose the plainest thing
