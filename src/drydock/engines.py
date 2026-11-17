@@ -19,8 +19,10 @@ decides whether the code is allowed to stay.
 """
 
 import json
+import os
 import shutil
 import subprocess
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -79,6 +81,46 @@ def _shell_rule(build_command: str) -> str:
     if tool:
         return f"Bash({tool} *)"
     return " ".join(f"Bash({name} *)" for name in BOOTSTRAP)
+
+
+def _confinement(repo: Path) -> tuple[str, dict]:
+    """Settings and environment that keep the worker inside one repository.
+
+    Claude Code has a real filesystem and no reason of its own to stay
+    anywhere. Pointed at an empty project it does the sensible thing for an
+    assistant and the wrong thing for this: it looks upwards. On one run it
+    walked out of an empty folder and surveyed drydock's own source, then
+    planned against that - a job about a restaurant website became a job about
+    this codebase.
+
+    Permission patterns could not express it: a deny broad enough to cover
+    everything outside also covers the repository, and deny wins over allow.
+    A PreToolUse hook can, because it sees the actual path.
+    """
+    settings = json.dumps(
+        {
+            "hooks": {
+                "PreToolUse": [
+                    {
+                        "matcher": "Read|Edit|Write|Glob|Grep|NotebookEdit",
+                        "hooks": [
+                            {
+                                "type": "command",
+                                "command": f"{sys.executable} -m drydock.confine",
+                            }
+                        ],
+                    }
+                ]
+            }
+        }
+    )
+    env = dict(os.environ)
+    env["DRYDOCK_ROOT"] = str(repo.resolve())
+    # The hook runs as its own process and has to be able to import drydock
+    # even when this is running from a checkout rather than an installation.
+    here = str(Path(__file__).resolve().parent.parent)
+    env["PYTHONPATH"] = here + os.pathsep + env.get("PYTHONPATH", "")
+    return settings, env
 
 
 class ClaudeCodeEngine:
@@ -141,10 +183,13 @@ class ClaudeCodeEngine:
             "--append-system-prompt",
             system,
         ]
+        settings, env = _confinement(repo)
+        command[1:1] = ["--settings", settings]
 
         process = subprocess.Popen(
             command,
             cwd=repo,
+            env=env,
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
@@ -230,10 +275,13 @@ class ClaudeCodeEngine:
             "--append-system-prompt",
             system,
         ]
+        settings, env = _confinement(repo)
+        command[1:1] = ["--settings", settings]
 
         process = subprocess.Popen(
             command,
             cwd=repo,
+            env=env,
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,

@@ -73,12 +73,18 @@ const Office = (() => {
     state: "idle", note: "",
     // Where the sprite actually is, in pixels, and where it is trying to get
     // to. Walking is this pair not yet being equal.
-    px: (c.x + 1.5) * TILE, py: (c.y + 2) * TILE,
-    tx: (c.x + 1.5) * TILE, ty: (c.y + 2) * TILE,
-    face: "down",
+    px: (c.x + 1.5) * TILE, py: (c.y + 2) * TILE + 14,
+    tx: (c.x + 1.5) * TILE, ty: (c.y + 2) * TILE + 14,
+    face: "up",
   }]));
 
-  const seat = (c) => [(c.x + 1.5) * TILE, (c.y + 2) * TILE];
+  // Where somebody actually sits. The chair is the tile directly below the
+  // desk, and the sprite's feet land 10px under its anchor, so the anchor has
+  // to sit low enough that the body lands on the seat rather than on the
+  // floor behind it. Getting this wrong is immediately obvious: everyone was
+  // standing in front of their chair with their back to the monitor.
+  const SIT_Y = 14;
+  const seat = (c) => [(c.x + 1.5) * TILE, (c.y + 2) * TILE + SIT_Y];
 
   /* ---------- loading ---------- */
 
@@ -229,6 +235,8 @@ const Office = (() => {
         ? art["pc_on" + (1 + (Math.floor(started / 180) % 3))]
         : art.pc_off;
       tile(screen, c.x + 1, c.y - 1, 1, 2);
+      // Drawn before anyone sits down, so the chair is behind the body and
+      // its back shows below them.
       tile(art.chair, c.x + 1, c.y + 2, 1, 2);
       ctx.globalAlpha = 1;
     }
@@ -345,7 +353,12 @@ const Office = (() => {
         s.face = Math.abs(dx) > Math.abs(dy)
           ? (dx > 0 ? "right" : "left")
           : (dy > 0 ? "down" : "up");
-      } else { s.px = s.tx; s.py = s.ty; if (d) s.face = "down"; }
+      } else {
+        s.px = s.tx; s.py = s.ty;
+        // Arrived. At a desk you face the screen, which is up the room; in
+        // the lounge you face the room, which is down it.
+        s.face = s.state === "idle" ? "down" : "up";
+      }
     }
     if (paper.on) {
       const dx = paper.tx - paper.x, dy = paper.ty - paper.y;
