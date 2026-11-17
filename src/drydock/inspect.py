@@ -57,6 +57,22 @@ SECRET = re.compile(
     re.VERBOSE,
 )
 
+# Directories that are build output or downloaded dependencies. Committing
+# them is not a style disagreement: it puts tens of thousands of files nobody
+# wrote into the history, where they cannot be reviewed and cannot be removed
+# without rewriting it. A greenfield item that installs dependencies will do
+# this by accident on the very first commit unless something stops it.
+NOT_OURS = re.compile(
+    r"""(^|/)(
+          node_modules | bower_components | vendor
+        | target | build | dist | out
+        | \.venv | venv | __pycache__ | \.mypy_cache | \.pytest_cache
+        | \.gradle | \.next | \.nuxt | \.parcel-cache
+        | coverage | \.tox | \.eggs
+    )/""",
+    re.VERBOSE,
+)
+
 SECRET_FILE = re.compile(
     r"(^|/)(\.env(\.[\w-]+)?|id_rsa|id_ed25519|credentials\.json|"
     r"serviceAccount\w*\.json|[\w-]+\.pem|[\w-]+\.p12)$"
@@ -132,9 +148,23 @@ def look(diff: str, *, allow_removals: bool = False) -> Report:
             )
         )
 
+    junk = set()
     for path in _added_files(diff):
         if SECRET_FILE.search(path):
             findings.append(Finding("secret file", f"{path} must not be committed"))
+        hit = NOT_OURS.search(path)
+        if hit:
+            junk.add(hit.group(2))
+    if junk:
+        findings.append(
+            Finding(
+                "not ours to commit",
+                f"files under {', '.join(sorted(junk))} are in the diff. That is "
+                "build output or downloaded dependencies, and once it is in the "
+                "history it cannot be reviewed and cannot be taken out without "
+                "rewriting it. Add it to .gitignore instead.",
+            )
+        )
 
     for ln in added:
         if SECRET.search(ln):

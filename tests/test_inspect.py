@@ -77,3 +77,35 @@ class TestQuiet:
         r = look(diff("-    int a = 1;", "+    int a = 2;"))
         assert r.clean
         assert r.reason == ""
+
+
+class TestThingsNobodyWrote:
+    """Build output and downloaded dependencies, which is how a first commit
+    quietly becomes forty thousand files."""
+
+    def test_node_modules_is_refused(self):
+        r = look("--- /dev/null\n+++ b/node_modules/lodash/index.js\n+x")
+        assert not r.clean
+        assert "node_modules" in r.reason
+
+    def test_build_output_is_refused(self):
+        for path in (
+            "target/classes/A.class",
+            "dist/app.js",
+            "__pycache__/x.pyc",
+            ".venv/lib/python3.13/site-packages/a.py",
+            "coverage/index.html",
+        ):
+            assert not look(f"--- /dev/null\n+++ b/{path}\n+x").clean, path
+
+    def test_a_file_merely_named_after_one_is_fine(self):
+        assert look("--- /dev/null\n+++ b/src/build_tools.py\n+x").clean
+        assert look("--- /dev/null\n+++ b/docs/node_modules.md\n+x").clean
+
+    def test_it_is_reported_once_per_directory_not_per_file(self):
+        diff = "".join(
+            f"--- /dev/null\n+++ b/node_modules/p{i}/index.js\n+x\n" for i in range(50)
+        )
+        assert (
+            len([f for f in look(diff).findings if f.kind == "not ours to commit"]) == 1
+        )

@@ -141,8 +141,8 @@ const Office = (() => {
     const dark = !document.documentElement.getAttribute("data-theme")
       ? matchMedia("(prefers-color-scheme: dark)").matches
       : document.documentElement.getAttribute("data-theme") === "dark";
-    const floorHue = dark ? "#6d5f54" : "#cbb9a6";
-    const wallHue  = dark ? "#55627d" : "#cfd8e6";
+    const floorHue = dark ? "#4a4039" : "#cbb9a6";
+    const wallHue  = dark ? "#39445c" : "#cfd8e6";
 
     const floor = wash(art.floor, floorHue, "f" + floorHue);
     const wall = wash(art.wall, wallHue, "w" + wallHue);

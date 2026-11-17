@@ -44,6 +44,8 @@ PAGE = """<!doctype html><html lang="en"><head><meta charset="utf-8">
       <span class="wordmark"><b>drydock</b><i>starts new projects and changes existing ones</i></span>
     </div>
 
+    <button class="sidebar-toggle" id="collapse" title="hide the sidebar (&#8984;B)">&#8249;</button>
+
     <div class="side-h">Projects <button id="plus" title="add a repository">+</button></div>
     <div class="addbox" id="addbox">
       <input id="newpath" placeholder="/path/to/a/git/repository" spellcheck="false">
@@ -54,7 +56,8 @@ PAGE = """<!doctype html><html lang="en"><head><meta charset="utf-8">
     </div>
     <div class="side-list" id="projects"></div>
 
-    <div class="side-h">Earlier</div>
+    <div class="side-h">Earlier
+      <input id="find" placeholder="filter" spellcheck="false"></div>
     <div class="side-list grow" id="history"></div>
 
     <button class="account" id="open-settings">
@@ -130,6 +133,29 @@ PAGE = """<!doctype html><html lang="en"><head><meta charset="utf-8">
 
 <div class="ctx" id="ctx" style="display:none"></div>
 
+<div class="palette" id="palette" style="display:none">
+  <div class="pal-bg" id="pal-bg"></div>
+  <div class="pal-card">
+    <input id="pal-q" placeholder="Search projects, commands and past runs" spellcheck="false">
+    <div class="pal-list" id="pal-list"></div>
+    <div class="pal-foot">
+      <span><kbd>&#8593;</kbd><kbd>&#8595;</kbd> move</span>
+      <span><kbd>&#8629;</kbd> choose</span>
+      <span><kbd>esc</kbd> close</span>
+      <span class="right">&#8984;K anywhere &middot; ? for shortcuts</span>
+    </div>
+  </div>
+</div>
+
+<div class="sheet" id="keys" style="display:none">
+  <div class="sheet-bg" data-close-keys></div>
+  <div class="sheet-card narrow">
+    <div class="sheet-top"><b>Keyboard</b>
+      <button class="btn small ghost" data-close-keys>Close</button></div>
+    <section><div class="keys" id="keys-list"></div></section>
+  </div>
+</div>
+
 <div class="sheet" id="sheet" style="display:none">
   <div class="sheet-bg" id="sheet-bg"></div>
   <div class="sheet-card">
@@ -170,7 +196,9 @@ PAGE = """<!doctype html><html lang="en"><head><meta charset="utf-8">
   </div>
 </div>
 
+<script src="/static/keys.js"></script>
 <script src="/static/office.js"></script>
+<script src="/static/palette.js"></script>
 <script src="/static/chat.js"></script></body></html>"""
 
 

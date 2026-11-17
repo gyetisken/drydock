@@ -30,6 +30,13 @@ The first item is the skeleton that proves the loop works: project file, one
 trivial function, one test for it, and a command that runs the test and passes.
 Nothing after this is verifiable until that exists.
 
+**The .gitignore belongs in that first item, before anything is installed.**
+A package manager run in a repository with no ignore file puts every
+downloaded dependency into the first commit - tens of thousands of files
+nobody wrote, in a history where they cannot be reviewed and cannot be
+removed without rewriting it. The ignore file costs one line in the item that
+is being written anyway, and it has to exist before the install, not after.
+
 Then one feature per item, each with its test in the same item. A plan that
 puts the tests in a later item will reach that item with nothing to test
 against and no way back.

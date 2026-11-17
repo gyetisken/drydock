@@ -33,7 +33,9 @@ def test_the_parent_directory_is_refused():
 
 def test_writing_outside_is_refused_too():
     assert offending(call("Edit", file_path="/etc/hosts"), ROOT)
-    assert offending(call("Write", file_path=str(Path.home() / ".ssh/authorized_keys")), ROOT)
+    assert offending(
+        call("Write", file_path=str(Path.home() / ".ssh/authorized_keys")), ROOT
+    )
 
 
 def test_an_absolute_pattern_counts_as_a_path():

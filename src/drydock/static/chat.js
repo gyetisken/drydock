@@ -4,6 +4,7 @@
 
 const S = { projects: [], commands: [], runs: [], project: null, key: null, menu: -1,
   engines: [], models: [], engine: "claude", model: "opus" };
+window.S = S;
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, c =>
   ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
@@ -190,6 +191,11 @@ const on = {
   "run.summary": (e) => {
     running(false);
     $("go").disabled = false;
+    Keys.notify(
+      e.read_only ? "drydock finished reading" : `${e.done} of ${e.total} items landed`,
+      e.read_only ? "Nothing was changed." :
+        `${S.projects.find(p => p.path === S.project)?.name || "The project"} · ` +
+        `$${(e.cost || 0).toFixed(2)} of work`);
     drawOffice();
     if (e.read_only) {
       const kept = e.remembered
@@ -217,8 +223,12 @@ const on = {
       ev.preventDefault(); $("sheet").style.display = "flex"; drawSettings();
     };
   },
-  "run.error": (e) => (running(false), say("crew", `<div class="body"><p class="why">${esc(e.detail)}</p></div>`)),
-  "awaiting.approval": () => running(false),
+  "run.error": (e) => (running(false),
+    Keys.notify("drydock stopped", e.detail), say("crew", `<div class="body"><p class="why">${esc(e.detail)}</p></div>`)),
+  "awaiting.approval": () => {
+    running(false);
+    Keys.notify("A plan is waiting for you", "Nothing is changed until you approve it.");
+  },
 };
 
 function watch(key) {
@@ -300,6 +310,7 @@ let ticker = null;
 
 function running(on, what) {
   S.running = on;
+  Keys.awake(on);
   $("running").style.display = on ? "" : "none";
   $("go-icon").innerHTML = on ? "&#9632;" : "&#8593;";
   $("go").className = on ? "go stopping" : "go";
@@ -464,9 +475,12 @@ function drawSide() {
     el.onclick = () => { S.project = el.dataset.path; drawSide(); drawTop(); };
     el.oncontextmenu = (ev) => { ev.preventDefault(); menuFor(el.dataset.path, ev); };
   });
-  $("history").innerHTML = S.runs.slice(0, 12).map(r => `
+  const q = ($("find").value || "").toLowerCase();
+  const seen = S.runs.filter(r =>
+    !q || (r.task + " " + r.repo).toLowerCase().includes(q));
+  $("history").innerHTML = seen.slice(0, 40).map(r => `
     <a class="side-item" title="${esc(r.task)}">${esc(r.task)}<small>${esc(r.repo)} · ${r.done}/${r.items} items · $${r.cost.toFixed(2)}</small></a>`).join("")
-    || `<p class="empty">No runs yet.</p>`;
+    || `<p class="empty">${q ? "Nothing matches that." : "No runs yet."}</p>`;
   drawTop();
 }
 
@@ -612,6 +626,7 @@ async function send() {
   if (!body.ok) { fail(body.reason); return; }
   watch(body.key);
   running(true, "starting");
+  Keys.askOnce();
 }
 
 function fail(reason) {
@@ -619,6 +634,71 @@ function fail(reason) {
   $("hint").className = "hint bad";
   setTimeout(() => ($("hint").className = "hint"), 4000);
 }
+
+/* ---------- global keyboard ---------- */
+
+// Everything bound here is also a thing you can click, and everything is
+// listed in the sheet behind "?". A binding nobody can discover is a binding
+// nobody has.
+function typing(e) {
+  const t = e.target;
+  return t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable);
+}
+
+function closeEverything() {
+  Palette.close();
+  closeMenu();
+  $("sheet").style.display = "none";
+  $("keys").style.display = "none";
+  document.querySelectorAll(".pop").forEach(p => (p.style.display = "none"));
+}
+
+document.addEventListener("keydown", (e) => {
+  if (Keys.hit(e) && e.key.toLowerCase() === "k") {
+    e.preventDefault(); Palette.open ? Palette.close() : Palette.show(); return;
+  }
+  if (Keys.hit(e) && e.key.toLowerCase() === "b") {
+    e.preventDefault(); collapse(); return;
+  }
+  if (Keys.hit(e) && e.key === ",") {
+    e.preventDefault(); $("sheet").style.display = "flex"; drawSettings(); return;
+  }
+  if (Keys.hit(e) && e.key === ".") {
+    e.preventDefault(); if (S.running) halt(); return;
+  }
+  if (Keys.hit(e) && e.key.toLowerCase() === "f") {
+    e.preventDefault(); $("find").focus(); $("find").select(); return;
+  }
+  if (Keys.hit(e) && (e.key === "1" || e.key === "2")) {
+    e.preventDefault(); view(e.key === "1" ? "thread" : "office"); return;
+  }
+  if (e.key === "Escape") { closeEverything(); return; }
+  if (typing(e)) return;
+  if (e.key === "?") { e.preventDefault(); Keys.sheet(); return; }
+  // A plan waiting for a decision is the one place a bare Return means
+  // something, and it is the decision anyone is most likely to be making.
+  const approve = document.getElementById("approve");
+  if (approve && !approve.disabled && e.key === "Enter") {
+    e.preventDefault(); approve.click();
+  }
+});
+
+document.querySelectorAll("[data-close-keys]").forEach(b =>
+  (b.onclick = () => ($("keys").style.display = "none")));
+
+function collapse() {
+  document.body.classList.toggle("tucked");
+  localStorage.setItem("drydock.sidebar",
+    document.body.classList.contains("tucked") ? "tucked" : "open");
+}
+$("collapse").onclick = collapse;
+if (localStorage.getItem("drydock.sidebar") === "tucked")
+  document.body.classList.add("tucked");
+
+$("find").addEventListener("input", drawSide);
+$("find").addEventListener("keydown", (e) => {
+  if (e.key === "Escape") { $("find").value = ""; drawSide(); $("find").blur(); }
+});
 
 $("box").addEventListener("input", drawMenu);
 $("box").addEventListener("keydown", (e) => {
@@ -662,9 +742,11 @@ $("add").onclick = async () => {
   $("newpath").value = "";
   $("addbox").classList.remove("open");
   S.project = null;
-  await refresh();
+  await Palette.wire();
+refresh();
 drawSettings();
 };
 
+Palette.wire();
 refresh();
 drawSettings();

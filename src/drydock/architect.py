@@ -37,6 +37,9 @@ Three rules hold whatever is being built:
   everything after it is verified against nothing.
 - One command to run it. If someone has to read a wiki to start it, it is not
   finished.
+- Nothing downloaded or generated goes into the repository. Whatever the
+  package manager puts on disk must be ignored before it is installed, not
+  cleaned up afterwards.
 - Name the pieces by what they do, not by what they are. A folder called
   `utils` is a folder nobody can describe.
 
