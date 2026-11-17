@@ -60,6 +60,25 @@ def has_remote(repo: Path) -> bool:
     return bool(Repo(repo)._git("remote")[1].strip())
 
 
+def _unfinished(run) -> list[str]:
+    """What was planned and is not here, said plainly.
+
+    This matters more now that nothing is opened by a person who watched it
+    happen. A draft that quietly omits the two items that were rolled back
+    is a draft that misrepresents the branch.
+    """
+    landed = {r.item.id for r in run.results if r.outcome.value == "done"}
+    judged = {r.item.id: r for r in run.results}
+    said = []
+    for item in run.plan.items if run.plan else []:
+        if item.id in landed:
+            continue
+        result = judged.get(item.id)
+        why = result.note if result else "never attempted"
+        said.append(f"**{item.id}. {item.plain or item.title}** — {why}")
+    return said
+
+
 def body(run, evidence: list[Evidence], url: str = "") -> str:
     """The pull request body: what was checked, and what it said.
 
@@ -82,6 +101,18 @@ def body(run, evidence: list[Evidence], url: str = "") -> str:
         lines.append(f"**{e.item}. {e.plain or e.title}**  ")
         lines.append(f"`{e.commit[:10]}` — {e.note}")
         lines.append("")
+
+    missing = _unfinished(run)
+    if missing:
+        lines += ["## What did not", ""]
+        lines += [f"- {m}" for m in missing]
+        lines += [
+            "",
+            "These are not in this branch. Nothing was kept that did not pass "
+            "every check, so the work that is here stands on its own - but it "
+            "is less than was planned.",
+            "",
+        ]
 
     lines += [
         "## The suite",

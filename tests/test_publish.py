@@ -108,12 +108,23 @@ class TestWhatItSays:
         assert "the week renders" in out
         assert "**Verifier**" in out
 
-    def test_a_rolled_back_item_is_not_claimed(self, tmp_path):
+    def test_a_rolled_back_item_is_not_claimed_as_landed(self, tmp_path):
+        """It is still named - under what did not happen. A draft nobody
+        chose to open must not quietly omit what was planned and is missing."""
         run = a_run(tmp_path)
         run.results[1].outcome = Outcome.REVERTED
         run.results[1].commit = None
         out = body(run, evidence_from(run, a_log(tmp_path)))
-        assert "The site knows when it is open." not in out
+
+        landed, did_not = out.split("## What did not")
+        assert "The site knows when it is open." not in landed
+        assert "The site knows when it is open." in did_not
+
+    def test_an_item_never_attempted_is_named_too(self, tmp_path):
+        run = a_run(tmp_path)
+        run.results = run.results[:1]
+        out = body(run, evidence_from(run, a_log(tmp_path)))
+        assert "never attempted" in out
 
     def test_it_says_where_it_was_running(self, tmp_path):
         run = a_run(tmp_path)

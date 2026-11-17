@@ -536,6 +536,20 @@ const on = {
       window.open(body.url, "_blank", "noopener");
     };
   },
+  // Opened by itself, now that nobody is pressing a button for it.
+  "published": (e) => {
+    if (e.ok) {
+      say("crew", `<div class="body"><div class="live-link">
+        <span class="dot ok"></span>
+        <span>A draft pull request is open as <b>${esc(e.author)}</b>:
+          <a href="${esc(e.url)}" target="_blank" rel="noopener">${esc(e.url)}</a></span>
+      </div><p class="why">It carries what each gate said about each commit,
+      and what was planned and did not land.</p></div>`);
+    } else {
+      say("crew", `<div class="body"><p class="why">No pull request:
+        ${esc(e.reason)}. The work is on its branch either way.</p></div>`, "dim");
+    }
+  },
   "preview.failed": (e) => say("crew", `<div class="body"><p>The work is done,
     but starting it did not go well.</p><pre class="why">${esc(e.detail)}</pre></div>`,
     "dim"),
@@ -843,6 +857,15 @@ async function drawSettings() {
     job finishes, this shows what it cost and what it would have cost without
     splitting the work between models.</p>`);
   $("save-box").innerHTML = lines.join("");
+
+  const auto = $("auto-pr");
+  if (auto) {
+    auto.checked = !!(d.choices && d.choices.publish_when_done);
+    auto.onchange = () => fetch("/api/settings", {
+      method: "PATCH", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ publish_when_done: auto.checked }),
+    });
+  }
 
   $("gh-detail").innerHTML = `<div><span>Account</span><b>${
     esc(g.ready ? g.user : "not connected")}</b></div>`;

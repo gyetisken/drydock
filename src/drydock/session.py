@@ -13,7 +13,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import ClassVar
 
-from . import preview
+from . import preview, publish
 from .analyst import baseline, survey
 from .answer import ask
 from .architect import as_briefing, design
@@ -29,6 +29,7 @@ from .orchestrate import execute
 from .planner import plan
 from .repo import Repo
 from .run import Run
+from .settings import Settings
 from .skills import Skill, discover
 from .skills import load as load_skill
 
@@ -703,7 +704,45 @@ class Session:
             remembered=len(self.memory.notes),
             url=link,
         )
+        self._publish(landed, link)
         self.feed.close()
+
+    def _publish(self, landed: int, url: str) -> None:
+        """Open a draft pull request, if that is wanted and possible.
+
+        The one thing this program does that leaves the machine, so it is
+        narrow: only when something landed, only onto the run's own branch,
+        always as a draft, and never without saying what happened. Anything
+        missing - no gh, no remote, not signed in - is reported and nothing
+        else changes; the work is on its branch either way.
+        """
+        if not landed or not Settings.load().publish_when_done:
+            return
+
+        ready, who = publish.signed_in()
+        if not ready:
+            self.feed.emit("published", ok=False, reason=who)
+            return
+        if not publish.has_remote(self.repo):
+            self.feed.emit(
+                "published", ok=False, reason="this repository has no remote"
+            )
+            return
+
+        ok, said = publish.open_pull_request(
+            self.repo,
+            self.run,
+            publish.evidence_from(self.run, Path("runs") / f"{self.run.id}.log"),
+            url=url,
+            draft=True,
+        )
+        self.feed.emit(
+            "published",
+            ok=ok,
+            url=said if ok else "",
+            reason="" if ok else said,
+            author=who,
+        )
 
     def stop(self) -> None:
         """Ask the run to stop at the next safe point.

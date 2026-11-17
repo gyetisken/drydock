@@ -119,6 +119,10 @@ class TestWhatItSaysItBought:
         assert how_much_faster(plan_waves(items)) == ""
 
     def test_it_counts_what_runs_alongside(self):
-        items = [item(1), item(2, needs=[1], files=["a/x"]), item(3, needs=[1], files=["b/y"])]
+        items = [
+            item(1),
+            item(2, needs=[1], files=["a/x"]),
+            item(3, needs=[1], files=["b/y"]),
+        ]
         said = how_much_faster(plan_waves(items))
         assert "3 items in 2 rounds" in said

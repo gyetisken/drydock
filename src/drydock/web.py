@@ -6,6 +6,7 @@ watched. Everything else is an endpoint those two call.
 """
 
 import queue
+from dataclasses import asdict
 from pathlib import Path
 
 from fastapi import FastAPI, Request
@@ -19,6 +20,7 @@ from .engines import stop_workers
 from .repo import Repo
 from .run import Run
 from .session import Session
+from .settings import Settings
 from .skills import load as load_skill
 from .workspace import Workspace
 
@@ -215,6 +217,17 @@ PAGE = """<!doctype html><html lang="en"><head><meta charset="utf-8">
     </section>
 
     <section>
+      <h4>When a run finishes</h4>
+      <label class="choice">
+        <input type="checkbox" id="auto-pr">
+        <span><b>Open a draft pull request</b>
+        <i>The only thing drydock does that leaves this machine. A draft, on
+        the run's own branch, only when something landed, carrying what each
+        gate said. Off, and the work is still on its branch.</i></span>
+      </label>
+    </section>
+
+    <section>
       <h4>Appearance</h4>
       <div class="segmented" id="theme">
         <button data-theme="system">Match system</button>
@@ -405,7 +418,24 @@ def _github() -> dict:
 
 @app.get("/api/settings")
 def settings() -> dict:
-    return {"account": _account(), "github": _github(), "usage": _usage()}
+    return {
+        "account": _account(),
+        "github": _github(),
+        "usage": _usage(),
+        "choices": asdict(Settings.load()),
+    }
+
+
+class Choice(BaseModel):
+    publish_when_done: bool
+
+
+@app.patch("/api/settings")
+def change_settings(body: Choice) -> dict:
+    kept = Settings.load()
+    kept.publish_when_done = body.publish_when_done
+    kept.save()
+    return {"ok": True, "choices": asdict(kept)}
 
 
 @app.get("/api/usage")
