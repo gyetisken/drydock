@@ -10,7 +10,7 @@ record; duplicating any of it here would create a second truth that drifts.
 """
 
 import json
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, fields
 from datetime import datetime
 from pathlib import Path
 
@@ -75,12 +75,32 @@ class Workspace:
         return HOME / "projects.json"
 
     def load(self) -> "Workspace":
-        if self._file.exists():
+        """Read the list back, including everything somebody chose about it.
+
+        Both halves of this used to be hand-written lists of three fields.
+        A project could be renamed, pinned, and given a standing
+        instruction, and all three were kept for exactly as long as the
+        application stayed open - which looks precisely like a feature that
+        does not work.
+        """
+        if not self._file.exists():
+            return self
+        try:
             raw = json.loads(self._file.read_text())
-            self.projects = [
-                Project(Path(p["path"]), p.get("added", ""), p.get("last_used", ""))
-                for p in raw
-            ]
+        except (OSError, ValueError):
+            return self
+
+        keep = {f.name for f in fields(Project)} - {"path"}
+        found = []
+        for said in raw:
+            if not isinstance(said, dict) or not said.get("path"):
+                continue
+            project = Project(Path(said["path"]), said.get("added", ""))
+            for name in keep:
+                if name in said:
+                    setattr(project, name, said[name])
+            found.append(project)
+        self.projects = found
         return self
 
     def save(self) -> None:
@@ -88,7 +108,12 @@ class Workspace:
         self._file.write_text(
             json.dumps(
                 [
-                    {"path": str(p.path), "added": p.added, "last_used": p.last_used}
+                    {
+                        name: str(value) if name == "path" else value
+                        for name, value in (
+                            (f.name, getattr(p, f.name)) for f in fields(Project)
+                        )
+                    }
                     for p in self.projects
                 ],
                 indent=2,
