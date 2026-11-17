@@ -100,7 +100,7 @@ class TestAWorkerThatGoesQuiet:
         )
 
         assert any("still working" in text for _, text in said)
-        assert any("before it is stopped" in text for _, text in said)
+        assert any("on one step" in text for _, text in said)
 
     def test_a_worker_that_keeps_talking_is_left_alone(self, monkeypatch):
         from drydock import engines
@@ -359,3 +359,84 @@ class TestWhoAskedItToStop:
                 pass
 
         _asked_to_stop(Odd(), "stopping")  # must not raise
+
+
+class TestItMeasuresWhatSomebodyWouldSee:
+    """A worker streams steadily through one long turn and shows nothing a
+    person recognises as progress. The heartbeat was watching the pipe, so
+    it stayed quiet through two and a half minutes of empty window - it was
+    answering 'is it alive', which was not the question."""
+
+    def test_a_streaming_worker_showing_nothing_is_still_reported(self, monkeypatch):
+        import json
+
+        from drydock import engines
+
+        monkeypatch.setattr(engines, "QUIET_EVERY", 0.05)
+        monkeypatch.setattr(engines, "QUIET_AFTER", 0.15)
+        monkeypatch.setattr(engines, "SILENT_LIMIT", 1000)
+
+        said: list[tuple[str, str]] = []
+        # Lines that parse and carry nothing worth showing: the shape a long
+        # turn actually takes on the wire.
+        lines = [json.dumps({"type": "stream_event", "n": i}) for i in range(40)]
+        engines.ClaudeCodeEngine(minutes=10)._read(
+            _Dribbles(lines, gap=0.03), lambda kind, text: said.append((kind, text))
+        )
+
+        assert any("on one step" in text for _, text in said)
+
+    def test_a_worker_showing_things_is_left_alone(self, monkeypatch):
+        import json
+
+        from drydock import engines
+
+        monkeypatch.setattr(engines, "QUIET_EVERY", 0.05)
+        monkeypatch.setattr(engines, "QUIET_AFTER", 0.15)
+        monkeypatch.setattr(engines, "SILENT_LIMIT", 1000)
+
+        said: list[tuple[str, str]] = []
+        lines = [
+            json.dumps(
+                {
+                    "type": "assistant",
+                    "message": {"content": [{"type": "tool_use", "name": "Write"}]},
+                }
+            )
+            for _ in range(40)
+        ]
+        engines.ClaudeCodeEngine(minutes=10)._read(
+            _Dribbles(lines, gap=0.03), lambda kind, text: said.append((kind, text))
+        )
+
+        assert not any("on one step" in text for _, text in said)
+
+
+class _Dribbles:
+    """A worker whose output arrives slowly, a line at a time."""
+
+    returncode = 0
+
+    def __init__(self, lines, gap: float):
+        self.lines, self.gap = lines, gap
+        self.stdout = self
+        self.stderr = _Reader("")
+
+    def __iter__(self):
+        import time as real
+
+        for line in self.lines:
+            real.sleep(self.gap)
+            yield line
+
+    def poll(self):
+        return None
+
+    def wait(self, timeout=None):
+        return 0
+
+    def kill(self):
+        pass
+
+    def terminate(self):
+        pass

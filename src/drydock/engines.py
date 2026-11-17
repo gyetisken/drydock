@@ -522,7 +522,16 @@ class ClaudeCodeEngine:
         # minutes without a word on the nero site while the window showed a
         # spinner, which is the one failure this program must not have: it
         # looks exactly like working.
+        # Two clocks, because they answer different questions. `spoke_at`
+        # is the last line of any kind out of the worker and says whether it
+        # is alive, which is what the kill below is about. `showed_at` is
+        # the last thing anybody watching would have seen appear, which can
+        # be minutes earlier: one long turn streams steadily while producing
+        # nothing a person recognises as progress. Measuring the first and
+        # reporting it as the second is how a worker went two and a half
+        # minutes with an empty window and no explanation.
         spoke_at = [time.monotonic()]
+        showed_at = [time.monotonic()]
         quiet = threading.Event()
         silent = threading.Event()
 
@@ -533,16 +542,14 @@ class ClaudeCodeEngine:
                     silent.set()
                     _asked_to_stop(process, "it went silent")
                     return
-                if since >= QUIET_AFTER and on_event:
-                    left = min(
-                        self.seconds - (time.monotonic() - began),
-                        SILENT_LIMIT - since,
-                    )
+                unseen = time.monotonic() - showed_at[0]
+                if unseen >= QUIET_AFTER and on_event:
+                    left = self.seconds - (time.monotonic() - began)
                     on_event(
                         "engine",
-                        f"still working - nothing said for {int(since // 60)}m "
-                        f"{int(since % 60):02d}s, "
-                        f"{max(0, int(left // 60))}m left before it is stopped",
+                        f"still working - {int(unseen // 60)}m "
+                        f"{int(unseen % 60):02d}s on one step, "
+                        f"{max(0, int(left // 60))}m left on the clock",
                     )
 
         began = time.monotonic()
@@ -578,8 +585,8 @@ class ClaudeCodeEngine:
                     said_turns if isinstance(said_turns, int) else 0,
                     counted,
                 )
-                if on_event:
-                    _report(event, on_event)
+                if on_event and _report(event, on_event):
+                    showed_at[0] = time.monotonic()
         finally:
             alarm.cancel()
             quiet.set()
@@ -712,8 +719,15 @@ def _why_it_stopped(which: str, seconds: float) -> str:
     return f"stopped after {seconds / 60:.0f} minutes"
 
 
-def _report(event: dict, on_event) -> None:
-    """Turn one stream-json line into the same shape the API engine emits."""
+def _report(event: dict, on_event) -> bool:
+    """Turn one stream-json line into the same shape the API engine emits.
+
+    Returns whether anything was actually passed on. Most lines are not
+    something a person would see: a long turn streams steadily and shows
+    nothing, which is the difference between a worker being alive and a
+    worker appearing to do anything.
+    """
+    shown = False
     kind = event.get("type")
     if kind == "assistant":
         for block in event.get("message", {}).get("content", []):
@@ -723,7 +737,11 @@ def _report(event: dict, on_event) -> None:
                     for k, v in list(block.get("input", {}).items())[:2]
                 )
                 on_event("tool", f"{block.get('name')} {detail}")
+                shown = True
             elif block.get("type") == "text" and block.get("text", "").strip():
                 on_event("thinking", block["text"].strip())
+                shown = True
     elif kind == "result":
         on_event("done", "worker finished")
+        shown = True
+    return shown
