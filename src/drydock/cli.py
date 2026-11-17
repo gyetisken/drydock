@@ -206,6 +206,63 @@ def _cmd_show(args) -> int:
     return 0
 
 
+def refresh_skills(which: str | None, about: str, write: bool, model: str) -> None:
+    """Check packaged knowledge against what is current, and say what moved.
+
+    Skills do not fail when they go out of date. They produce confidently
+    dated work, which is worse, because nothing reports it. So the check is
+    deliberate and periodic rather than something anyone is expected to
+    notice.
+    """
+    import tempfile
+    from datetime import UTC, datetime
+
+    from .scout import as_note, check
+
+    installed = discover(SKILLS) if SKILLS.exists() else []
+    if which:
+        installed = [s for s in installed if s.name == which]
+        if not installed:
+            raise SystemExit(f"no skill named {which}")
+
+    today = datetime.now(UTC).strftime("%Y-%m-%d")
+    spent = 0.0
+
+    with tempfile.TemporaryDirectory(prefix="drydock-scout-") as scratch:
+        for skill in installed:
+            subject = about or skill.description
+            print(f"\n{skill.name}  —  checking against: {subject}")
+            body = (skill.path / "SKILL.md").read_text()
+            changes, summary, dollars = check(
+                body,
+                subject,
+                today,
+                Path(scratch),
+                model=model,
+                on_event=lambda kind, text: print(f"    {kind}: {text[:90]}"),
+            )
+            spent += dollars
+
+            worth = [c for c in changes if c.kind in ("wrong", "missing")]
+            print(f"  {summary[:300]}")
+            for change in changes:
+                mark = {"wrong": "✗", "missing": "+", "confirmed": "✓"}.get(
+                    change.kind, "·"
+                )
+                print(f"  {mark} {change.what[:140]}")
+                print(f"      {change.source}")
+
+            if write and worth:
+                note = as_note(changes, subject, today)
+                with (skill.path / "SKILL.md").open("a") as out:
+                    out.write(note)
+                print(f"  written into {skill.path / 'SKILL.md'}")
+            elif worth:
+                print("  not written. Pass --write to put these in the skill.")
+
+    print(f"\nchecked {len(installed)} skill(s), ${spent:.2f} of work")
+
+
 def main() -> None:
     load_dotenv()
     parser = argparse.ArgumentParser(prog="drydock")
@@ -240,6 +297,15 @@ def main() -> None:
     t = sub.add_parser("app", help="open the application")
     t.add_argument("--port", type=int, default=8400)
     t.set_defaults(func=_cmd_app)
+
+    c = sub.add_parser(
+        "refresh", help="check a skill against what is current and update it"
+    )
+    c.add_argument("skill", nargs="?", help="which skill; all of them if omitted")
+    c.add_argument("--about", default="", help="what to check it against")
+    c.add_argument("--write", action="store_true", help="write the findings in")
+    c.add_argument("--model", default="opus")
+    c.set_defaults(func=lambda a: refresh_skills(a.skill, a.about, a.write, a.model))
 
     k = sub.add_parser("skills", help="list installed skills")
     k.set_defaults(func=_cmd_skills)

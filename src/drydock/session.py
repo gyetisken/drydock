@@ -27,7 +27,8 @@ from .orchestrate import execute
 from .planner import plan
 from .repo import Repo
 from .run import Run
-from .skills import Skill
+from .skills import Skill, discover
+from .skills import load as load_skill
 
 
 class Session:
@@ -60,6 +61,11 @@ class Session:
         self.standing = standing.strip()
         self.stopping = False
         self.memory = Memory.about(repo)
+        # Some knowledge belongs to the kind of thing being built rather than
+        # to the command somebody typed. Nobody types /new and then remembers
+        # to ask for the design skill, and a page built without it is the
+        # page this program kept producing.
+        self._bring_in("web-design", when=self._has_a_face)
         self.run: Run | None = None
         self.error: str | None = None
         self._thread: threading.Thread | None = None
@@ -276,6 +282,24 @@ class Session:
         except Exception as exc:  # noqa: BLE001 - the page has to be told
             self.error = f"{type(exc).__name__}: {exc}"
             self.feed.emit("run.error", detail=self.error)
+
+    def _bring_in(self, name: str, when) -> None:
+        """Add a skill nobody asked for, when the work calls for it."""
+        if any(s.name == name for s in self.skills):
+            return
+        try:
+            if not when():
+                return
+        except OSError:
+            return
+        root = Path("skills")
+        here = (
+            next((s for s in discover(root) if s.name == name), None)
+            if root.exists()
+            else None
+        )
+        if here:
+            self.skills = [*self.skills, load_skill(here)]
 
     def _spent(self, usage, who: str) -> None:
         """Record what a station cost and say so immediately.
