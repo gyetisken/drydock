@@ -79,8 +79,7 @@ def _show_it(repo_path: Path, run, item, on_event):
                 # Everything the item says about itself. The critic is being
                 # asked whether this item did its part, and it cannot know
                 # what that part was from a title alone.
-                f"{item.plain or item.title}\n\n"
-                f"In full: {item.as_asked()}",
+                f"{item.plain or item.title}\n\nIn full: {item.as_asked()}",
                 Path(scratch),
                 model=run.model,
                 on_event=on_event,
@@ -156,7 +155,56 @@ def _judge(
             if not answer.approved:
                 refusals.append(answer.reason)
 
-    return "\n\n".join(refusals)
+    return _with_the_usual_cause("\n\n".join(refusals))
+
+
+# Complaints that have cost this crew more than one attempt because the
+# engineer could read the complaint and still not know what to change. Each
+# of these is a defect somebody has to look at the page to see, so the
+# engineer never sees it - it is told, and told again, and the telling is
+# the only thing it has. Where there is one usual cause, it goes with the
+# complaint rather than being left to be rediscovered.
+USUAL_CAUSE = (
+    (
+        (
+            "clipped",
+            "cut off",
+            "runs off",
+            "overflow",
+            "off the edge",
+            "off the screen",
+            "wider than the viewport",
+        ),
+        "The page is wider than the screen it is on. There are three usual "
+        "causes and it is nearly always the first: a full-bleed band built "
+        "with `width: 100vw` and `left: 50%; transform: translateX(-50%)`, "
+        "where 100vw includes the scrollbar and the 50% resolves against the "
+        "padded content column rather than the viewport - use a grid with a "
+        "full-width track instead and take `grid-column: full`. Then display "
+        "type at a fixed `rem` size, which does not fit a 390px phone - use "
+        "`clamp()`. Then a grid whose columns never collapse. Find which one "
+        "it is by width, not by reading: the element whose box is wider than "
+        "the viewport is the one at fault, and everything inside it inherits "
+        "the problem.",
+    ),
+    (
+        ("contrast", "unreadable", "invisible", "same colour as", "on black"),
+        "Text with no colour of its own takes the page's, and the page's is "
+        "for the other ground. A section that inverts has to set `color` on "
+        "itself, not on the few elements somebody remembered.",
+    ),
+)
+
+
+def _with_the_usual_cause(refusal: str) -> str:
+    """A refusal, plus what it usually turns out to be."""
+    if not refusal:
+        return refusal
+    low = refusal.lower()
+    for words, cause in USUAL_CAUSE:
+        if any(word in low for word in words):
+            refusal += f"\n\nWhat that usually is: {cause}"
+    return refusal
 
 
 def _one_item(
