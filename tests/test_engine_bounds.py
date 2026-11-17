@@ -321,3 +321,41 @@ class TestTellingTheTwoKindsOfStopApart:
         assert _was_killed(143)  # the signal, in isolation
         # and in context the engine reports died=False, because it knows it
         # was the one holding the clock. Pinned where that decision is made.
+
+
+class TestWhoAskedItToStop:
+    """A worker that died of a signal nobody here sent is a different
+    problem from one this program stopped on purpose, and from outside the
+    two were indistinguishable: an item ended with 'exited 143' and no
+    account of who asked. Twice, on the same item, with no explanation
+    available anywhere."""
+
+    def test_a_signal_this_program_sent_is_remembered(self):
+        from drydock.engines import _SIGNALLED, _asked_to_stop
+
+        worker = _Silent(for_seconds=0)
+        worker.pid = 4242
+        _asked_to_stop(worker, "it ran out of its twelve minutes")
+
+        assert _SIGNALLED.pop(4242) == "it ran out of its twelve minutes"
+
+    def test_a_process_that_cannot_be_signalled_is_not_an_error(self):
+        """It has already gone, which is the outcome that was wanted."""
+        from drydock.engines import _asked_to_stop
+
+        class Gone:
+            pid = 1
+
+            def terminate(self):
+                raise OSError("no such process")
+
+        _asked_to_stop(Gone(), "stopping")  # must not raise
+
+    def test_a_worker_with_no_pid_is_not_an_error(self):
+        from drydock.engines import _asked_to_stop
+
+        class Odd:
+            def terminate(self):
+                pass
+
+        _asked_to_stop(Odd(), "stopping")  # must not raise

@@ -119,6 +119,24 @@ SILENT_LIMIT = 300
 _WORKERS: set[subprocess.Popen] = set()
 _WORKERS_LOCK = threading.Lock()
 
+# Every signal this program sends a worker, by pid. A worker that died of a
+# signal nobody here sent is a different problem from one this program
+# stopped on purpose, and for two days the two were indistinguishable from
+# the outside - an item would simply end with "exited 143" and no account of
+# who asked. Writing it down is cheap and turns a mystery into a fact.
+_SIGNALLED: dict[int, str] = {}
+
+
+def _asked_to_stop(process, why: str) -> None:
+    """Send a worker a signal, and remember that it was us."""
+    pid = getattr(process, "pid", None)
+    if pid is not None:
+        _SIGNALLED[pid] = why
+    try:
+        process.terminate()
+    except OSError:
+        pass
+
 
 def _roster() -> Path:
     """Where running workers are written down, outside any one process.
@@ -229,10 +247,7 @@ def stop_workers(repo: Path | None = None) -> int:
             and (repo is None or getattr(p, "drydock_repo", None) == str(repo))
         ]
     for process in targets:
-        try:
-            process.terminate()
-        except OSError:
-            pass
+        _asked_to_stop(process, "everything in this repository was stopped")
     for process in targets:
         try:
             process.wait(timeout=5)
@@ -439,6 +454,14 @@ class ClaudeCodeEngine:
                 reason = "the worker stopped without writing a report"
                 if process.returncode:
                     reason += f" and exited {process.returncode}"
+                ours = _SIGNALLED.pop(process.pid, "")
+                if _was_killed(process.returncode):
+                    reason += (
+                        f". This program stopped it: {ours}"
+                        if ours
+                        else ". Nothing in this program asked it to stop, so "
+                        "something outside did"
+                    )
             if not overran and turns >= self.max_turns:
                 reason += (
                     f". It used all {self.max_turns} turns it was given, which "
@@ -479,7 +502,7 @@ class ClaudeCodeEngine:
         def ran_out() -> None:
             if process.poll() is None:
                 overran.set()
-                process.terminate()
+                _asked_to_stop(process, "it ran out of its twelve minutes")
 
         alarm = threading.Timer(self.seconds, ran_out)
         alarm.daemon = True
@@ -499,7 +522,7 @@ class ClaudeCodeEngine:
                 since = time.monotonic() - spoke_at[0]
                 if since >= SILENT_LIMIT and process.poll() is None:
                     silent.set()
-                    process.terminate()
+                    _asked_to_stop(process, "it went silent")
                     return
                 if since >= QUIET_AFTER and on_event:
                     left = min(
