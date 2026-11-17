@@ -211,20 +211,25 @@ def execute(
                 # changed what somebody sees, because rendering and looking
                 # costs a minute and a parser has nothing to look at.
                 if not refusal and run.direction and _changes_the_view(diff):
-                    verdict, spend = _show_it(repo_path, run, item, on_event)
-                    if verdict is not None:
+                    # Named `seen`, not `verdict`. The verification's verdict
+                    # is already in scope under that name and has `.passed`
+                    # where this has `.approved`; shadowing it meant the
+                    # critic approving an item and then the loop crashing on
+                    # the next line.
+                    seen, spend = _show_it(repo_path, run, item, on_event)
+                    if seen is not None:
                         run.dollars += spend
                         if on_gate:
                             on_gate(
                                 item,
                                 "critic",
-                                verdict.approved,
-                                verdict.reason
-                                if verdict.looked
-                                else "not looked at: " + verdict.reason,
+                                seen.approved,
+                                seen.reason
+                                if seen.looked
+                                else "not looked at: " + seen.reason,
                             )
-                        if not verdict.approved:
-                            refusal = verdict.reason
+                        if not seen.approved:
+                            refusal = seen.reason
 
             if verdict.passed and not refusal:
                 commit = repo.commit(f"{item.id}. {item.title}\n\n{report['summary']}")

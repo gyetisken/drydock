@@ -50,3 +50,16 @@ class TestNobodySeesThis:
 
 def test_one_visible_file_among_many_is_enough():
     assert _changes_the_view(diff("src/hours/week.ts", "package.json", "app.css"))
+
+
+def test_the_two_verdicts_do_not_share_a_name():
+    """The verification says `passed`, the critic says `approved`, and both
+    were called `verdict` in the same scope. The critic approved an item and
+    the loop crashed on the next line reading `.passed` off the wrong one."""
+    import inspect
+
+    from drydock import orchestrate
+
+    body = inspect.getsource(orchestrate.execute)
+    assert "seen, spend = _show_it(" in body
+    assert "verdict, spend = _show_it(" not in body
