@@ -257,3 +257,35 @@ class TestAWorkerThatStopsProducingAnything:
         lines = [json.dumps({"type": "assistant", "message": {"content": []}})] * 3
         _, _, stopped = engines.ClaudeCodeEngine(minutes=10)._read(_Says(lines), None)
         assert stopped == ""
+
+
+class TestTheWorkersOutputIsNotTrusted:
+    """It is a wire format from another program. The only safe assumption
+    about any field in it is that the line parsed as JSON."""
+
+    def test_a_null_turn_count_does_not_crash_the_reader(self):
+        import json
+
+        from drydock.engines import ClaudeCodeEngine
+
+        lines = [json.dumps({"type": "result", "num_turns": None})]
+        _, turns, _ = ClaudeCodeEngine()._read(_Says(lines), None)
+        assert turns == 0
+
+    def test_a_null_price_does_not_become_the_price(self):
+        import json
+
+        from drydock.engines import ClaudeCodeEngine
+
+        lines = [
+            json.dumps({"type": "result", "total_cost_usd": 0.4}),
+            json.dumps({"type": "result", "total_cost_usd": None}),
+        ]
+        dollars, _, _ = ClaudeCodeEngine()._read(_Says(lines), None)
+        assert dollars == 0.4
+
+    def test_a_line_that_is_not_an_object_is_skipped(self):
+        from drydock.engines import ClaudeCodeEngine
+
+        _, turns, _ = ClaudeCodeEngine()._read(_Says(["{ not json", "[]", ""]), None)
+        assert turns == 0

@@ -523,7 +523,11 @@ class ClaudeCodeEngine:
                     event = json.loads(line)
                 except json.JSONDecodeError:
                     continue
-                dollars = event.get("total_cost_usd", dollars)
+                # A field present but null is not a number. The worker's
+                # output is a wire format from another program and the only
+                # safe assumption about it is that it is JSON.
+                if isinstance(event.get("total_cost_usd"), int | float):
+                    dollars = event["total_cost_usd"]
                 # The worker reports its own turn count, but only in the
                 # final message - so a worker that was stopped reported nought
                 # turns after twelve minutes of visible work, which is both
@@ -531,7 +535,12 @@ class ClaudeCodeEngine:
                 # and keep whichever is larger.
                 if event.get("type") == "assistant":
                     counted += 1
-                turns = max(turns, event.get("num_turns", 0), counted)
+                said_turns = event.get("num_turns")
+                turns = max(
+                    turns,
+                    said_turns if isinstance(said_turns, int) else 0,
+                    counted,
+                )
                 if on_event:
                     _report(event, on_event)
         finally:
