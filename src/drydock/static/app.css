@@ -9,9 +9,11 @@
   --fg:#e9eef7; --muted:#97a5bd; --faint:#64718a;
   --accent:#5b8ddb; --accent-dim:#2f4f85;
   --ok:#5fc08a; --bad:#e2796d; --live:#6aa5e8; --warn:#d6ac5c;
+  --markbg:#162742; --markink:#ffffff;
   --r:10px;
 }
 :root[data-theme="light"] {
+  --markbg:#1f4786; --markink:#ffffff;
   --bg:#f5f8fc; --side:#eaf0f8; --panel:#ffffff; --raise:#e8eef7; --input:#ffffff;
   --line:#d3ddeb; --line-soft:#e5ecf5;
   --fg:#0d1626; --muted:#4f5f79; --faint:#8292aa;
@@ -20,6 +22,7 @@
 }
 @media (prefers-color-scheme: light) {
   :root:not([data-theme="dark"]):not([data-theme="light"]) {
+    --markbg:#1f4786; --markink:#ffffff;
     --bg:#f5f8fc; --side:#eaf0f8; --panel:#ffffff; --raise:#e8eef7; --input:#ffffff;
     --line:#d3ddeb; --line-soft:#e5ecf5;
     --fg:#0d1626; --muted:#4f5f79; --faint:#8292aa;
@@ -42,7 +45,7 @@ button { font:inherit; cursor:pointer; border:0; background:none; color:inherit 
 aside { width:264px; flex:none; background:var(--side);
   border-right:1px solid var(--line); display:flex; flex-direction:column }
 .brand { padding:18px 18px 15px; display:flex; align-items:center; gap:10px }
-.mark { width:30px; height:30px; flex:none; border-radius:9px }
+.mark { width:31px; height:31px; flex:none; display:block }
 .wordmark { display:flex; flex-direction:column; min-width:0 }
 .wordmark b { font-size:16.5px; font-weight:650; letter-spacing:-.02em; line-height:1.15 }
 .wordmark i { font-style:normal; color:var(--faint); font-size:10.5px; line-height:1.35;

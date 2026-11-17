@@ -32,15 +32,14 @@ PAGE = """<!doctype html><html lang="en"><head><meta charset="utf-8">
 
   <aside>
     <div class="brand">
-      <svg class="mark" viewBox="0 0 48 48" aria-hidden="true">
-        <rect x="1.5" y="1.5" width="45" height="45" rx="12" fill="var(--accent-dim)"/>
-        <path d="M8 36 h32" stroke="var(--accent)" stroke-width="2.5" stroke-linecap="round"/>
-        <path d="M6 41 q 6 -3 12 0 t 12 0 t 12 0" stroke="var(--accent)" stroke-width="2"
-          fill="none" stroke-linecap="round" opacity=".55"/>
-        <rect x="14" y="30" width="5" height="6" rx="1.2" fill="var(--accent)" opacity=".8"/>
-        <rect x="29" y="30" width="5" height="6" rx="1.2" fill="var(--accent)" opacity=".8"/>
-        <path d="M10 18 h28 l-5 11 h-18 z" fill="var(--fg)" opacity=".95"/>
-        <path d="M23 18 v-10 l10 5 -10 5 z" fill="var(--fg)" opacity=".62"/>
+      <svg class="mark" viewBox="0 0 64 64" aria-hidden="true">
+        <rect width="64" height="64" rx="15" fill="var(--markbg)"/>
+        <path d="M15 21 H49 L42 41 H22 Z" fill="none" stroke="var(--accent)"
+          stroke-width="4.2" stroke-linejoin="round"/>
+        <path d="M23 30 l 6.5 7.5 L 46 17" fill="none" stroke="var(--markink)"
+          stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M26 47 h12" stroke="var(--accent)" stroke-width="3.4"
+          stroke-linecap="round" opacity=".55"/>
       </svg>
       <span class="wordmark"><b>drydock</b><i>starts new projects and changes existing ones</i></span>
     </div>
