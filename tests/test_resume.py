@@ -9,7 +9,6 @@ failure mode is quiet, because a resumed run that is subtly worse still
 looks like a resumed run.
 """
 
-
 import pytest
 
 from drydock.session import _skills_named
