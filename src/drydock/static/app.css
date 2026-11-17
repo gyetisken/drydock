@@ -442,21 +442,28 @@ body.tucked #show-side { display:flex }
   text-transform:none; letter-spacing:0; font-weight:400 }
 
 /* ---------- diffs ---------- */
-.diff { margin-top:10px }
-.diff summary { cursor:pointer; font-size:12px; color:var(--accent);
-  list-style:none; padding:4px 0 }
+.diff { margin-top:12px; border:1px solid var(--line); border-radius:11px;
+  overflow:hidden; background:var(--panel) }
+.diff summary { cursor:pointer; font-size:12px; color:var(--muted);
+  list-style:none; padding:10px 13px; display:flex; align-items:center;
+  gap:8px; user-select:none; transition:background .12s }
+.diff summary:hover { background:var(--raise); color:var(--fg) }
 .diff summary::-webkit-details-marker { display:none }
-.diff summary::before { content:"\\203A "; display:inline-block;
-  transition:transform .15s; margin-right:5px }
+.diff summary::before { content:"\203A"; font-size:15px; line-height:1;
+  color:var(--faint); transition:transform .18s ease; display:inline-block }
+.diff[open] summary { border-bottom:1px solid var(--line-soft); background:var(--raise) }
 .diff[open] summary::before { transform:rotate(90deg) }
-.patch { margin-top:7px; max-height:420px; overflow:auto; border-radius:9px;
-  border:1px solid var(--line); background:var(--input); padding:9px 0 }
-.dl { font:11.5px/1.55 ui-monospace,SFMono-Regular,Menlo,monospace;
-  padding:0 12px; white-space:pre; color:var(--muted) }
-.dl.add { background:color-mix(in srgb,var(--ok) 14%,transparent); color:var(--fg) }
-.dl.del { background:color-mix(in srgb,var(--bad) 14%,transparent); color:var(--fg) }
-.dl.hunk { color:var(--accent); background:var(--raise) }
-.dl.meta { color:var(--faint) }
+.patch { max-height:min(460px,52vh); overflow:auto; background:var(--input);
+  padding:10px 0 12px }
+.dl { font:11.5px/1.65 ui-monospace,SFMono-Regular,Menlo,monospace;
+  padding:0 14px; white-space:pre; color:var(--muted) }
+.dl.add { background:color-mix(in srgb,var(--ok) 13%,transparent);
+  color:var(--fg); box-shadow:inset 2px 0 0 var(--ok) }
+.dl.del { background:color-mix(in srgb,var(--bad) 13%,transparent);
+  color:var(--fg); box-shadow:inset 2px 0 0 var(--bad) }
+.dl.hunk { color:var(--accent); background:var(--raise); margin:7px 0 3px;
+  padding-top:3px; padding-bottom:3px }
+.dl.meta { color:var(--faint); opacity:.8 }
 
 textarea#inst { width:100%; background:var(--input); color:var(--fg);
   border:1px solid var(--line); border-radius:9px; padding:11px 12px;
@@ -528,3 +535,16 @@ textarea#inst:focus { border-color:var(--accent-dim) }
   animation:spin .62s linear infinite; vertical-align:-1px }
 .working-now { color:var(--ok) }
 .working-now::before { content:"✓ "; }
+
+
+/* ---------- scrollbars ----------
+   The default on a dark page is a light slab that announces itself more
+   loudly than anything it is scrolling past. */
+* { scrollbar-width:thin; scrollbar-color:var(--line) transparent }
+::-webkit-scrollbar { width:10px; height:10px }
+::-webkit-scrollbar-track { background:transparent }
+::-webkit-scrollbar-thumb { background:var(--line); border-radius:99px;
+  border:3px solid transparent; background-clip:content-box }
+::-webkit-scrollbar-thumb:hover { background:var(--faint);
+  border:3px solid transparent; background-clip:content-box }
+::-webkit-scrollbar-corner { background:transparent }

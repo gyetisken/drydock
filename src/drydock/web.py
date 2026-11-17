@@ -227,8 +227,12 @@ def home() -> HTMLResponse:
 
 
 MODELS = [
-    {"id": "opus", "label": "Opus", "note": "most capable, slowest, dearest"},
-    {"id": "sonnet", "label": "Sonnet", "note": "the sensible default"},
+    {
+        "id": "opus",
+        "label": "Opus",
+        "note": "decides and reviews; Sonnet does the typing",
+    },
+    {"id": "sonnet", "label": "Sonnet", "note": "Sonnet throughout"},
     {"id": "haiku", "label": "Haiku", "note": "fast and cheap, for simple work"},
 ]
 

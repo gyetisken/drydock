@@ -27,6 +27,27 @@ API_MODEL = {
     "sonnet": "claude-sonnet-5",
     "haiku": "claude-haiku-4-5",
 }
+
+# Which model does the typing.
+#
+# Measured on a four-item greenfield build: the engineer took 180 to 210
+# seconds an item while every other station took 45 to 95, so three quarters
+# of a run was one station writing files. That station is also the one whose
+# output is checked hardest - it is built, its suite is run against the
+# recorded count, its diff is read for honesty, and it is reviewed against
+# the item - so it is the station where a faster model costs least and saves
+# most. Judgement stays where it was put.
+#
+# A deliberate choice of the cheapest model is not overridden: somebody who
+# picked Haiku wanted Haiku.
+WORK_MODEL = {"opus": "sonnet", "sonnet": "sonnet", "haiku": "haiku"}
+
+
+def for_work(model: str) -> str:
+    """The model the engineer uses, given the one chosen for judgement."""
+    return WORK_MODEL.get(model, model)
+
+
 MODEL = JUDGEMENT
 
 

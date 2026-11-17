@@ -11,7 +11,7 @@ reported, not fixed.
 
 from pathlib import Path
 
-from .agent import API_MODEL, JUDGEMENT, Agent, Tool
+from .agent import API_MODEL, JUDGEMENT, Agent, Tool, for_work
 from .engines import ClaudeCodeEngine, EngineResult
 from .models import Item
 from .skills import Skill, briefing
@@ -148,7 +148,7 @@ def work(
     if engine == "claude":
         # The worker is whatever Claude Code is signed in as. Everything that
         # decides whether its work survives still happens here.
-        result = ClaudeCodeEngine(model=model).work(
+        result = ClaudeCodeEngine(model=for_work(model)).work(
             repo,
             SYSTEM + briefing(skills or [], "engineer"),
             prompt,
@@ -167,7 +167,7 @@ def work(
 
     agent = Agent(
         name="Engineer",
-        model=API_MODEL.get(model, JUDGEMENT),
+        model=API_MODEL.get(for_work(model), JUDGEMENT),
         system=SYSTEM + briefing(skills or [], "engineer"),
         tools=write_tools(repo, build_command),
         max_turns=30,
