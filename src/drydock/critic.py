@@ -30,6 +30,22 @@ this process. Nothing before you can see: the tests check behaviour, the
 diff review checks scope. A page that is one flat centred column of stacked
 text passes all of it, and that is the page you are here to catch.
 
+**Judge this item, not the whole page.** You are given one item out of a
+sequence, and the page in front of you is the page as it stands after that
+item and no further. Things the direction asks for that a later item will
+bring are not this item's failures - a stylesheet item owes you tokens and a
+shell, not a finished hero. Refusing an item for work it was never given is
+how a run ends up doing everything twice.
+
+So the question is narrow: of the things this item was responsible for, is
+any of them not actually on the page, or on the page wrongly? Everything
+else true and wrong goes in `noticed`, where the next item can pick it up.
+
+Two exceptions, which are never out of scope because they are never
+intentional: text that overflows or is clipped at either width, and text a
+person cannot read against its background. If you can see either, say so and
+refuse, whoever introduced it.
+
 Look at the images and answer honestly:
 
 - Does the composition described actually exist on the page? A named
@@ -52,16 +68,19 @@ Reject when the page does not carry out the direction. Approve when it does,
 even if you would have directed it differently - you are not re-directing
 it. If something is wrong but outside this item, put it in `noticed`."""
 
-PROMPT = """The direction this was built to:
+PROMPT = """The direction the whole project is being built to, for context:
 
 {direction}
 
-The item that was just finished: {item}
+The item that was just finished, which is the only thing you are judging:
+
+    {item}
+
+The page has had this item and everything before it, and nothing after it.
 
 Two images of the page as it renders now are in this directory: desktop.png
-and phone.png. Read both, then answer.
-
-Does the page carry out the direction?"""
+and phone.png. Read both, then answer: did this item put its part of the
+direction on the page?"""
 
 
 @dataclass

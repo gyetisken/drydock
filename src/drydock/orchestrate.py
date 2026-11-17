@@ -74,7 +74,12 @@ def _show_it(repo_path: Path, run, item, on_event):
             return look_at_it(
                 live.url,
                 run.direction,
-                item.plain or item.title,
+                # Everything the item says about itself. The critic is being
+                # asked whether this item did its part, and it cannot know
+                # what that part was from a title alone.
+                f"{item.plain or item.title}\n\n"
+                f"In full: {item.title}\n\n"
+                f"Why it exists: {item.rationale}",
                 Path(scratch),
                 model=run.model,
                 on_event=on_event,
