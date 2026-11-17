@@ -49,6 +49,21 @@ hard. If you have written seven, go back and find the three that were only
 split because they could be. If you have written ten, you have planned a
 list of files rather than a sequence of working states.
 
+There is an upper bound too, and it is harder than it sounds. One engineer
+works one item in one pass: {turns} turns and {minutes:.0f} minutes, no
+second sitting, nothing carried over. An item that runs out of either is stopped
+with nothing to show, and the usual cause is an item that was three pieces
+of work wearing one title. Read each item back as a single sitting. If it
+contains a word like "and" joining two different kinds of thing - tokens
+and a layout and a page, a parser and a cache and an endpoint - count how
+many files it names and how many of them have to be invented from nothing.
+Four invented files is the point where it stops being one item.
+
+Both bounds are real and they pull against each other. The resolution is
+not a middle number: it is that an item is one working state the project
+passes through, and a project passes through fewer of those than there are
+files in it.
+
 **Shape the work so it can be done at once.** Two items that edit the same
 file cannot be worked on together, so a plan where every item edits the page
 is a plan that runs one thing at a time however few items it has. This is
@@ -241,7 +256,7 @@ def plan(
     if engine == "claude":
         result, dollars, turns = ClaudeCodeEngine(model=model).structured(
             repo,
-            SYSTEM + briefing(chosen, "plan") + briefing(chosen, "verify"),
+            _system(engine) + briefing(chosen, "plan") + briefing(chosen, "verify"),
             filled,
             '{"summary": "...", "items": [{"id": 1, "title": "...", '
             '"plain": "...", "rationale": "...", "files": ["..."], '
@@ -257,7 +272,7 @@ def plan(
         # The planner is given both its own guidance and what the skill says
         # counts as proof, because acceptance belongs in the item rather than
         # being remembered later by whoever reads the diff.
-        system=SYSTEM + briefing(chosen, "plan") + briefing(chosen, "verify"),
+        system=_system(engine) + briefing(chosen, "plan") + briefing(chosen, "verify"),
         tools=read_only(repo),
         max_turns=10,
         budget=budget,
@@ -272,6 +287,19 @@ class _Spend:
         self.input_tokens = self.output_tokens = self.cached_tokens = 0
         self.turns = turns
         self.dollars = dollars
+
+
+def _system(engine: str) -> str:
+    """The rules, with the engineer's real limits in them.
+
+    The bound on how large an item can be is the bound on what one worker
+    finishes in one pass, so it is read off the worker rather than written
+    down twice and left to drift.
+    """
+    if engine == "claude":
+        worker = ClaudeCodeEngine()
+        return SYSTEM.format(turns=worker.max_turns, minutes=worker.seconds / 60)
+    return SYSTEM.format(turns=30, minutes=12)
 
 
 ANSWER_SYSTEM = """You wrote this plan, and the engineer doing one of its
