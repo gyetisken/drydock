@@ -463,3 +463,16 @@ textarea#inst:focus { border-color:var(--accent-dim) }
 .sheet-card .row { display:flex; gap:11px; align-items:center; margin-top:12px }
 .side-item.unfinished { border-left:2px solid var(--warn); padding-left:9px }
 .side-item.unfinished small { color:var(--warn) }
+
+/* a step that is actually happening should look like it */
+.step.working { background:var(--raise); border-radius:8px }
+.spin { display:inline-block; width:10px; height:10px; border-radius:50%;
+  border:2px solid var(--line); border-top-color:var(--live);
+  animation:spin .7s linear infinite; vertical-align:-1px }
+@keyframes spin { to { transform:rotate(360deg) } }
+.gates { display:flex; gap:6px; flex-wrap:wrap; margin-top:5px }
+.gate { font-size:10px; padding:1px 7px; border-radius:999px;
+  background:var(--raise); color:var(--faint) }
+.gate.ok { color:var(--ok) }
+.gate.no { color:var(--bad) }
+@media (prefers-reduced-motion: reduce) { .spin { animation:none } }

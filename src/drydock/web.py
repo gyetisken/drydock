@@ -24,6 +24,23 @@ app = FastAPI(title="drydock")
 STATIC = Path(__file__).parent / "static"
 app.mount("/static", StaticFiles(directory=STATIC), name="static")
 
+
+def _version() -> str:
+    """A token that changes whenever the interface does.
+
+    Without it a browser keeps yesterday's JavaScript against today's markup,
+    and the result is not a stale page but a broken one: the HTML has elements
+    the old script has never heard of, so half the room simply does not draw.
+    It looked like a rendering bug and was a caching one. Nobody should have to
+    know to hold shift while reloading.
+    """
+    newest = 0.0
+    for path in STATIC.rglob("*"):
+        if path.is_file():
+            newest = max(newest, path.stat().st_mtime)
+    return str(int(newest))
+
+
 SKILLS = Path("skills")
 workspace = Workspace().load()
 
@@ -207,7 +224,16 @@ PAGE = """<!doctype html><html lang="en"><head><meta charset="utf-8">
 
 @app.get("/", response_class=HTMLResponse)
 def home() -> HTMLResponse:
-    return HTMLResponse(PAGE)
+    # Every asset the page pulls is stamped with the newest mtime under
+    # static/, so one edit anywhere invalidates the lot and nothing can be
+    # half a version behind.
+    stamped = PAGE.replace('.css"', f'.css?v={_version()}"').replace(
+        '.js"', f'.js?v={_version()}"'
+    )
+    return HTMLResponse(
+        stamped,
+        headers={"Cache-Control": "no-store"},
+    )
 
 
 MODELS = [

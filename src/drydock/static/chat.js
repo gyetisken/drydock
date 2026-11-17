@@ -32,14 +32,21 @@ const live = { items: new Map(), baseline: null, tests: null, cost: 0, el: {} };
 
 function renderPlan() {
   if (!live.el.plan) return;
-  live.el.plan.querySelector(".steps").innerHTML =
-    [...live.items.values()].map(i => `
+  const items = [...live.items.values()];
+  live.el.plan.querySelector(".steps").innerHTML = items.map(i => `
       <div class="step ${i.status}">
-        <span class="mk">${MK[i.status] || "·"}</span>
+        <span class="mk">${i.status === "working"
+          ? '<span class="spin"></span>' : (MK[i.status] || "·")}</span>
         <span class="n mono">${i.id}</span>
         <div><div class="ttl">${esc(i.title)}</div>
-        ${i.note ? `<div class="why">${esc(i.note)}</div>` : ""}</div>
+        ${i.note ? `<div class="why">${esc(i.note)}</div>` : ""}
+        ${i.gates ? `<div class="gates">${i.gates}</div>` : ""}</div>
       </div>`).join("");
+
+  // The item being worked on is the one thing anyone is looking for, so it
+  // is also kept in view when the plan is longer than the panel.
+  const live_el = live.el.plan.querySelector(".step.working");
+  if (live_el && !live.pinned) live_el.scrollIntoView({ block: "nearest" });
 }
 
 function renderStats() {
@@ -182,13 +189,27 @@ const on = {
   },
   "item.start": (e) => {
     const i = live.items.get(e.id);
-    if (i) { i.status = "working"; i.note = "working on it"; renderPlan(); }
+    if (i) {
+      i.status = "working";
+      i.note = "the engineer is on this one";
+      i.gates = "";
+      renderPlan();
+    }
     Office.at("Engineer", "working", `item ${e.id}: ${e.title}`);
     Office.send("Engineer");
     drawOffice();
   },
   "gate": (e) => {
     const who = e.who === "inspector" ? "Inspector" : "Reviewer";
+    // Each gate reports itself on the item it judged, so the plan shows how
+    // far through the three checks a change actually got.
+    const item = live.items.get(e.id);
+    if (item) {
+      item.gates = (item.gates || "") +
+        `<span class="gate ${e.passed ? "ok" : "no"}">${esc(who)} ${
+          e.passed ? "passed it" : "sent it back"}</span>`;
+      renderPlan();
+    }
     if (e.passed) { Office.send(who); Office.at(who, "done", e.note); drawOffice(); return; }
     Office.bounce(who);
     Office.at(who, "failed", e.note);
@@ -223,6 +244,9 @@ const on = {
         ${esc(e.note)}</p><p class="why">The tree is back where it was. Nothing after
         this item was attempted, because each one assumes the last one landed.</p></div>`);
     }
+  },
+  "resumed": (e) => {
+    say("crew", `<div class="body"><p class="why">${esc(e.note)}</p></div>`, "dim");
   },
   "stopping": (e) => {
     say("crew", `<div class="body"><p>Stopping. ${esc(e.note)}</p></div>`, "dim");

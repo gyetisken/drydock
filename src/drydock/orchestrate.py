@@ -23,6 +23,16 @@ from .run import Run
 from .verify import verify
 
 
+class DirtyTree(Exception):
+    """The tree was not clean when the loop was asked to start.
+
+    An ordinary exception on purpose. This used to be SystemExit, which is
+    not an Exception and so slips past every `except Exception` in the
+    program - including the one guarding the thread a job runs on. The result
+    was a thread that died in silence while the page kept its spinner.
+    """
+
+
 def execute(
     run: Run,
     stop_after: int | None = None,
@@ -45,7 +55,7 @@ def execute(
         return {"build": chain.build_command, "tests": chain.test_command}
 
     if not repo.is_clean():
-        raise SystemExit(
+        raise DirtyTree(
             f"{repo_path} has uncommitted changes. The crew needs a clean tree so "
             "that reverting an item removes exactly what the item did."
         )

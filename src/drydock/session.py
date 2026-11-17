@@ -345,7 +345,7 @@ class Session:
         """
         try:
             self._work_the_plan()
-        except Exception as exc:  # noqa: BLE001 - the page has to be told
+        except BaseException as exc:  # noqa: BLE001 - nothing may die in silence
             self.error = f"{type(exc).__name__}: {exc}"
             self.feed.emit("run.error", detail=self.error)
             self.feed.emit(
@@ -455,6 +455,16 @@ class Session:
             model=model or run.model,
         )
         session.run = run
+
+        # Whatever was being written when this stopped belongs to an item
+        # that never landed, and an item that never landed is one whose
+        # changes are thrown away. Leaving them would also mean the next
+        # item's commit quietly contains someone else's half-finished work.
+        repo = Repo(Path(run.repo))
+        dirty = not repo.is_clean()
+        if dirty:
+            repo.discard()
+
         session.feed.emit(
             "run.started",
             repo=Path(run.repo).name,
@@ -464,6 +474,13 @@ class Session:
             stages=STAGES,
             resumed=True,
         )
+        if dirty:
+            session.feed.emit(
+                "resumed",
+                note="A half-finished item was left on disk when this stopped. "
+                "It was thrown away, which is what happens to any item that "
+                "does not land. Everything already committed is untouched.",
+            )
         if run.baseline:
             b = run.baseline
             session.feed.emit(
