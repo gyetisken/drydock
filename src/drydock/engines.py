@@ -21,9 +21,11 @@ decides whether the code is allowed to stay.
 import json
 import os
 import shutil
+import signal
 import subprocess
 import sys
 import threading
+import time
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -100,22 +102,106 @@ _WORKERS: set[subprocess.Popen] = set()
 _WORKERS_LOCK = threading.Lock()
 
 
+def _roster() -> Path:
+    """Where running workers are written down, outside any one process.
+
+    A set in memory is lost when the application restarts, and a worker is
+    not: it keeps its turn, keeps writing files, and the next run finds a
+    repository with somebody else's hands in it. Two engineers wrote the
+    same page at once this way, and one of them said so in its own notes
+    while nothing in this program noticed.
+
+    So the roster is on disk. It is a cache of something the operating
+    system already knows, which is why nothing here trusts it further than
+    a pid and a path.
+    """
+    home = Path(os.environ.get("DRYDOCK_HOME") or Path.home() / ".drydock")
+    where = home / "workers"
+    where.mkdir(parents=True, exist_ok=True)
+    return where
+
+
 def _watch(process: subprocess.Popen) -> None:
     with _WORKERS_LOCK:
         _WORKERS.add(process)
+    pid = getattr(process, "pid", None)
+    try:
+        (_roster() / f"{pid}.json").write_text(
+            json.dumps({"pid": pid, "repo": getattr(process, "drydock_repo", "")})
+        )
+    except (OSError, TypeError):
+        pass  # the roster is a convenience, never a precondition
 
 
 def _forget(process: subprocess.Popen) -> None:
     with _WORKERS_LOCK:
         _WORKERS.discard(process)
+    try:
+        (_roster() / f"{getattr(process, 'pid', None)}.json").unlink(missing_ok=True)
+    except OSError:
+        pass
+
+
+def _alive(pid: int) -> bool:
+    """Whether this pid is a process that is still doing something.
+
+    A process that has exited but not been reaped still answers signal 0,
+    so a stopped worker looked alive forever and was counted as one. The
+    state flag is what separates the two.
+    """
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True  # somebody else's, but it exists
+    try:
+        said = subprocess.run(
+            ["ps", "-o", "state=", "-p", str(pid)],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=False,
+        )
+    except OSError:
+        return True
+    state = said.stdout.strip()
+    return bool(state) and not state.startswith("Z")
+
+
+def _orphans(repo: Path | None) -> list[int]:
+    """Workers written down by a process that is no longer here.
+
+    Anything in the roster that this process does not own is either dead -
+    in which case the note is swept - or alive and not being watched by
+    anybody, which is the case worth stopping.
+    """
+    with _WORKERS_LOCK:
+        ours = {p.pid for p in _WORKERS}
+    found = []
+    for note in _roster().glob("*.json"):
+        try:
+            said = json.loads(note.read_text())
+            pid = int(said["pid"])
+        except (OSError, ValueError, KeyError):
+            note.unlink(missing_ok=True)
+            continue
+        if not _alive(pid):
+            note.unlink(missing_ok=True)
+            continue
+        if pid in ours:
+            continue
+        if repo is None or said.get("repo") == str(repo):
+            found.append(pid)
+    return found
 
 
 def stop_workers(repo: Path | None = None) -> int:
     """Stop every running worker, or only those working in one repository.
 
     Asked first, then told. A worker given a moment to exit closes its own
-    files; one that is killed outright can leave a half-written report behind,
-    which the engine would then read as a finished answer.
+    files; one that is killed outright can leave a half-written report
+    behind, which the engine would then read as a finished answer.
     """
     with _WORKERS_LOCK:
         targets = [
@@ -138,7 +224,29 @@ def stop_workers(repo: Path | None = None) -> int:
             except OSError:
                 pass
         _forget(process)
-    return len(targets)
+
+    stopped = len(targets)
+    for pid in _orphans(repo):
+        for signal_number in (signal.SIGTERM, signal.SIGKILL):
+            if not _alive(pid):
+                break
+            try:
+                os.kill(pid, signal_number)
+            except OSError:
+                break
+            time.sleep(0.4)
+            # If it happens to be a child of this process, reap it, or it
+            # stays on the roster as a process that answers signals and does
+            # nothing. Orphans of a previous run are not ours and launchd
+            # reaps those.
+            try:
+                os.waitpid(pid, os.WNOHANG)
+            except (ChildProcessError, OSError):
+                pass
+        if not _alive(pid):
+            (_roster() / f"{pid}.json").unlink(missing_ok=True)
+            stopped += 1
+    return stopped
 
 
 def _confinement(repo: Path) -> tuple[str, dict]:

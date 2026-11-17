@@ -108,9 +108,11 @@ def body(run, evidence: list[Evidence], url: str = "") -> str:
         lines += [f"- {m}" for m in missing]
         lines += [
             "",
-            "These are not in this branch. Nothing was kept that did not pass "
-            "every check, so the work that is here stands on its own - but it "
-            "is less than was planned.",
+            (
+                "These are not in this branch. Nothing was kept that did not "
+                "pass every check, so the work that is here stands on its own "
+                "- but it is less than was planned."
+            ),
             "",
         ]
 
@@ -122,14 +124,19 @@ def body(run, evidence: list[Evidence], url: str = "") -> str:
         f"| Before any of this | {before} tests |",
         f"| Now | {after} tests |",
         "",
-        "Every item had to leave the suite at least as large as it found it. "
-        "An item that did not was rolled back before the next one began, so "
-        "nothing on this branch was kept by weakening what was being checked.",
+        (
+            "Every item had to leave the suite at least as large as it found "
+            "it. An item that did not was rolled back before the next one "
+            "began, so nothing on this branch was kept by weakening what was "
+            "being checked."
+        ),
         "",
         "## What checked it",
         "",
-        "Each commit passed four gates, in this order. Any of them could send "
-        "it back, and two of them are code rather than judgement.",
+        (
+            "Each commit passed four gates, in this order. Any of them could "
+            "send it back, and two of them are code rather than judgement."
+        ),
         "",
     ]
 
@@ -160,8 +167,11 @@ def body(run, evidence: list[Evidence], url: str = "") -> str:
     lines += [
         "---",
         "",
-        "Built by [drydock](https://github.com/gyetisken/drydock). One commit "
-        "per item on its own branch; nothing touched the default branch.",
+        (
+            "Built by [drydock](https://github.com/gyetisken/drydock). One "
+            "commit per item on its own branch; nothing touched the default "
+            "branch."
+        ),
     ]
     return "\n".join(lines)
 

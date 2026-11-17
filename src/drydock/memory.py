@@ -157,7 +157,7 @@ class Memory:
             # not have. It must not take the run down with it.
             return memory
 
-        for name, default in cls._fields().items():
+        for name in cls._fields():
             if name == "repo" or name not in raw:
                 continue
             setattr(memory, name, raw[name])
