@@ -80,8 +80,7 @@ def _show_it(repo_path: Path, run, item, on_event):
                 # asked whether this item did its part, and it cannot know
                 # what that part was from a title alone.
                 f"{item.plain or item.title}\n\n"
-                f"In full: {item.title}\n\n"
-                f"Why it exists: {item.rationale}",
+                f"In full: {item.as_asked()}",
                 Path(scratch),
                 model=run.model,
                 on_event=on_event,
@@ -269,6 +268,15 @@ def _one_item(
             settled = said
             if on_gate:
                 on_gate(item, "answered", True, said)
+
+            # Onto the item, not just into this attempt. The answer used to
+            # live for the length of one worker: the attempt after it read
+            # the original item, made the same discovery, and the reviewer
+            # refused it for not doing what the item still said. Everyone
+            # downstream now judges the item as settled.
+            if not said.startswith("[this belongs in another item]"):
+                item.settled.append(f"Asked: {asked}\n  Settled: {said}")
+                run.save()
 
             if said.startswith("[this belongs in another item]"):
                 return ItemResult(

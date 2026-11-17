@@ -92,6 +92,25 @@ class Item(BaseModel):
             "is what makes losing them always a decision somebody wrote down."
         ),
     )
+    # Decisions taken about this item after it was written. The engineer can
+    # stop and ask when an item turns on something nobody decided, and the
+    # planner answers - but the answer used to live for the length of one
+    # attempt. The next attempt read the original item, made the same
+    # discovery, and the reviewer refused it for not doing what the item
+    # still said. So a settled question is written onto the item, and
+    # everyone downstream judges it as settled.
+    settled: list[str] = Field(default_factory=list, exclude=False)
+
+    def as_asked(self) -> str:
+        """The item, including anything since decided about it."""
+        said = f"{self.title}\n\nWhy it exists: {self.rationale}"
+        if self.settled:
+            said += "\n\nSince this was written, these questions about it "
+            said += "have been put to whoever wrote it and answered. They are "
+            said += "part of the item now and they win over anything above "
+            said += "that disagrees with them:\n\n"
+            said += "\n\n".join(f"- {s}" for s in self.settled)
+        return said
 
 
 class Plan(BaseModel):

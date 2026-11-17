@@ -124,6 +124,18 @@ def _report_tool() -> Tool:
     )
 
 
+def _with_decisions(item) -> str:
+    """The item's reasons, plus anything settled about it since."""
+    said = item.rationale
+    if getattr(item, "settled", None):
+        said += "\n\nSince this item was written, these questions about it "
+        said += "were put to whoever wrote it and answered. They are part of "
+        said += "the item now and they win over anything above that "
+        said += "disagrees:\n\n"
+        said += "\n\n".join(f"- {s}" for s in item.settled)
+    return said
+
+
 def work(
     repo: Path,
     task: str,
@@ -143,7 +155,11 @@ def work(
         task=task,
         id=item.id,
         title=item.title,
-        rationale=item.rationale,
+        # Anything since decided about this item comes with it. A question
+        # the planner settled used to live for the length of one attempt,
+        # and the attempt after it read the original item, made the same
+        # discovery, and was refused for not doing what the item still said.
+        rationale=_with_decisions(item),
         files=", ".join(item.files),
         verify_with=item.verify_with,
     )

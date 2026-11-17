@@ -16,6 +16,7 @@ change that quietly did something else is not improved by being kept.
 from pathlib import Path
 
 from .agent import API_MODEL, Agent, Tool
+from .engineer import _with_decisions
 from .engines import ClaudeCodeEngine
 
 SYSTEM = """You review one change against the one sentence it was supposed to
@@ -98,7 +99,11 @@ def review(
     prompt = PROMPT.format(
         id=item.id,
         title=item.title,
-        rationale=item.rationale,
+        # Anything since decided about this item comes with it. A question
+        # the planner settled used to live for the length of one attempt,
+        # and the attempt after it read the original item, made the same
+        # discovery, and was refused for not doing what the item still said.
+        rationale=_with_decisions(item),
         summary=summary,
         diff=clipped,
     )

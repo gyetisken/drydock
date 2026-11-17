@@ -376,3 +376,61 @@ def was_killed() -> dict:
         "files_changed": [],
         "died": True,
     }
+
+
+class TestAnAnswerBecomesPartOfTheItem:
+    """It used to live for the length of one worker. The attempt after it
+    read the original item, made the same discovery, and the reviewer
+    refused it for not doing what the item still said - which it did say,
+    because nobody had changed it. Watched happen twice on one item."""
+
+    def test_the_answer_is_written_onto_the_item(self, shop, monkeypatch):
+        fake = Fake(monkeypatch, [asks("overhang the inset, or not?"), finished()])
+        run = a_run(shop)
+        fake.run_it(run)
+
+        settled = run.plan.items[0].settled
+        assert len(settled) == 1
+        assert "overhang the inset" in settled[0]
+        assert "the VAT-inclusive price" in settled[0]
+
+    def test_everybody_downstream_reads_it(self, shop, monkeypatch):
+        """The reviewer and the critic judge the item as it now stands, not
+        as it was written."""
+        run = a_run(shop)
+        run.plan.items[0].settled.append("Asked: x\n  Settled: drop the overhang")
+
+        said = run.plan.items[0].as_asked()
+        assert "drop the overhang" in said
+        assert "win over anything above" in said
+
+    def test_an_item_nobody_asked_about_reads_as_before(self, shop, monkeypatch):
+        run = a_run(shop)
+        said = run.plan.items[0].as_asked()
+
+        assert "Since this was written" not in said
+        assert run.plan.items[0].title in said
+
+    def test_work_belonging_elsewhere_is_not_written_onto_it(self, shop, monkeypatch):
+        """That answer is about what the item is not. Recording it as part
+        of the item is the opposite of what it says."""
+        fake = Fake(
+            monkeypatch,
+            [asks("should I write the printer driver?")],
+            said="[this belongs in another item] item 4 does the printer",
+        )
+        run = a_run(shop)
+        fake.run_it(run)
+
+        assert run.plan.items[0].settled == []
+
+    def test_it_survives_the_run_being_written_down(self, shop, monkeypatch):
+        """Which is the whole point: a resumed run has to start from the
+        decision rather than make it again."""
+        run = a_run(shop)
+        run.plan.items[0].settled.append("Asked: x\n  Settled: drop it")
+
+        from drydock.models import Plan
+
+        back = Plan.model_validate_json(run.plan.model_dump_json())
+        assert back.items[0].settled == ["Asked: x\n  Settled: drop it"]
