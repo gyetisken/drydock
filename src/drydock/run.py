@@ -20,6 +20,7 @@ class Run(BaseModel):
     task: str
     started: str
     skills: list[str] = Field(default_factory=list)
+    engine: str = "api"
     baseline: Baseline | None = None
     inventory: Inventory | None = None
     plan: Plan | None = None

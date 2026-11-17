@@ -21,13 +21,19 @@ from .skills import Skill
 
 class Session:
     def __init__(
-        self, repo: Path, task: str, skills: list[Skill], budget: float = 0.0
+        self,
+        repo: Path,
+        task: str,
+        skills: list[Skill],
+        budget: float = 0.0,
+        engine: str = "api",
     ) -> None:
         self.feed = Feed()
         self.repo = repo
         self.task = task
         self.skills = skills
         self.budget = budget
+        self.engine = engine
         self.run: Run | None = None
         self.error: str | None = None
         self._thread: threading.Thread | None = None
@@ -56,6 +62,7 @@ class Session:
             chain = detect(self.repo)
             self.run = Run.start(self.repo, self.task, [s.name for s in self.skills])
             self.run.budget = self.budget
+            self.run.engine = self.engine
             self.feed.emit(
                 "run.started",
                 repo=self.repo.name,
@@ -183,6 +190,7 @@ class Session:
 
         execute(
             self.run,
+            engine=self.engine,
             skills=self.skills,
             on_event=self._agent_event("Engineer"),
             on_item=on_item,

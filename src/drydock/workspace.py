@@ -100,9 +100,14 @@ class Workspace:
         self.save()
 
     def start(
-        self, repo: Path, task: str, skills: list[Skill], budget: float
+        self,
+        repo: Path,
+        task: str,
+        skills: list[Skill],
+        budget: float,
+        engine: str = "claude",
     ) -> Session:
-        session = Session(repo, task, skills, budget=budget)
+        session = Session(repo, task, skills, budget=budget, engine=engine)
         session.start(auto_run=False)
         # The session has an id only once its run exists, so it is keyed by the
         # same clock the run uses and reconciled when the run appears.

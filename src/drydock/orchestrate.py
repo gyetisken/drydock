@@ -24,6 +24,7 @@ def execute(
     run: Run,
     stop_after: int | None = None,
     per_item: float = 2.5,
+    engine: str = "api",
     skills=None,
     on_event=None,
     on_item=None,
@@ -74,6 +75,7 @@ def execute(
                     skills,
                     on_event,
                     budget=min(run.left, per_item) if run.budget else per_item,
+                    engine=engine,
                 )
             except BudgetExceeded as stop:
                 repo.discard()

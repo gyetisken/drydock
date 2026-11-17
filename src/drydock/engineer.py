@@ -12,6 +12,7 @@ reported, not fixed.
 from pathlib import Path
 
 from .agent import Agent, Tool
+from .engines import ClaudeCodeEngine, EngineResult
 from .models import Item
 from .skills import Skill, briefing
 from .tools import write_tools
@@ -56,6 +57,21 @@ Your item, which is the entire scope:
 Make the change, then report."""
 
 
+class _AsUsage:
+    """Make the CLI's own accounting look like the API engine's.
+
+    The run does not care which engine produced a number, only that it can add
+    it up and show it.
+    """
+
+    def __init__(self, result: EngineResult) -> None:
+        self.input_tokens = 0
+        self.output_tokens = 0
+        self.cached_tokens = 0
+        self.turns = result.turns
+        self.dollars = result.dollars
+
+
 def _report_tool() -> Tool:
     return Tool(
         name="report",
@@ -95,6 +111,7 @@ def work(
     skills: list[Skill] | None = None,
     on_event=None,
     budget: float = 0.0,
+    engine: str = "api",
 ) -> tuple[dict, object]:
     prompt = PROMPT.format(
         repo=repo.name,
@@ -110,6 +127,26 @@ def work(
         prompt += (
             "\n\nThis item was attempted and the verification failed. The output "
             f"is below. Work out what broke before changing anything else.\n\n{retry_of}"
+        )
+
+    if engine == "claude":
+        # The worker is whatever Claude Code is signed in as. Everything that
+        # decides whether its work survives still happens here.
+        result = ClaudeCodeEngine().work(
+            repo,
+            SYSTEM + briefing(skills or [], "engineer"),
+            prompt,
+            build_command,
+            on_event,
+        )
+        return (
+            {
+                "done": result.done,
+                "summary": result.summary,
+                "files_changed": result.files_changed,
+                "noticed": result.noticed,
+            },
+            _AsUsage(result),
         )
 
     agent = Agent(

@@ -25,64 +25,82 @@ SKILLS = Path("skills")
 workspace = Workspace().load()
 
 
-def _page(body: str, script: str) -> HTMLResponse:
-    return HTMLResponse(
-        "<!doctype html><html lang='en'><head><meta charset='utf-8'>"
-        "<meta name='viewport' content='width=device-width,initial-scale=1'>"
-        "<title>drydock</title><link rel='stylesheet' href='/static/app.css'></head>"
-        f"<body><div class='wrap'>{body}</div>"
-        f"<script src='/static/{script}'></script></body></html>"
-    )
+PAGE = """<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>drydock</title><link rel="stylesheet" href="/static/app.css"></head>
+<body><div class="app">
 
+  <aside>
+    <div class="brand">drydock<span>changes code, proves it still works</span></div>
+    <div class="side-h">Projects</div>
+    <div class="side-list" id="projects"></div>
+    <div class="side-h">Earlier</div>
+    <div class="side-list" id="history" style="flex:0 0 auto;max-height:200px"></div>
+    <div class="side-foot">
+      <div class="addrow">
+        <input id="newpath" placeholder="path to a repository" spellcheck="false">
+        <button class="btn ghost" id="add">Add</button>
+      </div>
+    </div>
+  </aside>
 
-HOME = """
-  <header><h1>drydock</h1><span class="task">a crew that changes code and proves it still works</span></header>
-  <p class="meta" id="meta"></p>
+  <main>
+    <div class="topbar">
+      <b id="proj">no project</b><span id="chain"></span>
+      <span class="right" id="spend"></span>
+    </div>
 
-  <h2>Project</h2>
-  <div class="projects" id="projects"></div>
-  <div class="bar">
-    <input id="newpath" placeholder="path to a git repository" spellcheck="false">
-    <button class="ghost" id="addproject">Add</button>
-  </div>
+    <div class="thread" id="thread">
+      <div class="inner" id="thread-inner">
+        <div class="msg"><div class="body">
+          <p>Pick a project on the left, then type a command. <code>/</code> shows
+          what the crew can do.</p>
+          <p class="why">Every change is made on its own branch, one item at a time,
+          and each has to leave the test suite at least as healthy as it found it.
+          One that does not is rolled back before the next begins.</p>
+        </div></div>
+      </div>
+    </div>
 
-  <h2>What should the crew do</h2>
-  <div class="cmdbar">
-    <input id="command" placeholder="type / to see what it can do" spellcheck="false" autocomplete="off">
-    <button id="go" disabled>Start</button>
-  </div>
-  <div class="suggest" id="suggest"></div>
-  <p class="hint" id="hint"></p>
+    <div class="composer"><div class="cwrap">
+      <div class="menu" id="menu" style="display:none"></div>
+      <div class="cbox">
+        <textarea id="box" rows="1" placeholder="/ to see commands" spellcheck="false"></textarea>
+        <select id="engine" title="who pays for the work"></select>
+      </div>
+      <div class="hint" id="hint"></div>
+    </div></div>
+  </main>
 
-  <h2>Earlier runs</h2>
-  <div class="runs" id="runs"></div>
-"""
-
-RUN = """
-  <header><h1>drydock</h1><span class="task" id="task">starting</span></header>
-  <p class="meta" id="meta"><a href="/">&larr; all projects</a></p>
-  <div class="board" id="desks"></div>
-  <div class="scores" id="scores"></div>
-  <div class="bar">
-    <button id="approve" disabled>Approve the plan</button>
-    <span class="hint" id="hint">surveying the repository</span>
-  </div>
-  <h2>The plan</h2>
-  <p class="summary" id="summary"></p>
-  <div class="items" id="items"></div>
-  <h2>What the crew is doing</h2>
-  <div class="feed" id="feed"></div>
-"""
+</div><script src="/static/chat.js"></script></body></html>"""
 
 
 @app.get("/", response_class=HTMLResponse)
 def home() -> HTMLResponse:
-    return _page(HOME, "home.js")
+    return HTMLResponse(PAGE)
 
 
-@app.get("/run/{key}", response_class=HTMLResponse)
-def run_page(key: str) -> HTMLResponse:
-    return _page(RUN, "run.js")
+def _engines() -> list[dict]:
+    """Which ways of running the crew are actually available here."""
+    import os
+    import shutil
+
+    return [
+        {
+            "id": "claude",
+            "label": "Your Claude account",
+            "detail": "runs through Claude Code, signed in as you",
+            "ready": bool(shutil.which("claude")),
+            "why": "Claude Code is not installed on this machine",
+        },
+        {
+            "id": "api",
+            "label": "An API key",
+            "detail": "billed per token, with a hard budget per run",
+            "ready": bool(os.environ.get("ANTHROPIC_API_KEY")),
+            "why": "ANTHROPIC_API_KEY is not set",
+        },
+    ]
 
 
 @app.get("/api/state")
@@ -98,6 +116,7 @@ def state() -> dict:
             }
             for p in workspace.projects
         ],
+        "engines": _engines(),
         "commands": [
             {
                 "name": c.name,
@@ -145,6 +164,7 @@ class StartJob(BaseModel):
     project: str
     command: str
     budget: float = 4.0
+    engine: str = "claude"
 
 
 @app.post("/api/start")
@@ -164,7 +184,11 @@ def start(body: StartJob) -> JSONResponse:
 
     skills = [load_skill(command.skill)] if command.skill else []
     session = workspace.start(
-        Path(body.project), command.task_for(rest), skills, body.budget
+        Path(body.project),
+        command.task_for(rest),
+        skills,
+        body.budget,
+        body.engine,
     )
     key = next(k for k, v in workspace.sessions.items() if v is session)
     return JSONResponse({"ok": True, "key": key})
