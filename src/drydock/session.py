@@ -243,8 +243,13 @@ class Session:
             # other, and the designer is the single slowest station in the
             # line - five minutes of the planner sitting idle, for nothing.
             wants_shape = empty
-            wants_look = self._has_a_face()
-            shape = look = ""
+            # Already decided for this project. Deciding it again costs five
+            # minutes and produces a different answer, and a project whose
+            # palette changes between jobs does not have a palette.
+            remembered = self.memory.direction
+            wants_look = self._has_a_face() and not remembered
+            shape = ""
+            look = remembered
 
             if wants_shape:
                 self.feed.emit(
@@ -266,6 +271,15 @@ class Session:
                     agent="Designer",
                     state="working",
                     note="deciding how it should look",
+                )
+            elif remembered:
+                self.run.direction = remembered
+                self.feed.emit(
+                    "agent.state",
+                    agent="Designer",
+                    state="skipped",
+                    note=f"already directed on {self.memory.directed_on}; "
+                    "using what was decided then",
                 )
             else:
                 self.feed.emit(
@@ -324,6 +338,8 @@ class Session:
                 write_logo(self.repo, found)
                 look = look_briefing(found)
                 self.run.direction = look
+                self.memory.direct(look)
+                self.memory.save()
                 self.feed.emit(
                     "agent.state",
                     agent="Designer",
@@ -445,6 +461,21 @@ class Session:
             note="reading the repository",
         )
 
+        commit = Repo(self.repo).head()
+
+        # Asked before, at this commit, and nothing has changed since.
+        already = self.memory.recall(self.task, commit)
+        if already:
+            self.feed.emit(
+                "agent.state",
+                agent="Analyst",
+                state="done",
+                note="this was asked before and nothing has changed since",
+            )
+            self.feed.emit("answer", text=already, remembered=True)
+            self.feed.close()
+            return
+
         said, usage = ask(
             self.repo,
             self.task,
@@ -452,9 +483,11 @@ class Session:
             model=self.model,
             on_event=self._agent_event("Analyst"),
             memory=self.memory,
-            commit=Repo(self.repo).head(),
+            commit=commit,
         )
         self._spent(usage, "Analyst")
+        self.memory.answered(self.task, said, commit)
+        self.memory.save()
         self.feed.emit("agent.state", agent="Analyst", state="done", note="answered")
         self.feed.emit("answer", text=said)
         self.feed.close()

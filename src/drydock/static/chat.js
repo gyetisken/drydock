@@ -409,7 +409,12 @@ const on = {
   },
   // An answer, not a job. No plan, no items, no branch.
   "answer": (e) => {
-    say("crew", `<div class="body answer">${marked(e.text)}</div>`);
+    say("crew", `<div class="body answer">${marked(e.text)}${
+      e.remembered
+        ? `<p class="why remembered">Answered earlier and nothing in the
+           repository has changed since, so it was not read for again.</p>`
+        : ""
+    }</div>`);
     running(false);
     $("go").disabled = false;
   },
