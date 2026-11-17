@@ -34,6 +34,15 @@ from .skills import Skill, discover
 from .skills import load as load_skill
 
 
+def _skills_named(names: list[str]) -> list:
+    """Load the installed skills with these names, as they are right now."""
+    root = Path("skills")
+    if not root.exists():
+        return []
+    installed = {s.name: s for s in discover(root)}
+    return [load_skill(installed[n]) for n in names if n in installed]
+
+
 class Session:
     def __init__(
         self,
@@ -774,10 +783,16 @@ class Session:
         if (engine or run.engine) == "claude":
             run.budget = 0.0
 
+        # Read back the skills the run was working under. This used to pass
+        # an empty list, which made a resumed job a materially worse job
+        # than the one it was continuing: the engineer carried on without
+        # the packaged knowledge the first half of the plan had. Re-read
+        # from disk rather than kept in the record on purpose - a skill
+        # fixed after a run stopped is the usual reason to resume it.
         session = cls(
             Path(run.repo),
             run.task,
-            [],
+            _skills_named(run.skills),
             budget=run.budget,
             engine=engine or run.engine,
             model=model or run.model,
