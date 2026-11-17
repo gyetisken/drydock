@@ -9,6 +9,7 @@ of something that takes twenty minutes and costs money.
 
 import re
 import threading
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import ClassVar
 
@@ -185,23 +186,76 @@ class Session:
                 self._finish_early()
                 return
 
-            shape = ""
-            if empty:
+            # The architect decides what it is built with; the designer
+            # decides what it looks like. Neither answer depends on the
+            # other, and the designer is the single slowest station in the
+            # line - five minutes of the planner sitting idle, for nothing.
+            wants_shape = empty
+            wants_look = self._has_a_face()
+            shape = look = ""
+
+            if wants_shape:
                 self.feed.emit(
                     "agent.state",
                     agent="Architect",
                     state="working",
                     note="deciding what this is made of",
                 )
-                found, usage = design(
-                    self.repo,
-                    self.task,
-                    self.skills,
-                    self._agent_event("Architect"),
-                    budget=self.run.left if self.budget else 0.0,
-                    engine=self.engine,
-                    model=self.model,
+            else:
+                self.feed.emit(
+                    "agent.state",
+                    agent="Architect",
+                    state="skipped",
+                    note="the project already has a shape; the Analyst read it",
                 )
+            if wants_look:
+                self.feed.emit(
+                    "agent.state",
+                    agent="Designer",
+                    state="working",
+                    note="deciding how it should look",
+                )
+            else:
+                self.feed.emit(
+                    "agent.state",
+                    agent="Designer",
+                    state="skipped",
+                    note="nothing here is looked at by anybody",
+                )
+
+            with ThreadPoolExecutor(max_workers=2) as pool:
+                shaping = (
+                    pool.submit(
+                        design,
+                        self.repo,
+                        self.task,
+                        self.skills,
+                        self._agent_event("Architect"),
+                        budget=self.run.left if self.budget else 0.0,
+                        engine=self.engine,
+                        model=self.model,
+                    )
+                    if wants_shape
+                    else None
+                )
+                looking = (
+                    pool.submit(
+                        decide,
+                        self.repo,
+                        self.task,
+                        "",
+                        self.skills,
+                        self._agent_event("Designer"),
+                        budget=self.run.left if self.budget else 0.0,
+                        engine=self.engine,
+                        model=self.model,
+                    )
+                    if wants_look
+                    else None
+                )
+
+            if shaping:
+                found, usage = shaping.result()
                 self._spent(usage, "Architect")
                 shape = as_briefing(found)
                 self.feed.emit(
@@ -211,35 +265,9 @@ class Session:
                     note=found.get("stack", "")[:90] or "shape decided",
                 )
                 self.feed.emit("design", **found)
-            else:
-                self.feed.emit(
-                    "agent.state",
-                    agent="Architect",
-                    state="skipped",
-                    note="the project already has a shape; the Analyst read it",
-                )
 
-            # Anything with a face gets one. Nobody was responsible for how
-            # the thing looked, so everything came out looking the same -
-            # default HTML passes every test there is.
-            look = ""
-            if self._has_a_face():
-                self.feed.emit(
-                    "agent.state",
-                    agent="Designer",
-                    state="working",
-                    note="deciding how it should look",
-                )
-                found, usage = decide(
-                    self.repo,
-                    self.task,
-                    shape,
-                    self.skills,
-                    self._agent_event("Designer"),
-                    budget=self.run.left if self.budget else 0.0,
-                    engine=self.engine,
-                    model=self.model,
-                )
+            if looking:
+                found, usage = looking.result()
                 self._spent(usage, "Designer")
                 write_logo(self.repo, found)
                 look = look_briefing(found)
@@ -251,13 +279,6 @@ class Session:
                     note=found.get("idea", "")[:110] or "the look is decided",
                 )
                 self.feed.emit("look", **found)
-            else:
-                self.feed.emit(
-                    "agent.state",
-                    agent="Designer",
-                    state="skipped",
-                    note="nothing here is looked at by anybody",
-                )
 
             self.feed.emit(
                 "agent.state",

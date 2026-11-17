@@ -11,6 +11,7 @@ test stop complaining, and the second attempt is where that starts.
 """
 
 import re
+from concurrent.futures import Future, ThreadPoolExecutor
 from pathlib import Path
 
 from .agent import BudgetExceeded
@@ -82,6 +83,74 @@ def _show_it(repo_path: Path, run, item, on_event):
             if on_event:
                 on_event("critic", f"could not look at it: {exc}")
             return None, 0.0
+
+
+def _judge(
+    repo,
+    repo_path: Path,
+    run,
+    item,
+    diff: str,
+    report: dict,
+    reviewing: bool,
+    engine: str,
+    model: str,
+    on_event,
+    on_gate,
+) -> str:
+    """Run the two opinions at once and return the first refusal, if any.
+
+    They are independent: one reads the change, the other looks at the page.
+    Sequencing them was pure waiting. Both still report, and a refusal from
+    either sends the item back - running them together changes when the
+    answers arrive, not what they are allowed to decide.
+    """
+    jobs: dict[str, Future] = {}
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        if reviewing:
+            jobs["reviewer"] = pool.submit(
+                review,
+                repo_path,
+                item,
+                repo.pending_for_review(),
+                report.get("summary", ""),
+                engine=engine,
+                model=model,
+                on_event=on_event,
+            )
+        if run.direction and _changes_the_view(diff):
+            jobs["critic"] = pool.submit(_show_it, repo_path, run, item, on_event)
+
+    refusals = []
+    for name, job in jobs.items():
+        try:
+            answer, spend = job.result()
+        except Exception as exc:  # noqa: BLE001 - one gate failing is not the item failing
+            if on_event:
+                on_event(name, f"could not finish: {exc}")
+            continue
+
+        if name == "reviewer":
+            run.spend(spend)
+            if on_gate:
+                on_gate(item, name, answer["approved"], answer["reason"])
+            if not answer["approved"]:
+                refusals.append(answer["reason"])
+        elif answer is not None:
+            run.dollars += spend
+            if on_gate:
+                on_gate(
+                    item,
+                    name,
+                    answer.approved,
+                    answer.reason
+                    if answer.looked
+                    else "not looked at: " + answer.reason,
+                )
+            if not answer.approved:
+                refusals.append(answer.reason)
+
+    return "\n\n".join(refusals)
 
 
 def execute(
@@ -187,49 +256,25 @@ def execute(
                     on_gate(item, "inspector", report_card.clean, report_card.reason)
                 if not report_card.clean:
                     refusal = report_card.reason
-                elif reviewing:
-                    opinion, spend = review(
+                else:
+                    # The reviewer reads the diff; the critic looks at the
+                    # rendered page. Neither needs the other's answer, and
+                    # waiting for one before starting the other was adding
+                    # about a hundred seconds to every visual item for no
+                    # reason at all.
+                    refusal = _judge(
+                        repo,
                         repo_path,
+                        run,
                         item,
-                        repo.pending_for_review(),
-                        report.get("summary", ""),
-                        engine=engine,
-                        model=model,
-                        on_event=on_event,
+                        diff,
+                        report,
+                        reviewing,
+                        engine,
+                        model,
+                        on_event,
+                        on_gate,
                     )
-                    run.spend(spend)
-                    if on_gate:
-                        on_gate(
-                            item, "reviewer", opinion["approved"], opinion["reason"]
-                        )
-                    if not opinion["approved"]:
-                        refusal = opinion["reason"]
-
-                # The fourth gate, and the only one with eyes. Everything
-                # before it judges by reading, and a page that is one flat
-                # column of stacked text passes all of it. Run on items that
-                # changed what somebody sees, because rendering and looking
-                # costs a minute and a parser has nothing to look at.
-                if not refusal and run.direction and _changes_the_view(diff):
-                    # Named `seen`, not `verdict`. The verification's verdict
-                    # is already in scope under that name and has `.passed`
-                    # where this has `.approved`; shadowing it meant the
-                    # critic approving an item and then the loop crashing on
-                    # the next line.
-                    seen, spend = _show_it(repo_path, run, item, on_event)
-                    if seen is not None:
-                        run.dollars += spend
-                        if on_gate:
-                            on_gate(
-                                item,
-                                "critic",
-                                seen.approved,
-                                seen.reason
-                                if seen.looked
-                                else "not looked at: " + seen.reason,
-                            )
-                        if not seen.approved:
-                            refusal = seen.reason
 
             if verdict.passed and not refusal:
                 commit = repo.commit(f"{item.id}. {item.title}\n\n{report['summary']}")

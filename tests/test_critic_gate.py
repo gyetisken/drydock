@@ -54,12 +54,15 @@ def test_one_visible_file_among_many_is_enough():
 
 def test_the_two_verdicts_do_not_share_a_name():
     """The verification says `passed`, the critic says `approved`, and both
-    were called `verdict` in the same scope. The critic approved an item and
-    the loop crashed on the next line reading `.passed` off the wrong one."""
+    were once called `verdict` in the same scope. The critic approved an item
+    and the loop crashed on the next line reading `.passed` off the wrong
+    one. Checked across the module rather than one function, because the call
+    has already moved once."""
     import inspect
 
     from drydock import orchestrate
 
-    body = inspect.getsource(orchestrate.execute)
-    assert "seen, spend = _show_it(" in body
-    assert "verdict, spend = _show_it(" not in body
+    source = inspect.getsource(orchestrate)
+    assert "_show_it(" in source, "the critic is no longer called at all"
+    assert "verdict, spend = _show_it(" not in source
+    assert "verdict = _show_it(" not in source
