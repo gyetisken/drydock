@@ -22,39 +22,71 @@ from .agent import API_MODEL, JUDGEMENT, Agent, Tool
 from .engines import ClaudeCodeEngine
 from .skills import Skill, briefing
 
-SYSTEM = """You decide how something looks, for one specific business, before
-anyone writes a line of it.
+SYSTEM = """You have art-directed several hundred sites and you are directing
+this one. You are not choosing colours. You are deciding what somebody sees
+and in what order, and then writing it down precisely enough that an engineer
+who has never spoken to you builds exactly that.
 
-You are not decorating. Every choice answers a question about who this is for
-and what they came to do, and you say which question it answers. A palette
-that could belong to any restaurant is a palette you have not chosen.
+The failure to design against is not ugliness. It is the page that is a
+single centred column of stacked text on one flat surface, where the only
+hierarchy is font size and nothing composes. That page passes every test,
+offends nobody, and was designed by nobody. Restraint is not the absence of
+decisions; it is fewer decisions, made harder.
 
-What good looks like, now:
+So every one of these has to have an answer, and "it is a clean column" is
+not one:
 
-- One idea carries the page. A single photographic or typographic gesture at
-  the top, then quiet. Pages that shout in six places are read as cheap.
-- Type does most of the work. A real typeface pairing, a scale with clear
-  steps rather than six sizes within four pixels of each other, generous line
-  height on body text, and headings tight enough to read as headings.
-- Space is the design. Sections separated by room rather than by rules and
-  boxes. If it looks sparse at desktop width it is probably right.
-- Colour is used sparingly and on purpose: a ground, an ink, and one accent
-  that means something. Gradients and shadows date a page faster than
-  anything else.
-- It has to hold up on a phone. Most people looking at a restaurant's site
-  are standing outside it.
+**Composition.** Where does the eye land, where does it go second, and what
+makes it go there. Name the structure: a grid and how many columns, where
+the asymmetry is, what is flush and what is indented, what breaks the column
+and why. A page where every block is the same width in the same place is a
+document.
 
-Say it in enough detail that an engineer who has never spoken to you builds
-the right thing: the actual hex values, the actual font names from Google
-Fonts, the actual scale in pixels or rem."""
+**Scale contrast.** State the ratio between the largest thing on the page
+and the body text. Under about 4:1 nothing reads as a hierarchy; a real
+display moment is usually 6:1 or more. Say what gets the top of that range
+and what is deliberately quiet.
+
+**At least one structural device, and at most two.** A full-bleed band of a
+second ground. A two-column split where one side is sticky and one scrolls.
+A rule that runs the measure. A figure that breaks its container. An index
+down one edge. Name yours, say what it does, and say why this page needs it.
+
+**Density.** Sections should not all breathe the same. A dense list beside
+an airy opening is rhythm; the same spacing everywhere is wallpaper. Say
+which sections are tight and which are open.
+
+**Edges and surfaces.** How many planes does the page have - one ground, or
+a ground and a raised surface? Where does an edge appear and what is it
+made of? A page with exactly one surface and no edges anywhere has nothing
+holding it together.
+
+**One moment.** The single thing somebody would remember and describe to
+somebody else. Set type at a size you would defend, a colour field, a
+photograph treated a particular way, a piece of structure nobody expects.
+Name it. If there is nothing to describe, there is nothing designed.
+
+**References, by name.** Two or three real sites or publications this should
+sit beside, and one sentence each on what is being taken - the rhythm, the
+way the type is set, the restraint, the density. Not to copy; to aim.
+
+Then the specifics, in enough detail to build from: hex values with their
+contrast ratios, Google Font names with weights, a type scale in rem, a
+spacing scale, and the breakpoints where the composition changes.
+
+And say what the generic version of this would be, in detail, so it cannot
+arrive by default."""
 
 PROMPT = """What is being built: {task}
 
 {shape}
 
-Decide the look. Be specific and be local to this business - its city, its
-kind of room, who walks in. Draw the mark yourself as SVG; nothing is
-downloaded and nothing is a stock icon."""
+Direct it. Be specific and be local to this business - its city, its kind of
+room, who walks in, what they are deciding. Draw the mark yourself as SVG;
+nothing is downloaded and nothing is a stock icon.
+
+Remember that the engineer building this has your words and nothing else. A
+sentence they cannot act on is a sentence that becomes a flat column."""
 
 
 def _tool() -> Tool:
@@ -86,11 +118,48 @@ def _tool() -> Tool:
                         "and line heights that go with them."
                     ),
                 },
+                "composition": {
+                    "type": "string",
+                    "description": (
+                        "The grid, the asymmetry, where the eye lands and goes "
+                        "next, what breaks the column and why. Name the "
+                        "structural device. Be buildable, not evocative."
+                    ),
+                },
+                "scale_contrast": {
+                    "type": "string",
+                    "description": (
+                        "The ratio between the largest thing and the body "
+                        "text, what gets it, and what is deliberately quiet."
+                    ),
+                },
+                "density": {
+                    "type": "string",
+                    "description": (
+                        "Which sections are tight and which are open, and the "
+                        "spacing scale in rem that produces that."
+                    ),
+                },
+                "moment": {
+                    "type": "string",
+                    "description": (
+                        "The one thing somebody would describe to somebody "
+                        "else afterwards."
+                    ),
+                },
+                "references": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": (
+                        "Two or three named sites or publications and one "
+                        "sentence each on what is being taken from them."
+                    ),
+                },
                 "layout": {
                     "type": "string",
                     "description": (
-                        "What is above the fold, what order the page runs in, "
-                        "and how much room sits between sections."
+                        "What is above the fold, the order of the page, and "
+                        "where the composition changes at each breakpoint."
                     ),
                 },
                 "logo_svg": {
@@ -121,6 +190,11 @@ def _tool() -> Tool:
                 "idea",
                 "palette",
                 "type_scale",
+                "composition",
+                "scale_contrast",
+                "density",
+                "moment",
+                "references",
                 "layout",
                 "logo_svg",
                 "logo_reasoning",
@@ -153,8 +227,10 @@ def decide(
             system,
             prompt,
             '{"idea": "...", "palette": ["..."], "type_scale": "...", '
-            '"layout": "...", "logo_svg": "<svg ...>...</svg>", '
-            '"logo_reasoning": "...", "words": "...", "avoid": ["..."]}',
+            '"composition": "...", "scale_contrast": "...", "density": "...", '
+            '"moment": "...", "references": ["..."], "layout": "...", '
+            '"logo_svg": "<svg ...>...</svg>", "logo_reasoning": "...", '
+            '"words": "...", "avoid": ["..."]}',
             on_event=on_event,
             tools="",
             without="Bash Read Glob Grep Edit NotebookEdit WebFetch WebSearch Task",
@@ -174,28 +250,54 @@ def decide(
 
 
 def as_briefing(found: dict) -> str:
-    """What the planner and the engineer are held to."""
+    """What the planner and the engineer are held to.
+
+    Written as a list of parts rather than one long concatenation: this is
+    the text that decides whether the thing gets built as directed, and it
+    has to be easy to read and easy to add to.
+    """
     if not found:
         return ""
-    avoid = found.get("avoid") or []
-    return (
-        "\n\nHow this is to look. It was decided before anything was planned "
+
+    def block(label: str, key: str) -> str:
+        said = (found.get(key) or "").strip()
+        return f"{label}: {said}" if said else ""
+
+    def listed(label: str, key: str) -> str:
+        rows = found.get(key) or []
+        return f"{label}:\n" + "\n".join(f"- {r}" for r in rows) if rows else ""
+
+    opening = (
+        "How this is to look. It was directed before anything was planned "
         "and it is not up for reinterpretation item by item; an item that "
-        "renders anything renders it this way.\n\n"
-        f"The idea: {found.get('idea', '')}\n\n"
-        "Palette:\n"
-        + "\n".join(f"- {c}" for c in found.get("palette", []))
-        + f"\n\nType: {found.get('type_scale', '')}\n\n"
-        f"Layout: {found.get('layout', '')}\n\n"
-        f"Voice: {found.get('words', '')}\n\n"
-        f"The mark is already drawn and is in `brand/logo.svg`. "
-        f"{found.get('logo_reasoning', '')} Use it; do not redraw it.\n\n"
-        "Specifically avoid:\n"
-        + "\n".join(f"- {a}" for a in avoid)
-        + "\n\nOne item near the start writes the stylesheet that holds the "
-        "palette, the type scale and the spacing, and every later item uses "
-        "it rather than inventing values of its own."
+        "renders anything renders it this way."
     )
+    closing = (
+        "One item near the start writes the stylesheet that holds the "
+        "palette, the type scale and the spacing scale, and every later item "
+        "uses those tokens rather than inventing values of its own."
+    )
+    parts = [
+        opening,
+        block("The idea", "idea"),
+        block("The one moment", "moment"),
+        block("Composition", "composition"),
+        block("Scale contrast", "scale_contrast"),
+        block("Density", "density"),
+        listed("Palette", "palette"),
+        block("Type", "type_scale"),
+        block("Layout and breakpoints", "layout"),
+        listed("It should sit beside", "references"),
+        block("Voice", "words"),
+        (
+            "The mark is already drawn and is in `brand/logo.svg`. "
+            f"{(found.get('logo_reasoning') or '').strip()} "
+            "Use it; do not redraw it."
+        ),
+        listed("Specifically avoid", "avoid"),
+        closing,
+    ]
+    return "\n\n" + "\n\n".join(p for p in parts if p)
 
 
 def write_logo(repo: Path, found: dict) -> str:

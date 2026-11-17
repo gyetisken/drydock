@@ -10,9 +10,11 @@ a failing test does not converge on a fix; it converges on whatever makes the
 test stop complaining, and the second attempt is where that starts.
 """
 
+import re
 from pathlib import Path
 
 from .agent import BudgetExceeded
+from .critic import look as look_at_it
 from .detect import detect
 from .engineer import work
 from .inspect import look
@@ -31,6 +33,55 @@ class DirtyTree(Exception):
     program - including the one guarding the thread a job runs on. The result
     was a thread that died in silence while the page kept its spinner.
     """
+
+
+# Files whose change is visible to somebody. A change to a parser is not.
+SEEN = re.compile(
+    r"\.(css|scss|sass|less|html|htm|ejs|astro|vue|svelte|hbs|pug|njk)$"
+    r"|\.(jsx|tsx)$"
+    r"|(^|/)(views|templates|pages|components|layouts|styles|public|static)/"
+)
+
+
+def _changes_the_view(diff: str) -> bool:
+    return any(
+        SEEN.search(path) for path in re.findall(r"^\+\+\+ b/(.+)$", diff, re.MULTILINE)
+    )
+
+
+def _show_it(repo_path: Path, run, item, on_event):
+    """Start the project, photograph it, and have somebody look.
+
+    Nothing here is allowed to take a run down. A project that will not
+    start, a machine with no browser, a page that does not render - each is
+    a check that did not happen, reported as such, rather than an item
+    rolled back for a failure that belongs to this program.
+    """
+    import tempfile
+
+    from . import preview
+
+    try:
+        live = preview.running(repo_path) or preview.start(repo_path)
+    except (LookupError, RuntimeError, TimeoutError) as exc:
+        if on_event:
+            on_event("critic", f"could not start the project to look at it: {exc}")
+        return None, 0.0
+
+    with tempfile.TemporaryDirectory(prefix="drydock-look-") as scratch:
+        try:
+            return look_at_it(
+                live.url,
+                run.direction,
+                item.plain or item.title,
+                Path(scratch),
+                model=run.model,
+                on_event=on_event,
+            )
+        except Exception as exc:  # noqa: BLE001 - a failed look is not a failed item
+            if on_event:
+                on_event("critic", f"could not look at it: {exc}")
+            return None, 0.0
 
 
 def execute(
@@ -101,6 +152,7 @@ def execute(
                     budget=min(run.left, per_item) if run.budget else per_item,
                     engine=engine,
                     model=model,
+                    direction=run.direction,
                 )
             except BudgetExceeded as stop:
                 repo.discard()
@@ -152,6 +204,27 @@ def execute(
                         )
                     if not opinion["approved"]:
                         refusal = opinion["reason"]
+
+                # The fourth gate, and the only one with eyes. Everything
+                # before it judges by reading, and a page that is one flat
+                # column of stacked text passes all of it. Run on items that
+                # changed what somebody sees, because rendering and looking
+                # costs a minute and a parser has nothing to look at.
+                if not refusal and run.direction and _changes_the_view(diff):
+                    verdict, spend = _show_it(repo_path, run, item, on_event)
+                    if verdict is not None:
+                        run.dollars += spend
+                        if on_gate:
+                            on_gate(
+                                item,
+                                "critic",
+                                verdict.approved,
+                                verdict.reason
+                                if verdict.looked
+                                else "not looked at: " + verdict.reason,
+                            )
+                        if not verdict.approved:
+                            refusal = verdict.reason
 
             if verdict.passed and not refusal:
                 commit = repo.commit(f"{item.id}. {item.title}\n\n{report['summary']}")

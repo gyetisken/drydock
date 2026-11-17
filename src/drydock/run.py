@@ -23,6 +23,11 @@ class Run(BaseModel):
     skills: list[str] = Field(default_factory=list)
     engine: str = "api"
     model: str = "opus"
+    # How this is to look, decided once before planning. Kept here because
+    # the engineer needs it on every item that renders anything, and until
+    # now only the planner ever saw it - which is why the accent colour that
+    # was specified appeared nowhere on the page.
+    direction: str = ""
     baseline: Baseline | None = None
     inventory: Inventory | None = None
     plan: Plan | None = None

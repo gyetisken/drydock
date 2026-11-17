@@ -48,9 +48,10 @@ const Office = (() => {
     { id: "Designer",  role: "decides how it looks",      tint: "#e8a33d", hair: "long_waves",   x: 13, y: 6 },
     { id: "Planner",   role: "turns it into items",       tint: "#8a7fd0", hair: "parted",       x: 19, y: 6 },
     { id: "Engineer",  role: "one change at a time",      tint: "#5fc08a", hair: "spiky",        x: 25, y: 6 },
-    { id: "Verifier",  role: "builds it, runs the suite", tint: "#d6ac5c", hair: "mop",          x: 4,  y: 13, code: true },
-    { id: "Inspector", role: "reads the diff",            tint: "#d98bb0", hair: "bob",          x: 13, y: 13, code: true },
-    { id: "Reviewer",  role: "did it do the item",        tint: "#e2796d", hair: "slicked_back", x: 22, y: 13 },
+    { id: "Verifier",  role: "builds it, runs the suite", tint: "#d6ac5c", hair: "mop",          x: 3,  y: 13, code: true },
+    { id: "Inspector", role: "reads the diff",            tint: "#d98bb0", hair: "bob",          x: 11, y: 13, code: true },
+    { id: "Reviewer",  role: "did it do the item",        tint: "#e2796d", hair: "slicked_back", x: 20, y: 13 },
+    { id: "Critic",    role: "looks at the page",          tint: "#9c7bd8", hair: "parted",       x: 28, y: 13 },
   ];
 
   // Everybody sits at their own desk, working or not. Idle people were sent

@@ -196,6 +196,7 @@ const on = {
       Verifier: "baseline", Analyst: "analyst",
       Architect: "planner", Designer: "planner", Planner: "planner",
       Engineer: "engineer", Inspector: "engineer", Reviewer: "engineer",
+      Critic: "engineer",
     };
     Object.entries(NEEDS).forEach(([who, stage]) => {
       if (e.stages && !e.stages.includes(stage)) {
@@ -318,7 +319,8 @@ const on = {
     drawOffice();
   },
   "gate": (e) => {
-    const who = e.who === "inspector" ? "Inspector" : "Reviewer";
+    const who = { inspector: "Inspector", reviewer: "Reviewer",
+                  critic: "Critic" }[e.who] || "Reviewer";
     // Each gate reports itself on the item it judged, so the plan shows how
     // far through the three checks a change actually got.
     const item = live.items.get(e.id);
@@ -334,7 +336,9 @@ const on = {
     Office.at("Engineer", "working", "told to try again");
     drawOffice();
     say("crew", `<div class="body"><p><b>${esc(e.who === "inspector"
-      ? "The inspector refused item " + e.id : "The reviewer refused item " + e.id)}.</b>
+      ? "The inspector refused item " + e.id
+      : e.who === "critic" ? "The critic refused item " + e.id
+      : "The reviewer refused item " + e.id)}.</b>
       ${esc(e.note)}</p><p class="why">The suite was green. That is not the same
       as the change being right, which is what this desk is for.</p></div>`, "dim");
   },

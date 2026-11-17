@@ -128,6 +128,7 @@ def work(
     budget: float = 0.0,
     engine: str = "api",
     model: str = "opus",
+    direction: str = "",
 ) -> tuple[dict, object]:
     prompt = PROMPT.format(
         repo=repo.name,
@@ -150,7 +151,7 @@ def work(
         # decides whether its work survives still happens here.
         result = ClaudeCodeEngine(model=for_work(model)).work(
             repo,
-            SYSTEM + briefing(skills or [], "engineer"),
+            SYSTEM + briefing(skills or [], "engineer") + direction,
             prompt,
             build_command,
             on_event,
@@ -168,7 +169,7 @@ def work(
     agent = Agent(
         name="Engineer",
         model=API_MODEL.get(for_work(model), JUDGEMENT),
-        system=SYSTEM + briefing(skills or [], "engineer"),
+        system=SYSTEM + briefing(skills or [], "engineer") + direction,
         tools=write_tools(repo, build_command),
         max_turns=30,
         budget=budget,

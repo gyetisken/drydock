@@ -243,6 +243,7 @@ class Session:
                 self._spent(usage, "Designer")
                 write_logo(self.repo, found)
                 look = look_briefing(found)
+                self.run.direction = look
                 self.feed.emit(
                     "agent.state",
                     agent="Designer",
@@ -415,7 +416,7 @@ class Session:
         "baseline": ["Verifier"],
         "analyst": ["Analyst"],
         "planner": ["Architect", "Designer", "Planner"],
-        "engineer": ["Engineer", "Inspector", "Reviewer"],
+        "engineer": ["Engineer", "Inspector", "Reviewer", "Critic"],
     }
 
     def _finish_early(self) -> None:
@@ -501,7 +502,11 @@ class Session:
             )
             self.feed.emit(
                 "agent.state",
-                agent="Inspector" if who == "inspector" else "Reviewer",
+                agent={
+                    "inspector": "Inspector",
+                    "reviewer": "Reviewer",
+                    "critic": "Critic",
+                }.get(who, "Reviewer"),
                 state="done" if passed else "failed",
                 note=(note or "nothing to report")[:140],
             )
