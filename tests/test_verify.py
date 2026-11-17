@@ -1,6 +1,7 @@
 """The verification is the part that must not be wrong, so it is tested hardest."""
 
 from pathlib import Path
+from typing import ClassVar
 
 from drydock.models import Baseline, Check
 from drydock.parse import read_test_counts
@@ -37,7 +38,7 @@ class TestCounts:
 
 class TestVerdict:
     BASE = Baseline(builds=True, tests_run=838, tests_failed=0, tests_skipped=6)
-    COMMANDS = {"build": "true", "tests": "true"}
+    COMMANDS: ClassVar[dict] = {"build": "true", "tests": "true"}
 
     def test_a_green_suite_at_the_same_count_passes(self, monkeypatch):
         monkeypatch.setattr(
