@@ -78,7 +78,7 @@ def _show_it(repo_path: Path, run, item, on_event):
     # that has cost this crew the most: seven items refused for it in an
     # afternoon, each time by somebody describing what they saw rather than
     # measuring it. Measured, it is a number and an element name.
-    does_not_fit = why_it_does_not_fit(live.url)
+    does_not_fit = why_it_does_not_fit(live.url, on_event=on_event)
     if does_not_fit:
         if on_event:
             on_event("critic", does_not_fit.splitlines()[0])

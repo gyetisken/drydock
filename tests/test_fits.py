@@ -99,3 +99,77 @@ class TestItFailsOpen:
             fits, "measure", lambda url, w: Fit(width=w, error="it did not answer")
         )
         assert why_it_does_not_fit("http://x/", (390,)) == ""
+
+
+class TestOverflowThatHidesItself:
+    """`overflow-x: hidden` on the body stops the document scrolling, so
+    scrollWidth reports the page as fitting while every line of text in it
+    is cut off at the edge. That is worse than a page that scrolls, because
+    nothing shows it is happening - and it is what slipped through on the
+    first run of this check."""
+
+    def test_a_page_that_does_not_scroll_can_still_be_refused(self, monkeypatch):
+        from drydock import fits
+
+        monkeypatch.setattr(
+            fits,
+            "measure",
+            lambda url, w: Fit(width=w, seen=390, needs=390, wide=("p.intro",)),
+        )
+        said = why_it_does_not_fit("http://x/", (390,))
+
+        assert said
+        assert "clipped rather than wrapped" in said
+        assert "p.intro" in said
+
+    def test_it_does_not_report_a_width_that_did_not_overflow(self, monkeypatch):
+        """The numbers have to stay true. Saying '0px is off the screen'
+        would read as nonsense beside a real complaint."""
+        from drydock import fits
+
+        monkeypatch.setattr(
+            fits,
+            "measure",
+            lambda url, w: Fit(width=w, seen=390, needs=390, wide=("p",)),
+        )
+        assert "0px of it is off" not in why_it_does_not_fit("http://x/", (390,))
+
+    def test_a_page_with_nothing_too_wide_still_says_nothing(self, monkeypatch):
+        from drydock import fits
+
+        monkeypatch.setattr(
+            fits, "measure", lambda url, w: Fit(width=w, seen=w, needs=w, wide=())
+        )
+        assert why_it_does_not_fit("http://x/", (390, 1440)) == ""
+
+
+class TestItSaysWhatItMeasured:
+    """A check that reports nothing when it passes is indistinguishable
+    from a check that did not run, and this one went a whole run without
+    anybody being able to tell which."""
+
+    def test_a_pass_is_reported(self, monkeypatch):
+        from drydock import fits
+
+        said: list[tuple[str, str]] = []
+        monkeypatch.setattr(
+            fits, "measure", lambda url, w: Fit(width=w, seen=w, needs=w)
+        )
+        why_it_does_not_fit(
+            "http://x/", (390,), on_event=lambda k, t: said.append((k, t))
+        )
+
+        assert "needs 390px, has 390px" in said[0][1]
+
+    def test_a_check_that_could_not_run_says_so(self, monkeypatch):
+        from drydock import fits
+
+        said: list[tuple[str, str]] = []
+        monkeypatch.setattr(
+            fits, "measure", lambda url, w: Fit(width=w, error="node is not here")
+        )
+        why_it_does_not_fit(
+            "http://x/", (390,), on_event=lambda k, t: said.append((k, t))
+        )
+
+        assert "could not - node is not here" in said[0][1]

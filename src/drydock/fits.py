@@ -81,9 +81,24 @@ const out = await send('Runtime.evaluate', {
   expression: `(() => {
     const root = document.documentElement;
     const seen = root.clientWidth;
+    // Three ways text ends up off the screen. The document scrolling is
+    // only the loudest; a box that clips its own content hides the
+    // problem from scrollWidth entirely, which is why that alone reported
+    // a page as fitting while every line of it was cut off at the edge.
     const wide = [...document.querySelectorAll('body *')]
-      .filter((el) => el.scrollWidth > el.clientWidth + 1
-                   || el.getBoundingClientRect().right > seen + 1)
+      .filter((el) => {
+        const r = el.getBoundingClientRect();
+        if (r.width === 0 || r.height === 0) return false;
+        if (r.right > seen + 1 || r.left < -1) return true;
+        if (el.scrollWidth > el.clientWidth + 1) return true;
+        // A line of text wider than the box holding it, clipped rather
+        // than wrapped. The box fits; the words do not.
+        const style = getComputedStyle(el);
+        if (style.whiteSpace === 'nowrap' && el.scrollWidth > el.clientWidth) {
+          return true;
+        }
+        return false;
+      })
       .map((el) => el.tagName.toLowerCase()
         + (el.id ? '#' + el.id : '')
         + (typeof el.className === 'string' && el.className.trim()
@@ -161,24 +176,49 @@ def measure(url: str, width: int) -> Fit:
     )
 
 
-def why_it_does_not_fit(url: str, widths: tuple[int, ...] = WIDTHS) -> str:
+def why_it_does_not_fit(
+    url: str, widths: tuple[int, ...] = WIDTHS, on_event=None
+) -> str:
     """A refusal, or empty when the page fits every width that matters.
 
     Deliberately says the numbers. "The page is 1187 pixels wide on a 390
     pixel screen" is something to go and measure; "text is cut off" has
     been said seven times and changed nothing.
+
+    It says what it measured either way. A check that reports nothing when
+    it passes is indistinguishable from a check that did not run, and this
+    one went a whole run without anybody being able to tell which.
     """
     complaints = []
     for width in widths:
         fit = measure(url, width)
-        if fit.error or fit.fits:
+        if on_event:
+            on_event(
+                "critic",
+                f"measured at {fit.width}px: "
+                + (
+                    f"could not - {fit.error}"
+                    if fit.error
+                    else f"needs {fit.needs}px, has {fit.seen}px"
+                    + (f", too wide: {', '.join(fit.wide)}" if fit.wide else "")
+                ),
+            )
+        if fit.error or (fit.fits and not fit.wide):
             continue
         over = fit.needs - fit.seen
-        said = (
-            f"At {fit.width}px the page needs {fit.needs}px and has "
-            f"{fit.seen}px, so {over}px of it is off the right of the "
-            "screen and everything out there is unreadable."
-        )
+        if over > 1:
+            said = (
+                f"At {fit.width}px the page needs {fit.needs}px and has "
+                f"{fit.seen}px, so {over}px of it is off the right of the "
+                "screen and everything out there is unreadable."
+            )
+        else:
+            said = (
+                f"At {fit.width}px the page does not scroll sideways, but "
+                "something in it is wider than the screen and is being "
+                "clipped rather than wrapped - which is worse, because "
+                "nothing shows that it is happening."
+            )
         if fit.wide:
             said += " Wider than the screen: " + ", ".join(fit.wide) + "."
         complaints.append(said)
