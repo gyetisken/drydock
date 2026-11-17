@@ -26,6 +26,7 @@ def execute(
     stop_after: int | None = None,
     per_item: float = 2.5,
     engine: str = "api",
+    model: str = "sonnet",
     skills=None,
     on_event=None,
     on_item=None,
@@ -84,6 +85,7 @@ def execute(
                     on_event,
                     budget=min(run.left, per_item) if run.budget else per_item,
                     engine=engine,
+                    model=model,
                 )
             except BudgetExceeded as stop:
                 repo.discard()

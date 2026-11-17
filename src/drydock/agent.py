@@ -17,6 +17,16 @@ import anthropic
 # grepping, and paying Opus prices to read a file listing is waste.
 JUDGEMENT = "claude-opus-5"
 LOOKUP = "claude-haiku-4-5"
+
+# The picker in the interface offers the same three names a Claude subscription
+# offers, because that is what someone choosing between them already knows.
+# On the subscription engine those names go through verbatim; on the API they
+# have to become full model ids.
+API_MODEL = {
+    "opus": "claude-opus-5",
+    "sonnet": "claude-sonnet-5",
+    "haiku": "claude-haiku-4-5",
+}
 MODEL = JUDGEMENT
 
 

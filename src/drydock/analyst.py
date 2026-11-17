@@ -9,9 +9,10 @@ it gets read-only tools to answer it with evidence rather than recall.
 
 from pathlib import Path
 
-from .agent import JUDGEMENT, Agent, Tool
+from .agent import API_MODEL, JUDGEMENT, Agent, Tool
 from .detect import Toolchain, count, detect
 from .engines import ClaudeCodeEngine
+from .memory import Memory
 from .models import Baseline, Inventory
 from .parse import read_test_counts
 from .shell import check
@@ -41,7 +42,7 @@ The task is:
 
 {task}
 
-Survey the repository and report."""
+Survey the repository and report.{known}"""
 
 
 def baseline(repo: Path, chain: Toolchain) -> Baseline:
@@ -98,26 +99,21 @@ def survey(
     base: Baseline,
     skills: list[Skill] | None = None,
     on_event=None,
-    model: str | None = None,
     max_turns: int = 20,
     budget: float = 0.0,
     engine: str = "api",
+    memory: Memory | None = None,
+    commit: str = "",
+    model: str = "sonnet",
 ) -> tuple[Inventory, object]:
     chain = detect(repo)
+    known = memory.briefing(commit) if memory and commit else ""
 
     if engine == "claude":
-        found, dollars, turns = ClaudeCodeEngine().structured(
+        found, dollars, turns = ClaudeCodeEngine(model=model).structured(
             repo,
             SYSTEM + briefing(skills or [], "survey"),
-            PROMPT.format(
-                repo=repo.name,
-                build_tool=chain.build_tool,
-                language=chain.language,
-                baseline=f"{base.tests_run} tests, {base.tests_failed} failing"
-                if base.tests_run
-                else "nothing to run yet",
-                task=task,
-            ),
+            _prompt(repo, chain, base, task, known),
             '{"findings": ["..."], "risks": ["..."]}',
             on_event=on_event,
         )
@@ -130,22 +126,13 @@ def survey(
         # The survey is mostly reading, and the judgement it does make is
         # checked by a person before anything is changed, so it runs on the
         # expensive model only when asked to.
-        model=model or JUDGEMENT,
+        model=API_MODEL.get(model, JUDGEMENT),
         max_turns=max_turns,
         budget=budget,
         on_event=on_event,
     )
     found = agent.run(
-        PROMPT.format(
-            repo=repo.name,
-            build_tool=chain.build_tool,
-            language=chain.language,
-            baseline=f"{base.tests_run} tests, {base.tests_failed} failing"
-            if base.tests_run
-            else "no tests found",
-            task=task,
-        ),
-        final_tool=_report_tool(),
+        _prompt(repo, chain, base, task, known), final_tool=_report_tool()
     )
     return _inventory(chain, repo, found), agent.usage
 
@@ -157,6 +144,19 @@ class _Spend:
         self.input_tokens = self.output_tokens = self.cached_tokens = 0
         self.turns = turns
         self.dollars = dollars
+
+
+def _prompt(repo: Path, chain, base: Baseline, task: str, known: str) -> str:
+    return PROMPT.format(
+        repo=repo.name,
+        build_tool=chain.build_tool,
+        language=chain.language,
+        baseline=f"{base.tests_run} tests, {base.tests_failed} failing"
+        if base.tests_run
+        else "nothing to run yet",
+        task=task,
+        known=known,
+    )
 
 
 def _inventory(chain: Toolchain, repo: Path, found: dict) -> Inventory:

@@ -11,7 +11,7 @@ reporting honestly goes first, because every later item is measured against it.
 
 from pathlib import Path
 
-from .agent import Agent, Tool
+from .agent import API_MODEL, JUDGEMENT, Agent, Tool
 from .engines import ClaudeCodeEngine
 from .models import Baseline, Inventory, Plan
 from .skills import Skill, briefing
@@ -121,6 +121,7 @@ def plan(
     on_event=None,
     budget: float = 0.0,
     engine: str = "api",
+    model: str = "sonnet",
 ) -> tuple[Plan, object]:
     chosen = skills or []
     filled = PROMPT.format(
@@ -136,7 +137,7 @@ def plan(
     )
 
     if engine == "claude":
-        result, dollars, turns = ClaudeCodeEngine().structured(
+        result, dollars, turns = ClaudeCodeEngine(model=model).structured(
             repo,
             SYSTEM + briefing(chosen, "plan") + briefing(chosen, "verify"),
             filled,
@@ -148,6 +149,7 @@ def plan(
 
     agent = Agent(
         name="Planner",
+        model=API_MODEL.get(model, JUDGEMENT),
         # The planner is given both its own guidance and what the skill says
         # counts as proof, because acceptance belongs in the item rather than
         # being remembered later by whoever reads the diff.

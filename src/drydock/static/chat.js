@@ -2,7 +2,8 @@
 // the composer starts the next job. Everything in the thread arrived as an
 // event from the server, so nothing here can claim progress that was not made.
 
-const S = { projects: [], commands: [], runs: [], project: null, key: null, menu: -1 };
+const S = { projects: [], commands: [], runs: [], project: null, key: null, menu: -1,
+  engines: [], models: [], engine: "claude", model: "sonnet" };
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, c =>
   ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
@@ -130,9 +131,19 @@ const on = {
   },
   "run.summary": (e) => {
     $("stop").style.display = "none";
+    const paid = e.engine === "claude"
+      ? `It ran on your Claude plan, so the <b>$${e.cost.toFixed(2)}</b> of API-priced
+         work was not billed to you.`
+      : `<b>$${e.cost.toFixed(2)}</b> billed.`;
     say("crew", `<div class="body"><p><b>${e.done} of ${e.total} items landed.</b>
-      $${e.cost.toFixed(2)} spent. The work is on its own branch; nothing touched
-      your main branch.</p></div>`);
+      ${paid} The work is on its own branch; nothing touched your main branch.</p>
+      <p class="why">${e.remembered} facts about this repository were kept, so the
+      next job here starts from them instead of reading it all again.
+      <a href="#" id="see-usage">See what this has cost in total.</a></p></div>`);
+    const link = $("see-usage");
+    if (link) link.onclick = (ev) => {
+      ev.preventDefault(); $("sheet").style.display = "flex"; drawSettings();
+    };
   },
   "run.error": (e) => say("crew", `<div class="body"><p class="why">${esc(e.detail)}</p></div>`),
   "awaiting.approval": () => {},
@@ -153,21 +164,137 @@ function watch(key) {
 async function refresh() {
   S.projects = (await (await fetch("/api/state")).json()).projects;
   const full = await (await fetch("/api/state")).json();
-  S.commands = full.commands; S.runs = full.runs; S.engines = full.engines;
-  drawEngines();
+  S.commands = full.commands; S.runs = full.runs;
+  S.engines = full.engines; S.models = full.models;
+  S.model = localStorage.getItem("drydock.model") || S.model;
+  const saved = localStorage.getItem("drydock.engine");
+  if (saved && S.engines.some(e => e.id === saved && e.ready)) S.engine = saved;
+  else S.engine = (S.engines.find(e => e.ready) || S.engines[0]).id;
+  drawPicks();
   if (!S.project && S.projects.length) S.project = S.projects[0].path;
   drawSide();
 }
 
-function drawEngines() {
-  const el = $("engine");
-  if (!el || el.options.length) return;
-  el.innerHTML = S.engines.map(e =>
-    `<option value="${esc(e.id)}" ${e.ready ? "" : "disabled"}>${esc(e.label)}${
-      e.ready ? "" : " — " + esc(e.why)}</option>`).join("");
-  const ready = S.engines.find(e => e.ready);
-  if (ready) el.value = ready.id;
+/* ---------- model and engine pickers ---------- */
+
+// Two choices, kept apart because they answer different questions: which
+// account pays for the work, and how hard the model should think about it.
+// Both are remembered, because nobody wants to re-pick them every session.
+
+function drawPicks() {
+  const m = S.models.find(x => x.id === S.model) || S.models[0];
+  const e = S.engines.find(x => x.id === S.engine) || S.engines[0];
+  if (m) { S.model = m.id; $("model-label").textContent = m.label; }
+  if (e) { S.engine = e.id; $("engine-label").textContent = e.short || e.label; }
 }
+
+function popup(id, rows, onpick) {
+  const el = $(id);
+  const open = el.style.display === "block";
+  document.querySelectorAll(".pop").forEach(p => (p.style.display = "none"));
+  if (open) return;
+  el.innerHTML = rows.map(r => `
+    <div class="pi ${r.on ? "on" : ""} ${r.disabled ? "off" : ""}" data-id="${esc(r.id)}">
+      <span class="mk">${r.on ? "✓" : ""}</span>
+      <div><div class="t">${esc(r.label)}</div>
+      <div class="s">${esc(r.note)}</div></div></div>`).join("");
+  el.style.display = "block";
+  el.querySelectorAll(".pi").forEach(row => {
+    row.onclick = () => {
+      if (row.classList.contains("off")) return;
+      onpick(row.dataset.id);
+      el.style.display = "none";
+      drawPicks();
+      save();
+    };
+  });
+}
+
+function save() {
+  localStorage.setItem("drydock.model", S.model);
+  localStorage.setItem("drydock.engine", S.engine);
+}
+
+$("pick-model").onclick = (ev) => {
+  ev.stopPropagation();
+  popup("pop-model", S.models.map(m => ({
+    id: m.id, label: m.label, note: m.note, on: m.id === S.model,
+  })), id => (S.model = id));
+};
+
+$("pick-engine").onclick = (ev) => {
+  ev.stopPropagation();
+  popup("pop-engine", S.engines.map(e => ({
+    id: e.id, label: e.label, on: e.id === S.engine,
+    disabled: !e.ready, note: e.ready ? e.detail : e.why,
+  })), id => (S.engine = id));
+};
+
+document.addEventListener("click", () =>
+  document.querySelectorAll(".pop").forEach(p => (p.style.display = "none")));
+
+/* ---------- theme ---------- */
+
+function theme(pref) {
+  localStorage.setItem("drydock.theme", pref);
+  if (pref === "system") document.documentElement.removeAttribute("data-theme");
+  else document.documentElement.setAttribute("data-theme", pref);
+  document.querySelectorAll("#theme button").forEach(b =>
+    b.classList.toggle("on", b.dataset.theme === pref));
+}
+theme(localStorage.getItem("drydock.theme") || "system");
+document.querySelectorAll("#theme button").forEach(b =>
+  (b.onclick = () => theme(b.dataset.theme)));
+
+/* ---------- settings ---------- */
+
+const money = (n) => "$" + Number(n || 0).toFixed(2);
+
+async function drawSettings() {
+  const d = await (await fetch("/api/settings")).json();
+  const a = d.account, g = d.github, u = d.usage;
+
+  $("acct").textContent = a.headline;
+  $("acct-sub").textContent = a.sub;
+  $("acct-dot").className = "dot " + (a.signed_in ? "ok" : "bad");
+
+  $("acct-detail").innerHTML = [
+    ["Signed in as", a.email || "unknown"],
+    ["Plan", a.plan || "none found"],
+    ["Claude Code", a.version || "not installed"],
+  ].map(([k, v]) => `<div><span>${esc(k)}</span><b>${esc(v)}</b></div>`).join("");
+
+  $("use-stats").innerHTML = `
+    <div class="stat"><b>${u.runs}</b><span>jobs run</span></div>
+    <div class="stat"><b>${u.items}</b><span>items landed</span></div>
+    <div class="stat"><b>${money(u.per_item)}</b><span>per landed item</span></div>
+    <div class="stat"><b>${money(u.billed)}</b><span>billed to an API key</span></div>`;
+
+  const lines = [];
+  if (u.covered > 0) lines.push(`<p><b>${money(u.covered)}</b> of work ran on your
+    Claude plan. That is what the same tokens would have cost through the API,
+    and on a plan it is not charged.</p>`);
+  if (u.routing_saved > 0) lines.push(`<p>Of the work that did go through the API,
+    <b>${money(u.routed)}</b> was spent where <b>${money(u.at_opus)}</b> would have
+    gone on Opus alone — <b>${money(u.routing_saved)} less</b>, because reading
+    files and running commands does not need the expensive model and only the
+    deciding does.</p>`);
+  if (!lines.length) lines.push(`<p class="why">Nothing to compare yet. After a
+    job finishes, this shows what it cost and what it would have cost without
+    splitting the work between models.</p>`);
+  $("save-box").innerHTML = lines.join("");
+
+  $("gh-detail").innerHTML = `<div><span>Account</span><b>${
+    esc(g.ready ? g.user : "not connected")}</b></div>`;
+  $("gh-why").textContent = g.note;
+}
+
+$("open-settings").onclick = () => { $("sheet").style.display = "flex"; drawSettings(); };
+$("close-settings").onclick = () => ($("sheet").style.display = "none");
+$("sheet-bg").onclick = () => ($("sheet").style.display = "none");
+document.addEventListener("keydown", e => {
+  if (e.key === "Escape") $("sheet").style.display = "none";
+});
 
 function drawSide() {
   $("projects").innerHTML = S.projects.map(p => `
@@ -228,7 +355,7 @@ async function send() {
   const res = await fetch("/api/start", {
     method: "POST", headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      project: S.project, command: text, engine: $("engine").value,
+      project: S.project, command: text, engine: S.engine, model: S.model,
     }),
   });
   const body = await res.json();

@@ -11,6 +11,7 @@ from pathlib import Path
 
 from pydantic import BaseModel, Field
 
+from .agent import PRICES
 from .models import Baseline, Inventory, ItemResult, Plan
 
 
@@ -21,6 +22,7 @@ class Run(BaseModel):
     started: str
     skills: list[str] = Field(default_factory=list)
     engine: str = "api"
+    model: str = "sonnet"
     baseline: Baseline | None = None
     inventory: Inventory | None = None
     plan: Plan | None = None
@@ -76,6 +78,23 @@ class Run(BaseModel):
     def cost(self) -> float:
         """What this run has actually cost, priced per model as it went."""
         return self.dollars
+
+    @property
+    def as_opus(self) -> float:
+        """What the same tokens would have cost on the most expensive model.
+
+        This is only knowable for runs that went through the API, where the
+        token counts come back with every reply. It is the comparison worth
+        making: the work was split between a model that thinks and a model
+        that looks things up, and this is the bill for not having split it.
+        Runs on the subscription engine report a price and no tokens, so they
+        are left out rather than guessed at.
+        """
+        if not self.tokens_in and not self.tokens_out:
+            return 0.0
+        rate_in, rate_out = PRICES["claude-opus-5"]
+        billed_in = self.tokens_in + self.tokens_cached
+        return round(billed_in / 1e6 * rate_in + self.tokens_out / 1e6 * rate_out, 4)
 
 
 def event_printer(prefix: str = "  "):

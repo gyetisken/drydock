@@ -17,6 +17,7 @@ from pathlib import Path
 from .detect import detect
 from .run import Run
 from .session import Session
+from .shell import run
 from .skills import Skill
 
 HOME = Path.home() / ".drydock"
@@ -75,12 +76,23 @@ class Workspace:
         )
 
     def add_project(self, path: Path) -> Project:
+        """Take a folder and make it usable, rather than refusing it.
+
+        The crew needs git, because an item that fails is undone by throwing
+        away its commit. Telling someone to go and run `git init` themselves is
+        asking them to do a thing this can simply do, and the people most
+        likely to be stopped by that message are the ones this should work for.
+        """
         path = path.expanduser().resolve()
+        path.mkdir(parents=True, exist_ok=True)
+
         if not (path / ".git").is_dir():
-            raise ValueError(
-                f"{path} is not a git repository. The crew needs git to commit "
-                "each item separately and to undo one that fails."
-            )
+            code, out = run("git init -q", path, timeout=60)
+            if code != 0:
+                raise ValueError(f"could not start a repository in {path}: {out}")
+            run("git add -A", path, timeout=120)
+            # Something has to be committed, or there is no HEAD to roll back to.
+            run('git commit -q --allow-empty -m "before drydock"', path, timeout=120)
         for existing in self.projects:
             if existing.path == path:
                 return existing
@@ -106,8 +118,9 @@ class Workspace:
         skills: list[Skill],
         budget: float,
         engine: str = "claude",
+        model: str = "sonnet",
     ) -> Session:
-        session = Session(repo, task, skills, budget=budget, engine=engine)
+        session = Session(repo, task, skills, budget=budget, engine=engine, model=model)
         session.start(auto_run=False)
         # The session has an id only once its run exists, so it is keyed by the
         # same clock the run uses and reconciled when the run appears.

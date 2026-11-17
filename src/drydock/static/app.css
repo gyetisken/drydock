@@ -9,8 +9,15 @@
   --ok:#72b98d; --bad:#d3766b; --live:#7ea7d1; --warn:#c6a05f;
   --r:10px;
 }
+:root[data-theme="light"] {
+  --bg:#faf8f5; --side:#f3efe9; --panel:#ffffff; --raise:#f0ece6; --input:#ffffff;
+  --line:#e3ddd4; --line-soft:#eee9e2;
+  --fg:#211e1b; --muted:#6b645c; --faint:#9a9289;
+  --accent:#b35f31; --accent-dim:#d9a483;
+  --ok:#2d7a4f; --bad:#b4453a; --live:#3a6ea5; --warn:#8a6a1f;
+}
 @media (prefers-color-scheme: light) {
-  :root:not([data-theme="dark"]) {
+  :root:not([data-theme="dark"]):not([data-theme="light"]) {
     --bg:#faf8f5; --side:#f3efe9; --panel:#ffffff; --raise:#f0ece6; --input:#ffffff;
     --line:#e3ddd4; --line-soft:#eee9e2;
     --fg:#211e1b; --muted:#6b645c; --faint:#9a9289;
@@ -123,7 +130,7 @@ details[open].tools summary::before { content:"▾ " }
 /* ---------- composer ---------- */
 .composer { flex:none; padding:0 30px 22px }
 .cwrap { max-width:720px; margin:0 auto; position:relative }
-.cbox { display:flex; gap:10px; align-items:flex-end; background:var(--input);
+.cbox { display:flex; flex-direction:column; gap:9px; background:var(--input);
   border:1px solid var(--line); border-radius:14px; padding:11px 13px;
   transition:border-color .12s }
 .cbox:focus-within { border-color:var(--accent-dim) }
@@ -151,3 +158,69 @@ select { background:transparent; color:var(--muted); border:1px solid var(--line
 .pulse { display:inline-block; width:6px; height:6px; border-radius:50%;
   background:var(--live); margin-right:7px; animation:p 1.5s ease-in-out infinite }
 @keyframes p { 0%,100% { opacity:1 } 50% { opacity:.25 } }
+
+
+/* ---------- account row ---------- */
+.account { width:100%; display:flex; align-items:center; gap:10px; text-align:left;
+  padding:13px 18px; border-top:1px solid var(--line); color:var(--muted);
+  transition:background .12s }
+.account:hover { background:var(--raise); color:var(--fg) }
+.account .who { flex:1; min-width:0; display:flex; flex-direction:column }
+.account .who b { font-size:12.5px; font-weight:600; color:var(--fg);
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap }
+.account .who i { font-style:normal; font-size:10.5px; color:var(--faint);
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap }
+.account .gear { font-size:15px; opacity:.6 }
+.dot { width:7px; height:7px; border-radius:50%; flex:none; background:var(--faint) }
+.dot.ok { background:var(--ok) } .dot.bad { background:var(--bad) }
+
+/* ---------- composer pickers ---------- */
+.picks { display:flex; gap:6px; justify-content:flex-end }
+.pick { display:flex; align-items:center; gap:5px; padding:4px 9px;
+  border:1px solid var(--line); border-radius:999px; background:var(--raise);
+  color:var(--fg); font-size:11.5px; font-weight:550; line-height:1.4;
+  transition:border-color .12s, background .12s }
+.pick:hover { border-color:var(--accent-dim) }
+.pick.ghost { background:transparent; color:var(--muted) }
+.pick .caret { font-size:8px; opacity:.6 }
+.pop { position:absolute; bottom:calc(100% + 9px); left:auto; right:0;
+  z-index:40; width:282px;
+  background:var(--panel); border:1px solid var(--line); border-radius:var(--r);
+  box-shadow:0 18px 44px rgba(0,0,0,.34); padding:5px; overflow:hidden }
+.pop.right { right:0 }
+.pi { display:flex; gap:9px; padding:8px 9px; border-radius:7px; cursor:pointer }
+.pi:hover { background:var(--raise) }
+.pi .mk { width:13px; flex:none; color:var(--accent); font-size:12px; line-height:1.5 }
+.pi .t { font-size:12.5px; font-weight:600 }
+.pi .s { font-size:11px; color:var(--faint); line-height:1.45 }
+.pi.off { opacity:.45; cursor:default }
+.pi.off:hover { background:none }
+
+/* ---------- settings sheet ---------- */
+.sheet { position:fixed; inset:0; z-index:60; display:flex;
+  align-items:center; justify-content:center }
+.sheet-bg { position:absolute; inset:0; background:rgba(0,0,0,.52) }
+.sheet-card { position:relative; width:min(560px,92vw); max-height:86vh;
+  overflow:auto; background:var(--panel); border:1px solid var(--line);
+  border-radius:14px; box-shadow:0 30px 80px rgba(0,0,0,.45) }
+.sheet-top { position:sticky; top:0; background:var(--panel); display:flex;
+  align-items:center; justify-content:space-between; padding:16px 20px;
+  border-bottom:1px solid var(--line-soft); z-index:2 }
+.sheet-top b { font-size:14.5px; font-weight:650 }
+.sheet-card section { padding:17px 20px; border-bottom:1px solid var(--line-soft) }
+.sheet-card section:last-child { border-bottom:0 }
+.sheet-card h4 { margin:0 0 11px; font-size:10.5px; letter-spacing:.1em;
+  text-transform:uppercase; color:var(--faint); font-weight:600 }
+.kv > div { display:flex; justify-content:space-between; gap:14px;
+  padding:5px 0; font-size:12.5px }
+.kv span { color:var(--muted) }
+.kv b { font-weight:550; text-align:right; word-break:break-all }
+.save { margin-top:12px; padding:13px 14px; background:var(--raise);
+  border-radius:9px; border:1px solid var(--line-soft) }
+.save p { margin:0 0 9px; font-size:12.5px; line-height:1.6 }
+.save p:last-child { margin:0 }
+.segmented { display:flex; gap:4px; padding:3px; background:var(--input);
+  border:1px solid var(--line); border-radius:9px; width:fit-content }
+.segmented button { padding:6px 14px; border-radius:7px; font-size:12px;
+  color:var(--muted) }
+.segmented button.on { background:var(--raise); color:var(--fg); font-weight:600 }

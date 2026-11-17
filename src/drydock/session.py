@@ -13,8 +13,10 @@ from pathlib import Path
 from .analyst import baseline, survey
 from .detect import detect
 from .events import Feed
+from .memory import Memory
 from .orchestrate import execute
 from .planner import plan
+from .repo import Repo
 from .run import Run
 from .skills import Skill
 
@@ -27,6 +29,7 @@ class Session:
         skills: list[Skill],
         budget: float = 0.0,
         engine: str = "api",
+        model: str = "sonnet",
     ) -> None:
         self.feed = Feed()
         self.repo = repo
@@ -34,7 +37,9 @@ class Session:
         self.skills = skills
         self.budget = budget
         self.engine = engine
+        self.model = model
         self.stopping = False
+        self.memory = Memory.about(repo)
         self.run: Run | None = None
         self.error: str | None = None
         self._thread: threading.Thread | None = None
@@ -64,6 +69,7 @@ class Session:
             self.run = Run.start(self.repo, self.task, [s.name for s in self.skills])
             self.run.budget = self.budget
             self.run.engine = self.engine
+            self.run.model = self.model
             self.feed.emit(
                 "run.started",
                 repo=self.repo.name,
@@ -96,6 +102,7 @@ class Session:
                 state="working",
                 note="reading the repository",
             )
+            commit = Repo(self.repo).head()
             self.run.inventory, usage = survey(
                 self.repo,
                 self.task,
@@ -104,9 +111,22 @@ class Session:
                 self._agent_event("Analyst"),
                 budget=self.run.left if self.budget else 0.0,
                 engine=self.engine,
+                model=self.model,
+                memory=self.memory,
+                commit=commit,
             )
             self.run.spend(usage)
             self.run.save()
+
+            # Keep what was read. The next job in this repository starts from
+            # these facts instead of paying a second time to find them.
+            self.memory.toolchain = f"{chain.build_tool} / {chain.language}"
+            self.memory.build_command = chain.build_command
+            self.memory.test_command = chain.test_command
+            self.memory.last_test_count = b.tests_run
+            self.memory.learn(self.run.inventory.findings, commit)
+            self.memory.save()
+
             self.feed.emit(
                 "agent.state",
                 agent="Analyst",
@@ -133,6 +153,9 @@ class Session:
                 b,
                 self.skills,
                 self._agent_event("Planner"),
+                budget=self.run.left if self.budget else 0.0,
+                engine=self.engine,
+                model=self.model,
             )
             self.run.spend(usage)
             self.run.save()
@@ -193,6 +216,7 @@ class Session:
         execute(
             self.run,
             engine=self.engine,
+            model=self.model,
             skills=self.skills,
             on_event=self._agent_event("Engineer"),
             on_item=on_item,
@@ -201,11 +225,18 @@ class Session:
         self.feed.emit(
             "agent.state", agent="Engineer", state="done", note="plan finished"
         )
+        landed = sum(1 for r in self.run.results if r.outcome.value == "done")
+        self.memory.record(
+            self.run.task, landed, len(self.run.plan.items), self.run.cost
+        )
+        self.memory.save()
         self.feed.emit(
             "run.summary",
-            done=sum(1 for r in self.run.results if r.outcome.value == "done"),
+            done=landed,
             total=len(self.run.plan.items),
             cost=round(self.run.cost, 2),
+            engine=self.engine,
+            remembered=len([n for n in self.memory.notes]),
         )
         self.feed.close()
 

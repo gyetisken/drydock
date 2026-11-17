@@ -45,6 +45,12 @@ PAGE = """<!doctype html><html lang="en"><head><meta charset="utf-8">
 
     <div class="side-h">Earlier</div>
     <div class="side-list grow" id="history"></div>
+
+    <button class="account" id="open-settings">
+      <span class="dot" id="acct-dot"></span>
+      <span class="who"><b id="acct">checking your account</b><i id="acct-sub"></i></span>
+      <span class="gear">&#9881;</span>
+    </button>
   </aside>
 
   <main>
@@ -73,18 +79,227 @@ PAGE = """<!doctype html><html lang="en"><head><meta charset="utf-8">
       <div class="menu" id="menu" style="display:none"></div>
       <div class="cbox">
         <textarea id="box" rows="1" placeholder="/ to see commands" spellcheck="false"></textarea>
-        <select id="engine" title="whose account does the work"></select>
+        <div class="picks">
+          <button class="pick" id="pick-model">
+            <span id="model-label">Sonnet</span><span class="caret">&#9662;</span>
+          </button>
+          <button class="pick ghost" id="pick-engine">
+            <span id="engine-label">Claude</span><span class="caret">&#9662;</span>
+          </button>
+        </div>
+        <div class="pop" id="pop-model" style="display:none"></div>
+        <div class="pop right" id="pop-engine" style="display:none"></div>
       </div>
       <div class="hint" id="hint"></div>
     </div></div>
   </main>
 
-</div><script src="/static/chat.js"></script></body></html>"""
+</div>
+
+<div class="sheet" id="sheet" style="display:none">
+  <div class="sheet-bg" id="sheet-bg"></div>
+  <div class="sheet-card">
+    <div class="sheet-top">
+      <b>Settings</b>
+      <button class="btn small ghost" id="close-settings">Close</button>
+    </div>
+
+    <section>
+      <h4>Your Claude account</h4>
+      <div class="kv" id="acct-detail"></div>
+      <p class="why">drydock runs the crew through the Claude Code command line,
+      so the work is billed to whatever plan you are already signed in to.
+      There is no API key to paste and no second bill. Signing in or out is done
+      with <code>claude login</code> in a terminal.</p>
+    </section>
+
+    <section>
+      <h4>What this has cost</h4>
+      <div class="stats" id="use-stats"></div>
+      <div class="save" id="save-box"></div>
+    </section>
+
+    <section>
+      <h4>Appearance</h4>
+      <div class="segmented" id="theme">
+        <button data-theme="system">Match system</button>
+        <button data-theme="light">Light</button>
+        <button data-theme="dark">Dark</button>
+      </div>
+    </section>
+
+    <section>
+      <h4>GitHub</h4>
+      <div class="kv" id="gh-detail"></div>
+      <p class="why" id="gh-why"></p>
+    </section>
+  </div>
+</div>
+
+<script src="/static/chat.js"></script></body></html>"""
 
 
 @app.get("/", response_class=HTMLResponse)
 def home() -> HTMLResponse:
     return HTMLResponse(PAGE)
+
+
+MODELS = [
+    {"id": "opus", "label": "Opus", "note": "most capable, slowest, dearest"},
+    {"id": "sonnet", "label": "Sonnet", "note": "the sensible default"},
+    {"id": "haiku", "label": "Haiku", "note": "fast and cheap, for simple work"},
+]
+
+
+def _usage() -> dict:
+    """What has been spent, and what was spent on a plan rather than a bill.
+
+    Two different savings are worth reporting and they must not be added
+    together, because they are not the same kind of money:
+
+      covered  work that ran on a Claude subscription. The engine reports what
+               the same tokens would have cost through the API, and on a plan
+               that amount is simply not charged.
+      routing  work that did go through the API, where cheap models did the
+               looking up and the expensive one did the deciding. Pricing the
+               same tokens at Opus rates gives the bill for not having done
+               that. Only API runs have token counts, so only they appear.
+    """
+    runs = workspace.history(limit=200)
+    billed = covered = at_opus = routed = 0.0
+    for run in runs:
+        if run.engine == "claude":
+            covered += run.cost
+        else:
+            billed += run.cost
+            if run.as_opus:
+                at_opus += run.as_opus
+                routed += run.cost
+    landed = sum(sum(1 for x in r.results if x.outcome.value == "done") for r in runs)
+    return {
+        "runs": len(runs),
+        "items": landed,
+        "billed": round(billed, 2),
+        "covered": round(covered, 2),
+        "at_opus": round(at_opus, 2),
+        "routed": round(routed, 2),
+        "routing_saved": round(max(0.0, at_opus - routed), 2),
+        "per_item": round((billed + covered) / landed, 2) if landed else 0.0,
+    }
+
+
+def _account() -> dict:
+    """Who the Claude command line is signed in as, if it is.
+
+    There is no supported way to ask Claude Code for the signed-in identity, so
+    this reports only what can be known for certain: whether the binary exists,
+    whether it answers, and which plan the credentials file says it is on. When
+    something cannot be known it says so rather than guessing a name.
+    """
+    import json
+    import shutil
+    import subprocess
+
+    binary = shutil.which("claude")
+    if not binary:
+        return {
+            "signed_in": False,
+            "headline": "Claude Code not installed",
+            "sub": "install it to use your own plan",
+            "plan": "",
+            "version": "",
+        }
+
+    version = ""
+    try:
+        version = subprocess.run(
+            [binary, "--version"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+            check=False,
+        ).stdout.strip()
+    except Exception as exc:  # noqa: BLE001
+        version = f"could not ask: {exc}"
+
+    # The signed-in identity is not something Claude Code exposes on purpose,
+    # so this reads the account record it keeps beside its own settings. Only
+    # the display name and the plan are used; nothing is sent anywhere.
+    who: dict = {}
+    try:
+        settings = Path.home() / ".claude.json"
+        if settings.exists():
+            who = json.loads(settings.read_text()).get("oauthAccount") or {}
+    except Exception:  # noqa: BLE001
+        who = {}
+
+    plan = str(who.get("subscriptionType") or "")
+    if not plan and who.get("billingType") == "stripe_subscription":
+        plan = "subscription"
+    name = str(who.get("displayName") or who.get("emailAddress") or "")
+
+    signed_in = bool(who)
+    return {
+        "signed_in": signed_in,
+        "headline": name or ("Claude Code ready" if signed_in else "Not signed in"),
+        "sub": f"{plan} plan · work is billed to it"
+        if signed_in
+        else "run claude login",
+        "plan": plan,
+        "email": str(who.get("emailAddress") or ""),
+        "org": str(who.get("organizationName") or ""),
+        "version": version,
+    }
+
+
+def _github() -> dict:
+    """Whether a GitHub login is available for pushing branches and opening PRs."""
+    import shutil
+    import subprocess
+
+    binary = shutil.which("gh")
+    if not binary:
+        return {
+            "ready": False,
+            "user": "",
+            "note": "The GitHub command line is not installed. drydock works "
+            "without it: changes land on a local branch either way. Installing "
+            "gh lets a finished run be pushed and opened as a pull request.",
+        }
+    try:
+        out = subprocess.run(
+            [binary, "api", "user", "-q", ".login"],
+            capture_output=True,
+            text=True,
+            timeout=15,
+            check=False,
+        )
+    except Exception as exc:  # noqa: BLE001
+        return {"ready": False, "user": "", "note": str(exc)}
+    user = out.stdout.strip()
+    if out.returncode or not user:
+        return {
+            "ready": False,
+            "user": "",
+            "note": "gh is installed but not signed in. Run gh auth login in a "
+            "terminal to connect an account.",
+        }
+    return {
+        "ready": True,
+        "user": user,
+        "note": "A finished branch can be pushed and opened as a pull request "
+        "under this account.",
+    }
+
+
+@app.get("/api/settings")
+def settings() -> dict:
+    return {"account": _account(), "github": _github(), "usage": _usage()}
+
+
+@app.get("/api/usage")
+def usage() -> dict:
+    return _usage()
 
 
 def _engines() -> list[dict]:
@@ -95,6 +310,7 @@ def _engines() -> list[dict]:
     return [
         {
             "id": "claude",
+            "short": "Your plan",
             "label": "Your Claude account",
             "detail": "runs through Claude Code, signed in as you",
             "ready": bool(shutil.which("claude")),
@@ -102,6 +318,7 @@ def _engines() -> list[dict]:
         },
         {
             "id": "api",
+            "short": "API key",
             "label": "An API key",
             "detail": "billed per token, with a hard budget per run",
             "ready": bool(os.environ.get("ANTHROPIC_API_KEY")),
@@ -124,6 +341,8 @@ def state() -> dict:
             for p in workspace.projects
         ],
         "engines": _engines(),
+        "models": MODELS,
+        "usage": _usage(),
         "commands": [
             {
                 "name": c.name,
@@ -172,6 +391,7 @@ class StartJob(BaseModel):
     command: str
     budget: float = 4.0
     engine: str = "claude"
+    model: str = "sonnet"
 
 
 @app.post("/api/start")
@@ -196,6 +416,7 @@ def start(body: StartJob) -> JSONResponse:
         skills,
         body.budget,
         body.engine,
+        body.model,
     )
     key = next(k for k, v in workspace.sessions.items() if v is session)
     return JSONResponse({"ok": True, "key": key})
