@@ -92,6 +92,15 @@ def _plan_tool() -> Tool:
                                 "type": "string",
                                 "enum": ["build", "tests"],
                             },
+                            "removes_tests": {
+                                "type": "boolean",
+                                "description": (
+                                    "True only for an item whose purpose is to "
+                                    "delete tests. Any other item that loses a "
+                                    "test will be refused, so say so here when "
+                                    "it is deliberate."
+                                ),
+                            },
                         },
                         "required": [
                             "id",
@@ -99,6 +108,7 @@ def _plan_tool() -> Tool:
                             "rationale",
                             "files",
                             "verify_with",
+                            "removes_tests",
                         ],
                         "additionalProperties": False,
                     },
@@ -122,18 +132,22 @@ def plan(
     budget: float = 0.0,
     engine: str = "api",
     model: str = "opus",
+    shape: str = "",
 ) -> tuple[Plan, object]:
     chosen = skills or []
-    filled = PROMPT.format(
-        repo=repo.name,
-        build_tool=inventory.build_tool,
-        language=inventory.language,
-        tests_run=base.tests_run,
-        tests_failed=base.tests_failed,
-        tests_skipped=base.tests_skipped,
-        task=task,
-        findings="\n".join(f"- {f}" for f in inventory.findings),
-        risks="\n".join(f"- {r}" for r in inventory.risks),
+    filled = (
+        PROMPT.format(
+            repo=repo.name,
+            build_tool=inventory.build_tool,
+            language=inventory.language,
+            tests_run=base.tests_run,
+            tests_failed=base.tests_failed,
+            tests_skipped=base.tests_skipped,
+            task=task,
+            findings="\n".join(f"- {f}" for f in inventory.findings),
+            risks="\n".join(f"- {r}" for r in inventory.risks),
+        )
+        + shape
     )
 
     if engine == "claude":
@@ -142,7 +156,8 @@ def plan(
             SYSTEM + briefing(chosen, "plan") + briefing(chosen, "verify"),
             filled,
             '{"summary": "...", "items": [{"id": 1, "title": "...", '
-            '"rationale": "...", "files": ["..."], "verify_with": "build|tests"}]}',
+            '"rationale": "...", "files": ["..."], "verify_with": "build|tests", '
+            '"removes_tests": false}]}',
             on_event=on_event,
         )
         return Plan.model_validate(result), _Spend(dollars, turns)

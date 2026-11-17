@@ -42,6 +42,17 @@ class Repo:
         self._git("reset --hard -q HEAD")
         self._git("clean -fdq")
 
+    def pending(self) -> str:
+        """Everything changed but not yet committed, including new files.
+
+        The inspector and the reviewer both look at an item before it is
+        committed, because the decision they are part of is whether it should
+        be committed at all. `--no-color` and a fixed context keep the text
+        stable enough to be quoted back in a verdict.
+        """
+        self._git("add -A -N")
+        return self._git("diff --no-color HEAD")[1]
+
     def diff(self, against: str = "HEAD~1") -> str:
         return self._git(f"diff {against} --unified=3")[1]
 

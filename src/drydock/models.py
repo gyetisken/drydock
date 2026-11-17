@@ -67,6 +67,15 @@ class Item(BaseModel):
     rationale: str
     files: list[str]
     verify_with: str = Field(description="build or tests")
+    removes_tests: bool = Field(
+        default=False,
+        description=(
+            "True only if this item is meant to delete tests - a duplicate "
+            "suite being dropped, a module being removed. The inspector "
+            "refuses an item that loses tests without saying so here, which "
+            "is what makes losing them always a decision somebody wrote down."
+        ),
+    )
 
 
 class Plan(BaseModel):

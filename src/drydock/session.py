@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import ClassVar
 
 from .analyst import baseline, survey
+from .architect import as_briefing, design
 from .commands import STAGES
 from .detect import detect
 from .events import Feed
@@ -156,6 +157,43 @@ class Session:
                 self._finish_early()
                 return
 
+            # Nothing to read means nothing to plan against. On an empty
+            # repository the shape is decided here, out loud and first,
+            # rather than implied by whatever item four happened to import.
+            shape = ""
+            if chain.build_tool == "none" and not b.tests_run:
+                self.feed.emit(
+                    "agent.state",
+                    agent="Architect",
+                    state="working",
+                    note="deciding what this is made of",
+                )
+                found, usage = design(
+                    self.repo,
+                    self.task,
+                    self.skills,
+                    self._agent_event("Architect"),
+                    budget=self.run.left if self.budget else 0.0,
+                    engine=self.engine,
+                    model=self.model,
+                )
+                self.run.spend(usage)
+                shape = as_briefing(found)
+                self.feed.emit(
+                    "agent.state",
+                    agent="Architect",
+                    state="done",
+                    note=found.get("stack", "")[:90] or "shape decided",
+                )
+                self.feed.emit("design", **found)
+            else:
+                self.feed.emit(
+                    "agent.state",
+                    agent="Architect",
+                    state="skipped",
+                    note="the project already has a shape; the Analyst read it",
+                )
+
             self.feed.emit(
                 "agent.state",
                 agent="Planner",
@@ -172,6 +210,7 @@ class Session:
                 budget=self.run.left if self.budget else 0.0,
                 engine=self.engine,
                 model=self.model,
+                shape=shape,
             )
             self.run.spend(usage)
             self.run.save()
@@ -210,11 +249,11 @@ class Session:
     # Which desk owns each stage. The verifier owns the baseline because the
     # baseline is a build and a test run, and that is the one judgement in the
     # room that is made by running something rather than by reading it.
-    OWNERS: ClassVar[dict[str, str]] = {
-        "baseline": "Verifier",
-        "analyst": "Analyst",
-        "planner": "Planner",
-        "engineer": "Engineer",
+    OWNERS: ClassVar[dict[str, list[str]]] = {
+        "baseline": ["Verifier"],
+        "analyst": ["Analyst"],
+        "planner": ["Architect", "Planner"],
+        "engineer": ["Engineer", "Inspector", "Reviewer"],
     }
 
     def _finish_early(self) -> None:
@@ -228,12 +267,13 @@ class Session:
         self.run.save()
         after = STAGES[STAGES.index(self.stop_after) + 1 :]
         for stage in after:
-            self.feed.emit(
-                "agent.state",
-                agent=self.OWNERS[stage],
-                state="skipped",
-                note="this job stops before this desk",
-            )
+            for who in self.OWNERS[stage]:
+                self.feed.emit(
+                    "agent.state",
+                    agent=who,
+                    state="skipped",
+                    note="this job stops before this desk",
+                )
         self.feed.emit(
             "run.summary",
             done=0,
@@ -267,8 +307,24 @@ class Session:
                     tests_detail=tests.detail[-400:] if tests else "",
                 )
 
+        def on_gate(item, who, passed, note):
+            self.feed.emit(
+                "gate",
+                id=item.id,
+                who=who,
+                passed=passed,
+                note=note or ("nothing to report" if passed else ""),
+            )
+            self.feed.emit(
+                "agent.state",
+                agent="Inspector" if who == "inspector" else "Reviewer",
+                state="done" if passed else "failed",
+                note=(note or "nothing to report")[:140],
+            )
+
         execute(
             self.run,
+            on_gate=on_gate,
             engine=self.engine,
             model=self.model,
             skills=self.skills,

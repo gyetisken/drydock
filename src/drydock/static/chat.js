@@ -136,6 +136,13 @@ const on = {
     const i = live.items.get(e.id);
     if (i) { i.status = "working"; i.note = "working on it"; renderPlan(); }
   },
+  "gate": (e) => {
+    if (e.passed) return;
+    say("crew", `<div class="body"><p><b>${esc(e.who === "inspector"
+      ? "The inspector refused item " + e.id : "The reviewer refused item " + e.id)}.</b>
+      ${esc(e.note)}</p><p class="why">The suite was green. That is not the same
+      as the change being right, which is what this desk is for.</p></div>`, "dim");
+  },
   "item.done": (e) => {
     const i = live.items.get(e.id);
     if (i) {
@@ -212,10 +219,15 @@ function watch(key) {
 // allowed to stay, which is the only opinion in the room that is not a guess.
 
 const DESKS = [
-  { id: "Analyst",  role: "reads the repository",        shirt: "#5b8ddb" },
-  { id: "Planner",  role: "turns it into items",         shirt: "#8a7fd0" },
-  { id: "Engineer", role: "makes one change at a time",  shirt: "#5fc08a" },
-  { id: "Verifier", role: "builds, tests, and decides",  shirt: "#d6ac5c", code: true },
+  { id: "Analyst",   role: "reads the repository",       shirt: "#5b8ddb", row: 0 },
+  { id: "Architect", role: "decides the shape",          shirt: "#56b6c2", row: 0 },
+  { id: "Planner",   role: "turns it into items",        shirt: "#8a7fd0", row: 0 },
+  { id: "Engineer",  role: "one change at a time",       shirt: "#5fc08a", row: 0 },
+  { id: "Verifier",  role: "builds it and runs the suite", shirt: "#d6ac5c", row: 1, code: true },
+  { id: "Inspector", role: "reads the diff for what the suite cannot see",
+    shirt: "#d98bb0", row: 1, code: true },
+  { id: "Reviewer",  role: "did it do the item, and only the item",
+    shirt: "#e2796d", row: 1 },
 ];
 
 const WORDS = {
@@ -239,6 +251,20 @@ function station(id, state, note) {
 // The room is drawn rather than described, because four cards in a row is a
 // table pretending to be a picture. One inline SVG, using the page's own
 // colour tokens so it follows the theme, and loading nothing from anywhere.
+
+// Crude but enough: break a label on spaces so it never runs under its
+// neighbour. SVG has no text wrapping and one long role was overlapping two
+// desks along.
+function wrap(text, width) {
+  const out = [];
+  let line = "";
+  for (const word of text.split(" ")) {
+    if ((line + " " + word).trim().length > width) { out.push(line.trim()); line = word; }
+    else line += " " + word;
+  }
+  if (line.trim()) out.push(line.trim());
+  return out.slice(0, 2);
+}
 
 const SKIN = "#d7a87f";
 const HAIR = "#46516b";   // reads against both grounds; pure dark vanishes on navy
@@ -278,9 +304,8 @@ function person(x, y, d) {
   </g>`;
 }
 
-function workstation(i, d) {
-  const x = 96 + i * 178;
-  const top = 128;
+function workstation(i, d, top) {
+  const x = d.row === 0 ? 96 + i * 178 : 185 + i * 215;
   const lit = d.state === "working";
   const dim = d.state === "skipped" ? ".4" : "1";
   return `<g opacity="${dim}">
@@ -300,8 +325,10 @@ function workstation(i, d) {
     <path d="M ${x + 44} ${top + 22} h 14 M ${x + 44} ${top + 29} h 14 M ${x + 44} ${top + 36} h 9"
       stroke="var(--faint)" stroke-width="1.4" opacity=".7"/>
     ${person(x, top + 76, d)}
-    <text x="${x}" y="${top + 142}" text-anchor="middle" class="svg-name">${esc(d.id)}</text>
-    <text x="${x}" y="${top + 158}" text-anchor="middle" class="svg-role">${esc(d.role)}</text>
+    <text x="${x}" y="${top + 140}" text-anchor="middle" class="svg-name">${esc(d.id)}</text>
+    ${wrap(d.role, 26).map((ln, n) =>
+      `<text x="${x}" y="${top + 156 + n * 14}" text-anchor="middle"
+        class="svg-role">${esc(ln)}</text>`).join("")}
   </g>`;
 }
 
@@ -313,7 +340,7 @@ function drawOffice() {
   const held = b ? now >= b.tests : null;
 
   $("room").innerHTML = `
-    <svg viewBox="0 0 800 320" preserveAspectRatio="xMidYMid meet" class="scene">
+    <svg viewBox="0 0 800 556" preserveAspectRatio="xMidYMid meet" class="scene">
       <defs>
         <pattern id="tiles" width="40" height="40" patternUnits="userSpaceOnUse">
           <rect width="40" height="40" fill="var(--bg)"/>
@@ -321,7 +348,7 @@ function drawOffice() {
         </pattern>
       </defs>
 
-      <rect x="0" y="74" width="800" height="246" fill="url(#tiles)"/>
+      <rect x="0" y="74" width="800" height="482" fill="url(#tiles)"/>
       <rect x="0" y="0" width="800" height="74" fill="var(--side)"/>
       <rect x="0" y="70" width="800" height="5" fill="var(--line)"/>
 
@@ -360,7 +387,17 @@ function drawOffice() {
         <path d="M767 178 q 20 -14 11 -29 q -17 6 -11 29 z" fill="var(--ok)" opacity=".42"/>
       </g>
 
-      ${DESKS.map((d, i) => workstation(i, desks.get(d.id))).join("")}
+      ${DESKS.filter(d => d.row === 0)
+        .map((d, i) => workstation(i, desks.get(d.id), 128)).join("")}
+
+      <!-- the gates, on their own row, because they are the only stations
+           that can send work back rather than passing it on -->
+      <line x1="40" y1="318" x2="760" y2="318" stroke="var(--line)"
+        stroke-width="1.5" stroke-dasharray="5 5"/>
+      <text x="40" y="340" class="svg-h">ANY OF THESE CAN SEND AN ITEM BACK</text>
+
+      ${DESKS.filter(d => d.row === 1)
+        .map((d, i) => workstation(i, desks.get(d.id), 364)).join("")}
     </svg>`;
 
   const mark = { done: "✓", working: "▸", skipped: "–", failed: "✗", idle: "·" };

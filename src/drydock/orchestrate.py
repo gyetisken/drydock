@@ -15,8 +15,10 @@ from pathlib import Path
 from .agent import BudgetExceeded
 from .detect import detect
 from .engineer import work
+from .inspect import look
 from .models import ItemResult, Outcome
 from .repo import Repo
+from .reviewer import review
 from .run import Run
 from .verify import verify
 
@@ -31,6 +33,8 @@ def execute(
     on_event=None,
     on_item=None,
     should_stop=None,
+    on_gate=None,
+    reviewing: bool = True,
 ) -> Run:
     repo_path = Path(run.repo)
     repo = Repo(repo_path)
@@ -106,7 +110,39 @@ def execute(
                 break
 
             verdict = verify(repo_path, item.verify_with, run.baseline, commands_now())
+
+            # Three gates, cheapest first, and each one may send the item back.
+            # The suite says the change did not break what was watched. The
+            # inspector says it did not reach green by watching less. The
+            # reviewer says it did the item and not something else. A change
+            # has to pass all three to be allowed to stay.
+            refusal = ""
             if verdict.passed:
+                diff = repo.pending()
+                report_card = look(diff, allow_removals=item.removes_tests)
+                if on_gate:
+                    on_gate(item, "inspector", report_card.clean, report_card.reason)
+                if not report_card.clean:
+                    refusal = report_card.reason
+                elif reviewing:
+                    opinion, spend = review(
+                        repo_path,
+                        item,
+                        diff,
+                        report.get("summary", ""),
+                        engine=engine,
+                        model=model,
+                        on_event=on_event,
+                    )
+                    run.spend(spend)
+                    if on_gate:
+                        on_gate(
+                            item, "reviewer", opinion["approved"], opinion["reason"]
+                        )
+                    if not opinion["approved"]:
+                        refusal = opinion["reason"]
+
+            if verdict.passed and not refusal:
                 commit = repo.commit(f"{item.id}. {item.title}\n\n{report['summary']}")
                 result = ItemResult(
                     item=item,
@@ -119,6 +155,8 @@ def execute(
                 )
                 break
 
+            why = refusal or verdict.reason
+
             if attempt == 2:
                 repo.discard()
                 result = ItemResult(
@@ -126,11 +164,14 @@ def execute(
                     outcome=Outcome.REVERTED,
                     attempts=2,
                     checks=[verdict.check],
-                    note=verdict.reason,
+                    note=why,
                 )
                 break
 
-            failure = f"{verdict.reason}\n\n{verdict.check.detail}"
+            # A refusal is handed back as what it is. Telling the engineer the
+            # suite failed when the reviewer objected would send it looking in
+            # the wrong place for the whole of the second attempt.
+            failure = why if refusal else f"{verdict.reason}\n\n{verdict.check.detail}"
             attempt += 1
 
         run.results.append(result)

@@ -42,7 +42,7 @@ PAGE = """<!doctype html><html lang="en"><head><meta charset="utf-8">
         <path d="M10 18 h28 l-5 11 h-18 z" fill="var(--fg)" opacity=".95"/>
         <path d="M23 18 v-10 l10 5 -10 5 z" fill="var(--fg)" opacity=".62"/>
       </svg>
-      <span class="wordmark"><b>drydock</b><i>out of the water, where it can be checked</i></span>
+      <span class="wordmark"><b>drydock</b><i>starts new projects and changes existing ones</i></span>
     </div>
 
     <div class="side-h">Projects <button id="plus" title="add a repository">+</button></div>
