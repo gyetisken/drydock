@@ -49,6 +49,18 @@ hard. If you have written seven, go back and find the three that were only
 split because they could be. If you have written ten, you have planned a
 list of files rather than a sequence of working states.
 
+**Shape the work so it can be done at once.** Two items that edit the same
+file cannot be worked on together, so a plan where every item edits the page
+is a plan that runs one thing at a time however few items it has. This is
+usually avoidable and it is usually better design anyway: one item owns the
+page and its composition; each later item owns a component and the data
+behind it, and the page imports it. Five items that each own their own files
+finish in two rounds. Five that all edit one page finish in five.
+
+The exception is when a change really is to one file. Say so rather than
+inventing components nobody wanted - a plan contorted to look parallel is
+worse than an honest chain.
+
 **Say what each item actually needs.** Items are worked on at the same time
 when they need nothing from each other, so the dependencies are the
 difference between a run that takes twenty minutes and one that takes forty.

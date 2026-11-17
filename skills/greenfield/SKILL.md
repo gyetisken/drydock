@@ -55,6 +55,13 @@ the list. "Last updated 2 hours ago" does not replace the content. Whenever
 an item renders something computed, ask what the visitor came for, and make
 sure the page still contains it.
 
+**Compose the page out of pieces that different items can own.** The page
+itself is one item: the shell, the layout, and the order things appear in.
+Everything after it is a component and the data behind it, imported into
+that page. This is ordinary good structure, and it has a second effect
+here - items that own separate files are worked on at the same time, and
+items that all edit one page are not.
+
 Then one feature per item, each with its test in the same item - and group
 features that would be written in one sitting. The skeleton, the data and
 the first page that renders it is one item, not three. Documentation and
