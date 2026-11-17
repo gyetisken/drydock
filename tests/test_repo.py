@@ -129,3 +129,72 @@ def _a_repo(where):
     (where / "README.md").write_text("nero\n")
     sh("git add -A && git commit -q -m first")
     return Repo(where)
+
+
+class TestWhatASecondWorkingCopyIsLent:
+    """git carries what it tracks, and a project's dependencies are the
+    thing it deliberately does not track. So the first thing a worker did
+    in a worktree was install the entire tree again - minutes of it, per
+    item - and four items working at once meant four installs of the same
+    thing."""
+
+    def test_node_modules_is_lent(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("DRYDOCK_HOME", str(tmp_path / "home"))
+        repo = _a_repo(tmp_path / "nero")
+        (repo.path / "node_modules" / "vitest").mkdir(parents=True)
+
+        where = repo.worktree("item1", repo.head())
+        try:
+            assert (where / "node_modules").is_symlink()
+            assert (where / "node_modules" / "vitest").is_dir()
+        finally:
+            repo.drop_worktree(where)
+
+    def test_a_python_environment_is_lent(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("DRYDOCK_HOME", str(tmp_path / "home"))
+        repo = _a_repo(tmp_path / "svc")
+        (repo.path / ".venv" / "bin").mkdir(parents=True)
+
+        where = repo.worktree("item1", repo.head())
+        try:
+            assert (where / ".venv").is_symlink()
+        finally:
+            repo.drop_worktree(where)
+
+    def test_what_the_project_does_not_have_is_not_invented(
+        self, tmp_path, monkeypatch
+    ):
+        monkeypatch.setenv("DRYDOCK_HOME", str(tmp_path / "home"))
+        repo = _a_repo(tmp_path / "plain")
+
+        where = repo.worktree("item1", repo.head())
+        try:
+            assert not (where / "node_modules").exists()
+        finally:
+            repo.drop_worktree(where)
+
+    def test_it_is_lent_not_copied(self, tmp_path, monkeypatch):
+        """A copy of a dependency tree is slower than installing one."""
+        monkeypatch.setenv("DRYDOCK_HOME", str(tmp_path / "home"))
+        repo = _a_repo(tmp_path / "nero")
+        (repo.path / "node_modules").mkdir()
+
+        where = repo.worktree("item1", repo.head())
+        try:
+            assert (where / "node_modules").resolve() == (
+                repo.path / "node_modules"
+            ).resolve()
+        finally:
+            repo.drop_worktree(where)
+
+    def test_dropping_the_copy_leaves_the_original(self, tmp_path, monkeypatch):
+        """Removing a worktree must not take the project's dependencies
+        with it."""
+        monkeypatch.setenv("DRYDOCK_HOME", str(tmp_path / "home"))
+        repo = _a_repo(tmp_path / "nero")
+        (repo.path / "node_modules" / "vitest").mkdir(parents=True)
+
+        where = repo.worktree("item1", repo.head())
+        repo.drop_worktree(where)
+
+        assert (repo.path / "node_modules" / "vitest").is_dir()

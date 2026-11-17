@@ -9,6 +9,31 @@ from pathlib import Path
 
 from .shell import run
 
+# Directories a project installs rather than writes, which git therefore
+# does not carry into a second working copy. Without them the first thing a
+# worker does in a worktree is install the whole dependency tree again -
+# minutes of it, per item, per run - and four items working at once means
+# four installs of the same thing. They are lent rather than copied: a link
+# costs nothing and the originals are read, not written.
+LENT = ("node_modules", ".venv", "venv", "vendor/bundle")
+
+
+def _lend_dependencies(repo: Path, where: Path) -> None:
+    for name in LENT:
+        source = repo / name
+        if not source.is_dir():
+            continue
+        target = where / name
+        if target.exists() or target.is_symlink():
+            continue
+        try:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.symlink_to(source, target_is_directory=True)
+        except OSError:
+            # Not fatal. The worker installs them itself, slowly, which is
+            # what happened before this existed.
+            pass
+
 
 class Repo:
     def __init__(self, path: Path) -> None:
@@ -100,6 +125,7 @@ class Repo:
         )
         if code:
             raise RuntimeError(f"could not make a worktree: {out[-400:]}")
+        _lend_dependencies(self.path, where)
         return where
 
     def drop_worktree(self, where: Path) -> None:
