@@ -542,3 +542,73 @@ def test_the_clock_it_reports_is_the_one_it_was_given():
     from drydock.engines import ClaudeCodeEngine
 
     assert ClaudeCodeEngine(minutes=18.0).seconds == 18 * 60
+
+
+class TestBusyAgainstStuck:
+    """From outside they are identical: no tool call, no text, no result,
+    for minutes. One is writing a stylesheet and the other is waiting on a
+    connection that will never answer. The partial chunks are the only
+    thing that tells them apart, and getting it wrong in either direction
+    is expensive - one way a stalled worker holds an item for six minutes,
+    the other way a worker is killed halfway through a long file."""
+
+    def test_a_worker_writing_a_long_file_is_left_alone(self, monkeypatch):
+        """It shows nothing anybody can read, and is plainly working."""
+        import json
+
+        from drydock import engines
+
+        monkeypatch.setattr(engines, "QUIET_EVERY", 0.05)
+        monkeypatch.setattr(engines, "QUIET_AFTER", 1000)
+        monkeypatch.setattr(engines, "SILENT_LIMIT", 0.3)
+
+        fragments = [
+            json.dumps(
+                {"type": "stream_event", "event": {"type": "content_block_delta"}}
+            )
+            for _ in range(40)
+        ]
+        _, _, stopped = engines.ClaudeCodeEngine(minutes=10)._read(
+            _Dribbles(fragments, gap=0.02), None
+        )
+        assert stopped == ""
+
+    def test_a_worker_producing_nothing_at_all_is_stopped(self, monkeypatch):
+        from drydock import engines
+
+        monkeypatch.setattr(engines, "QUIET_EVERY", 0.05)
+        monkeypatch.setattr(engines, "QUIET_AFTER", 1000)
+        monkeypatch.setattr(engines, "SILENT_LIMIT", 0.2)
+
+        _, _, stopped = engines.ClaudeCodeEngine(minutes=10)._read(
+            _Silent(for_seconds=0.6), None
+        )
+        assert stopped == "silence"
+
+    def test_the_fragments_are_not_shown_to_anybody(self, monkeypatch):
+        """Half a word is not progress a person can read."""
+        import json
+
+        from drydock import engines
+
+        said: list[tuple[str, str]] = []
+        fragments = [
+            json.dumps(
+                {"type": "stream_event", "event": {"type": "content_block_delta"}}
+            )
+            for _ in range(10)
+        ]
+        engines.ClaudeCodeEngine(minutes=10)._read(
+            _Says(fragments), lambda kind, text: said.append((kind, text))
+        )
+        assert said == []
+
+    def test_the_worker_is_asked_for_them(self):
+        """Without the flag there are no fragments and the two cases are
+        indistinguishable again."""
+        import inspect
+
+        from drydock import engines
+
+        source = inspect.getsource(engines)
+        assert source.count("--include-partial-messages") == 2

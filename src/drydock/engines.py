@@ -112,12 +112,11 @@ QUIET_AFTER = 90
 # than busy. Working looks like a tool call every few seconds, so five
 # minutes with nothing to show is not a long turn.
 #
-# Measured against what a person would have seen, not against the raw
-# output. A worker waiting on a connection that has stalled still has lines
-# coming down the pipe - keepalives - so by that measure it is talking, and
-# one sat at under one percent of a processor for six minutes looking
-# perfectly healthy. The only honest signal is that nothing appeared.
-SILENT_LIMIT = 300
+# Measured against partial output - fragments of words as the model writes
+# them - which is the only signal that separates a worker writing a long
+# file from one whose connection has stalled. Two minutes of producing
+# nothing at all is the second.
+SILENT_LIMIT = 120
 
 _WORKERS: set[subprocess.Popen] = set()
 _WORKERS_LOCK = threading.Lock()
@@ -396,6 +395,13 @@ class ClaudeCodeEngine:
             "--output-format",
             "stream-json",
             "--verbose",
+            # Partial chunks as they are produced. Nothing here is shown to
+            # anybody - a half-written sentence is not progress somebody can
+            # read - but they are the only way to tell a worker that is
+            # writing a long file from one whose connection has stalled.
+            # Both look identical otherwise: no tool call, no text block, no
+            # result, for minutes.
+            "--include-partial-messages",
             "--model",
             self.model,
             "--max-turns",
@@ -530,22 +536,36 @@ class ClaudeCodeEngine:
         alarm.daemon = True
         alarm.start()
 
-        # When anything last appeared that a person watching would have
-        # seen. Not when a line last arrived: a worker whose connection has
-        # stalled still has keepalives coming down the pipe, so by that
-        # measure it is talking, and one sat at under one percent of a
-        # processor for six minutes looking perfectly healthy. A worker that
-        # has shown nothing has stopped working, whatever the pipe says.
+        # Two clocks, and the difference between them is the difference
+        # between a worker that is busy and a worker that is stuck.
+        #
+        # `working_at` is the last sign the model was producing anything at
+        # all, down to a fragment of a word. A worker writing a long file
+        # moves it constantly; one whose connection has stalled does not
+        # move it at any point, which is the only honest way to tell the two
+        # apart - from the outside they are identical, with no tool call, no
+        # text and no result for minutes.
+        #
+        # `showed_at` is the last thing a person watching would have seen,
+        # which is what the message below is about. Both were once the same
+        # clock, and either choice alone is wrong: watching only the raw
+        # pipe kept a stalled worker alive for six minutes, and killing on
+        # nothing-shown would stop a worker halfway through writing a
+        # stylesheet.
+        working_at = [time.monotonic()]
         showed_at = [time.monotonic()]
         quiet = threading.Event()
         silent = threading.Event()
 
         def still_there() -> None:
             while not quiet.wait(QUIET_EVERY):
+                stuck = time.monotonic() - working_at[0]
                 unseen = time.monotonic() - showed_at[0]
-                if unseen >= SILENT_LIMIT and process.poll() is None:
+                if stuck >= SILENT_LIMIT and process.poll() is None:
                     silent.set()
-                    _asked_to_stop(process, "it showed nothing for five minutes")
+                    _asked_to_stop(
+                        process, f"it produced nothing for {int(stuck)} seconds"
+                    )
                     return
                 if unseen >= QUIET_AFTER and on_event:
                     left = self.seconds - (time.monotonic() - began)
@@ -588,6 +608,7 @@ class ClaudeCodeEngine:
                     said_turns if isinstance(said_turns, int) else 0,
                     counted,
                 )
+                working_at[0] = time.monotonic()
                 # Reported whether or not anybody is listening: with no
                 # listener the clock above would never move and a worker
                 # would be stopped five minutes in for working quietly.
@@ -650,6 +671,13 @@ class ClaudeCodeEngine:
             "--output-format",
             "stream-json",
             "--verbose",
+            # Partial chunks as they are produced. Nothing here is shown to
+            # anybody - a half-written sentence is not progress somebody can
+            # read - but they are the only way to tell a worker that is
+            # writing a long file from one whose connection has stalled.
+            # Both look identical otherwise: no tool call, no text block, no
+            # result, for minutes.
+            "--include-partial-messages",
             "--model",
             self.model,
             "--max-turns",
