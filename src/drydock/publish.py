@@ -192,13 +192,17 @@ def open_pull_request(
         return False, "not on a branch"
 
     code, out = git._git(f"push -u origin {branch}")
+    if code and _no_such_repository(out):
+        # The remote names a repository nobody ever created. That is the
+        # ordinary state of a project built from nothing: the remote is set
+        # on the first commit and nobody goes to the website. So make it -
+        # private, always, because nothing in here has been read by anybody
+        # yet and this program is the only thing that has seen it.
+        made, said = _make_it_private(repo, binary)
+        if not made:
+            return False, said
+        code, out = git._git(f"push -u origin {branch}")
     if code:
-        if _no_such_repository(out):
-            return False, (
-                "the remote points at a repository that does not exist yet. "
-                "Create it on GitHub - private - and this will push into it:"
-                f"\n{out[-400:]}"
-            )
         return False, f"could not push the branch:\n{out[-600:]}"
 
     title = run.task.splitlines()[0][:72]
@@ -218,6 +222,57 @@ def open_pull_request(
     if made.returncode:
         return False, (made.stderr or made.stdout).strip()[-600:]
     return True, made.stdout.strip().splitlines()[-1]
+
+
+def _which_repository(repo: Path) -> str:
+    """The owner/name the remote is pointing at, however it is spelled.
+
+    Both forms have to work: the https url and the ssh one, with or without
+    a trailing .git. Returns empty when it cannot tell, and the caller
+    stops there rather than guessing a name onto somebody's account.
+    """
+    code, said = Repo(repo)._git("remote get-url origin")
+    if code:
+        return ""
+    url = said.strip().removesuffix(".git").rstrip("/")
+    parts = [p for p in url.replace(":", "/").split("/") if p]
+    if len(parts) < 2:
+        return ""
+    owner, name = parts[-2], parts[-1]
+    if not owner or not name or "." in owner:
+        return ""
+    return f"{owner}/{name}"
+
+
+def _make_it_private(repo: Path, binary: str) -> tuple[bool, str]:
+    """Create the repository the remote already names. Private, no exceptions.
+
+    Visibility is not a choice this makes. A branch gets here having been
+    seen by four gates and no people, and a repository that turns out to be
+    public is not a mistake anybody can take back.
+    """
+    full = _which_repository(repo)
+    if not full:
+        return False, "cannot tell which repository the remote means"
+
+    try:
+        done = subprocess.run(
+            [binary, "repo", "create", full, "--private"],
+            cwd=repo,
+            capture_output=True,
+            text=True,
+            timeout=90,
+            check=False,
+        )
+    except OSError as exc:
+        return False, str(exc)
+
+    if done.returncode:
+        return False, (
+            f"the remote points at {full}, which does not exist, and it could "
+            f"not be created:\n{(done.stderr or done.stdout).strip()[-400:]}"
+        )
+    return True, full
 
 
 def _no_such_repository(said: str) -> bool:

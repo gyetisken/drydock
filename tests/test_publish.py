@@ -168,3 +168,92 @@ def test_the_body_never_claims_more_than_happened(tmp_path):
     out = body(run, [Evidence(item=1, title="t", plain="p", commit="c", note="n")])
     assert "rolled back before the next one began" in out
     assert "nothing touched the default branch" in out
+
+
+class TestARepositoryThatDoesNotExistYet:
+    """A project built from nothing has a remote set on its first commit and
+    nothing at the other end of it. The push fails with the one error that
+    has an obvious answer, so the answer is taken."""
+
+    def test_the_url_is_read_whichever_way_it_is_written(self, tmp_path, monkeypatch):
+        from drydock import publish
+
+        for url in (
+            "https://github.com/gyetisken/nero.git",
+            "https://github.com/gyetisken/nero",
+            "git@github.com:gyetisken/nero.git",
+            "https://github.com/gyetisken/nero/",
+        ):
+            monkeypatch.setattr(
+                publish.Repo, "_git", lambda self, cmd, url=url: (0, url)
+            )
+            assert publish._which_repository(tmp_path) == "gyetisken/nero", url
+
+    def test_a_url_it_cannot_read_stops_it(self, tmp_path, monkeypatch):
+        """Rather than inventing a name on somebody's account."""
+        from drydock import publish
+
+        monkeypatch.setattr(publish.Repo, "_git", lambda self, cmd: (0, "nero"))
+        assert publish._which_repository(tmp_path) == ""
+
+        monkeypatch.setattr(publish.Repo, "_git", lambda self, cmd: (1, ""))
+        assert publish._which_repository(tmp_path) == ""
+
+    def test_only_a_missing_repository_is_treated_as_one(self):
+        """A push fails for a dozen reasons and creating a repository is the
+        wrong answer to all of them but this."""
+        from drydock.publish import _no_such_repository
+
+        assert _no_such_repository("remote: Repository not found.")
+        assert not _no_such_repository("! [rejected] main -> main (non-fast-forward)")
+        assert not _no_such_repository("fatal: could not read Username")
+        assert not _no_such_repository("ssh: connect to host github.com port 22")
+
+    def test_it_is_created_private(self, tmp_path, monkeypatch):
+        """Not a choice. A branch reaches here having been seen by four gates
+        and no people, and a repository that turns out to be public is not a
+        mistake anybody can take back."""
+        from drydock import publish
+
+        asked = {}
+
+        def fake_run(command, **kw):
+            asked["command"] = command
+
+            class Done:
+                returncode = 0
+                stdout = ""
+                stderr = ""
+
+            return Done()
+
+        monkeypatch.setattr(
+            publish.Repo,
+            "_git",
+            lambda self, cmd: (0, "https://github.com/gyetisken/nero.git"),
+        )
+        monkeypatch.setattr(publish.subprocess, "run", fake_run)
+
+        ok, said = publish._make_it_private(tmp_path, "gh")
+        assert ok and said == "gyetisken/nero"
+        assert "--private" in asked["command"]
+        assert "--public" not in asked["command"]
+
+    def test_a_refused_creation_is_reported_not_swallowed(self, tmp_path, monkeypatch):
+        from drydock import publish
+
+        class Done:
+            returncode = 1
+            stdout = ""
+            stderr = "name already exists on this account"
+
+        monkeypatch.setattr(
+            publish.Repo,
+            "_git",
+            lambda self, cmd: (0, "https://github.com/gyetisken/nero.git"),
+        )
+        monkeypatch.setattr(publish.subprocess, "run", lambda *a, **k: Done())
+
+        ok, said = publish._make_it_private(tmp_path, "gh")
+        assert not ok
+        assert "already exists" in said
