@@ -506,3 +506,39 @@ def _minutes_for(monkeypatch, retry_of: str) -> float:
 
 def _model_for(monkeypatch, retry_of: str) -> str:
     return _built(monkeypatch, retry_of)["model"]
+
+
+class TestAWorkerNobodyIsWatching:
+    """Some stations run with no event listener at all. The clock that
+    decides whether a worker has stopped working only moved when something
+    was handed to a listener, so with none it never moved and the worker
+    would be stopped five minutes in for working quietly."""
+
+    def test_it_is_not_stopped_for_having_no_audience(self, monkeypatch):
+        import json
+
+        from drydock import engines
+
+        monkeypatch.setattr(engines, "QUIET_EVERY", 0.05)
+        monkeypatch.setattr(engines, "SILENT_LIMIT", 0.2)
+
+        lines = [
+            json.dumps(
+                {
+                    "type": "assistant",
+                    "message": {"content": [{"type": "tool_use", "name": "Write"}]},
+                }
+            )
+            for _ in range(30)
+        ]
+        _, _, stopped = engines.ClaudeCodeEngine(minutes=10)._read(
+            _Dribbles(lines, gap=0.03), None
+        )
+        assert stopped == ""
+
+
+def test_the_clock_it_reports_is_the_one_it_was_given():
+    """A retry is given eighteen minutes and was being told it had twelve."""
+    from drydock.engines import ClaudeCodeEngine
+
+    assert ClaudeCodeEngine(minutes=18.0).seconds == 18 * 60

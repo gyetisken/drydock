@@ -522,33 +522,26 @@ class ClaudeCodeEngine:
         def ran_out() -> None:
             if process.poll() is None:
                 overran.set()
-                _asked_to_stop(process, "it ran out of its twelve minutes")
+                _asked_to_stop(
+                    process, f"it ran out of its {self.seconds / 60:.0f} minutes"
+                )
 
         alarm = threading.Timer(self.seconds, ran_out)
         alarm.daemon = True
         alarm.start()
 
-        # A worker can go quiet for minutes in the middle of a turn, and
-        # from outside that is indistinguishable from a hang. It went nine
-        # minutes without a word on the nero site while the window showed a
-        # spinner, which is the one failure this program must not have: it
-        # looks exactly like working.
-        # Two clocks, because they answer different questions. `spoke_at`
-        # is the last line of any kind out of the worker and says whether it
-        # is alive, which is what the kill below is about. `showed_at` is
-        # the last thing anybody watching would have seen appear, which can
-        # be minutes earlier: one long turn streams steadily while producing
-        # nothing a person recognises as progress. Measuring the first and
-        # reporting it as the second is how a worker went two and a half
-        # minutes with an empty window and no explanation.
-        spoke_at = [time.monotonic()]
+        # When anything last appeared that a person watching would have
+        # seen. Not when a line last arrived: a worker whose connection has
+        # stalled still has keepalives coming down the pipe, so by that
+        # measure it is talking, and one sat at under one percent of a
+        # processor for six minutes looking perfectly healthy. A worker that
+        # has shown nothing has stopped working, whatever the pipe says.
         showed_at = [time.monotonic()]
         quiet = threading.Event()
         silent = threading.Event()
 
         def still_there() -> None:
             while not quiet.wait(QUIET_EVERY):
-                since = time.monotonic() - spoke_at[0]
                 unseen = time.monotonic() - showed_at[0]
                 if unseen >= SILENT_LIMIT and process.poll() is None:
                     silent.set()
@@ -570,7 +563,6 @@ class ClaudeCodeEngine:
         dollars, turns, counted = 0.0, 0, 0
         try:
             for line in process.stdout:
-                spoke_at[0] = time.monotonic()
                 line = line.strip()
                 if not line.startswith("{"):
                     continue
@@ -596,7 +588,10 @@ class ClaudeCodeEngine:
                     said_turns if isinstance(said_turns, int) else 0,
                     counted,
                 )
-                if on_event and _report(event, on_event):
+                # Reported whether or not anybody is listening: with no
+                # listener the clock above would never move and a worker
+                # would be stopped five minutes in for working quietly.
+                if _report(event, on_event or _nobody):
                     showed_at[0] = time.monotonic()
         finally:
             alarm.cancel()
@@ -728,6 +723,10 @@ def _why_it_stopped(which: str, seconds: float) -> str:
     if which == "silence":
         return f"stopped - nothing at all for {SILENT_LIMIT // 60} minutes"
     return f"stopped after {seconds / 60:.0f} minutes"
+
+
+def _nobody(kind: str, text: str) -> None:
+    """A listener for when there is none."""
 
 
 def _report(event: dict, on_event) -> bool:
