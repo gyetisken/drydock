@@ -71,3 +71,61 @@ def test_drydock_cleans_up_after_itself(tmp_path):
 
 def test_sweeping_a_clean_repository_removes_nothing(tmp_path):
     assert make(tmp_path).sweep() == []
+
+
+class TestWhereASecondWorkingCopyGoes:
+    """Beside the repository is the wrong place. The parent of a repository
+    is usually the folder holding every other one somebody owns, and a run
+    that is killed leaves its working copies behind - so drydock's debris
+    ends up among their projects."""
+
+    def test_it_is_under_drydock_s_own_directory(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("DRYDOCK_HOME", str(tmp_path / "home"))
+        repo = _a_repo(tmp_path / "nero")
+
+        where = repo.worktree("item2", repo.head())
+        try:
+            assert (tmp_path / "home" / "worktrees") in where.parents
+            assert where.name == "nero-item2"
+        finally:
+            repo.drop_worktree(where)
+
+    def test_nothing_is_left_beside_the_repository(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("DRYDOCK_HOME", str(tmp_path / "home"))
+        repo = _a_repo(tmp_path / "nero")
+
+        where = repo.worktree("item1", repo.head())
+        try:
+            assert not list(tmp_path.glob(".drydock-*"))
+        finally:
+            repo.drop_worktree(where)
+
+    def test_two_items_get_two_copies(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("DRYDOCK_HOME", str(tmp_path / "home"))
+        repo = _a_repo(tmp_path / "nero")
+
+        one = repo.worktree("item1", repo.head())
+        two = repo.worktree("item2", repo.head())
+        try:
+            assert one != two
+            assert one.exists() and two.exists()
+        finally:
+            repo.drop_worktree(one)
+            repo.drop_worktree(two)
+
+
+def _a_repo(where):
+    """A repository with one commit, which is the least a worktree needs."""
+    import subprocess
+
+    from drydock.repo import Repo
+
+    where.mkdir(parents=True)
+
+    def sh(command: str) -> None:
+        subprocess.run(command, cwd=where, shell=True, capture_output=True, check=True)
+
+    sh("git init -q && git config user.email t@t && git config user.name t")
+    (where / "README.md").write_text("nero\n")
+    sh("git add -A && git commit -q -m first")
+    return Repo(where)

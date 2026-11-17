@@ -4,6 +4,7 @@ Every item gets its own commit, which is what makes reverting an item cheap
 enough to be the default response to a failure rather than a last resort.
 """
 
+import os
 from pathlib import Path
 
 from .shell import run
@@ -84,7 +85,14 @@ class Repo:
         work. A worktree gives each one its own files and the same git, so
         the commits land in the same place and nothing is copied.
         """
-        where = self.path.parent / f".drydock-{self.path.name}-{name}"
+        # Under this program's own directory, not beside the repository.
+        # The parent of a repository is usually the folder holding every
+        # other one somebody owns, and leaving working copies in it - which
+        # happens whenever a run is killed - puts drydock's debris among
+        # their projects.
+        home = Path(os.environ.get("DRYDOCK_HOME") or Path.home() / ".drydock")
+        where = home / "worktrees" / f"{self.path.name}-{name}"
+        where.parent.mkdir(parents=True, exist_ok=True)
         if where.exists():
             self._git(f"worktree remove --force {_quote(str(where))}")
         code, out = self._git(
