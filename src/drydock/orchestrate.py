@@ -15,9 +15,11 @@ from concurrent.futures import Future, ThreadPoolExecutor
 from pathlib import Path
 
 from .agent import BudgetExceeded
+from .critic import Verdict as Seen
 from .critic import look as look_at_it
 from .detect import detect
 from .engineer import work
+from .fits import why_it_does_not_fit
 from .inspect import look
 from .models import ItemResult, Outcome
 from .planner import answer
@@ -70,6 +72,17 @@ def _show_it(repo_path: Path, run, item, on_event):
         if on_event:
             on_event("critic", f"could not start the project to look at it: {exc}")
         return None, 0.0
+
+    # Arithmetic before judgement. A page wider than the screen it is on is
+    # the one visual defect that does not need an opinion, and it is the one
+    # that has cost this crew the most: seven items refused for it in an
+    # afternoon, each time by somebody describing what they saw rather than
+    # measuring it. Measured, it is a number and an element name.
+    does_not_fit = why_it_does_not_fit(live.url)
+    if does_not_fit:
+        if on_event:
+            on_event("critic", does_not_fit.splitlines()[0])
+        return Seen(looked=True, approved=False, reason=does_not_fit, noticed=[]), 0.0
 
     with tempfile.TemporaryDirectory(prefix="drydock-look-") as scratch:
         try:
