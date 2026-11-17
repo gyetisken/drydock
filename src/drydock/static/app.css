@@ -517,3 +517,14 @@ textarea#inst:focus { border-color:var(--accent-dim) }
   color:var(--fg); display:block; word-break:break-word }
 .tech p { margin:6px 0 0; font-size:12px; line-height:1.55; color:var(--muted) }
 .step .ttl { font-size:13.5px; line-height:1.5 }
+
+/* The item being worked on: the one thing anyone is looking for on the page. */
+.step.working { background:color-mix(in srgb, var(--accent) 12%, transparent);
+  border-radius:8px; box-shadow:inset 2px 0 0 var(--accent) }
+.step.working .ttl { color:var(--fg) }
+.spin { display:inline-block; width:10px; height:10px; border-radius:50%;
+  border:2px solid color-mix(in srgb, var(--accent) 28%, transparent);
+  border-top-color:var(--accent);
+  animation:spin .62s linear infinite; vertical-align:-1px }
+.working-now { color:var(--ok) }
+.working-now::before { content:"✓ "; }

@@ -178,15 +178,20 @@ const on = {
   "plan.ready": (e) => {
     const msg = say("planner", `<div class="body"><p>${esc(e.summary)}</p>
       <div class="card"><h4>${e.items.length} items</h4><div class="steps"></div></div>
-      <div class="actions"><button class="btn" id="approve">Approve and start</button>
-      <span class="hint" id="planhint">Nothing is changed until you approve.</span></div></div>`);
+      <div class="actions">${S.alreadyApproved
+        ? `<span class="hint working-now">Approved · working through it, one item
+           at a time</span>`
+        : `<button class="btn" id="approve">Approve and start</button>
+           <span class="hint" id="planhint">Nothing is changed until you approve.</span>`
+      }</div></div>`);
     live.el.plan = msg.querySelector(".card");
     station("Planner", "done", `${e.items.length} items, waiting for you`);
     // The note under an item is its state, not its reasoning. The reasoning
     // is behind "how", where somebody who wants it can go and get it.
     e.items.forEach(i => live.items.set(i.id, { ...i, status: "waiting", note: "" }));
     renderPlan(); renderStats();
-    msg.querySelector("#approve").onclick = async (ev) => {
+    const button = msg.querySelector("#approve");
+    if (button) button.onclick = async (ev) => {
       ev.target.disabled = true;
       msg.querySelector("#planhint").textContent = "working, one item at a time";
       running(true, "working through the plan");
@@ -299,8 +304,13 @@ const on = {
   },
 };
 
-function watch(key) {
+function watch(key, { already = false } = {}) {
   S.key = key;
+  // Reattaching to a job that is already running. The plan is replayed from
+  // the feed, so without this the approve button comes back for a plan that
+  // was approved twenty minutes ago - and pressing it starts nothing, which
+  // is worse than it looking wrong.
+  S.alreadyApproved = already;
   live.items.clear(); live.tests = null; live.baseline = null;
   live.reverted = 0; live.el = {};
   Office.reset();
@@ -667,7 +677,7 @@ async function carryOn(id) {
   say("crew", `<div class="body"><p>Carrying on where this stopped.
     <b>${body.left} items</b> still have no result; everything that landed is
     already committed.</p></div>`, "dim");
-  watch(body.key);
+  watch(body.key, { already: true });
   running(true, "resuming");
 }
 
@@ -973,7 +983,7 @@ async function reattach() {
   youSaid(here.task);
   say("crew", `<div class="body"><p>This was already running when the page
     loaded. Picking it back up.</p></div>`, "dim");
-  watch(here.key);
+  watch(here.key, { already: true });
   running(true, "working");
   return true;
 }
@@ -999,7 +1009,7 @@ async function reattach() {
   youSaid(here.task);
   say("crew", `<div class="body"><p>This was already running when the page
     loaded. Picking it back up.</p></div>`, "dim");
-  watch(here.key);
+  watch(here.key, { already: true });
   running(true, "working");
   return true;
 }
