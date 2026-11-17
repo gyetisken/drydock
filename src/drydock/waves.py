@@ -111,3 +111,35 @@ def how_much_faster(waves: list[Wave]) -> str:
         f"{items} items in {len(waves)} rounds - "
         f"{items - len(waves)} of them alongside something else"
     )
+
+
+def stranded(items: list, failed: set[int]) -> dict[int, list[int]]:
+    """Which items cannot be attempted because something they need is gone.
+
+    A failed item used to stop the whole run, on the reasoning that a later
+    item usually assumes an earlier one landed. Usually is not always, and
+    the plan now says which: every item names what it needs. So the ones
+    that are genuinely stranded are worked out and the rest are still
+    attempted, rather than the run throwing away work it could have done.
+
+    Returns each stranded item's id against the failed items it was waiting
+    on, directly or through something else.
+    """
+    waiting_on: dict[int, list[int]] = {}
+    gone = set(failed)
+    # Items are in planned order and a need always points backwards, so one
+    # pass settles it - but it is written to tolerate a plan where that is
+    # not true, because a plan is written by a model.
+    for _ in range(len(items)):
+        changed = False
+        for item in items:
+            if item.id in gone:
+                continue
+            blocked = sorted(n for n in getattr(item, "needs", []) if n in gone)
+            if blocked:
+                waiting_on[item.id] = blocked
+                gone.add(item.id)
+                changed = True
+        if not changed:
+            break
+    return waiting_on

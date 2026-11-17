@@ -25,7 +25,7 @@ from .repo import Repo
 from .reviewer import review
 from .run import Run
 from .verify import verify
-from .waves import plan_waves
+from .waves import Wave, plan_waves, stranded
 
 
 class DirtyTree(Exception):
@@ -483,7 +483,15 @@ def execute(
     run.skills_loaded = skills
     landed = {r.item.id for r in run.results if r.outcome.value == "done"}
 
+    failed: set[int] = set()
     for wave in plan_waves(run.plan.items, landed):
+        # Everything in this wave that is already written off, skipped
+        # rather than attempted against a foundation that is not there.
+        wave = Wave(
+            items=[i for i in wave.items if i.id not in judged(run)], why=wave.why
+        )
+        if not wave.items:
+            continue
         if should_stop and should_stop():
             if on_item:
                 on_item(wave.items[0], "stopped")
@@ -517,7 +525,6 @@ def execute(
             on_gate,
         )
 
-        stop_here = False
         for item in wave.items:
             result = results.get(item.id)
             if result is None:
@@ -527,12 +534,40 @@ def execute(
             if on_item:
                 on_item(item, result.outcome.value)
             if result.outcome in (Outcome.REVERTED, Outcome.BLOCKED):
-                stop_here = True
+                failed.add(item.id)
 
-        # Items are ordered, and a later one usually assumes an earlier one
-        # landed. Carrying on past a failure would pile changes onto a
-        # foundation that was removed.
-        if stop_here:
-            break
+        # A failed item used to stop the run, on the reasoning that a later
+        # item usually assumes an earlier one landed. Usually is not always,
+        # and the plan says which: every item names what it needs. So the
+        # ones that are genuinely waiting on it are written off here, and
+        # anything independent is still attempted.
+        if failed:
+            cannot = stranded(run.plan.items, failed)
+            for item in run.plan.items:
+                if item.id not in cannot or item.id in judged(run):
+                    continue
+                waiting = ", ".join(str(n) for n in cannot[item.id])
+                result = ItemResult(
+                    item=item,
+                    outcome=Outcome.BLOCKED,
+                    attempts=0,
+                    note=(
+                        f"not attempted: it needs item {waiting}, which did "
+                        "not land. Nothing was written for it, so it is "
+                        "still there to do once that one is."
+                    ),
+                )
+                run.results.append(result)
+                failed.add(item.id)
+                if on_item:
+                    on_item(item, result.outcome.value)
+            run.save()
+            if all(i.id in judged(run) for i in run.plan.items):
+                break
 
     return run
+
+
+def judged(run) -> set[int]:
+    """Every item that already has a result, however it ended."""
+    return {r.item.id for r in run.results}

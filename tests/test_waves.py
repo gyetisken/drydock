@@ -8,7 +8,7 @@ pinned here.
 """
 
 from drydock.models import Item
-from drydock.waves import how_much_faster, overlap, plan_waves
+from drydock.waves import how_much_faster, overlap, plan_waves, stranded
 
 
 def item(number: int, files=None, needs=None) -> Item:
@@ -126,3 +126,50 @@ class TestWhatItSaysItBought:
         ]
         said = how_much_faster(plan_waves(items))
         assert "3 items in 2 rounds" in said
+
+
+class TestWhatIsStrandedByAFailure:
+    """A failed item used to stop the whole run, on the reasoning that a
+    later item usually assumes an earlier one landed. Usually is not
+    always, and the plan now says which: every item names what it needs.
+    The ones genuinely waiting on it are written off; everything else is
+    still worth attempting."""
+
+    def test_an_item_that_needed_it_is_stranded(self):
+        items = [item(1), item(2, needs=[1])]
+        assert stranded(items, {1}) == {2: [1]}
+
+    def test_an_item_that_did_not_is_left_alone(self):
+        """This is the whole point: the run keeps what it can still do."""
+        items = [item(1), item(2, needs=[1]), item(3)]
+        assert 3 not in stranded(items, {1})
+
+    def test_it_follows_through_the_chain(self):
+        """Item 4 never names the failure, but it is waiting on it."""
+        items = [item(1), item(2, needs=[1]), item(4, needs=[2])]
+        assert stranded(items, {1}) == {2: [1], 4: [2]}
+
+    def test_it_says_what_each_one_was_waiting_on(self):
+        """So the run can say 'it needs item 2, which did not land' rather
+        than 'skipped'."""
+        items = [item(1), item(2), item(3, needs=[1, 2])]
+        assert stranded(items, {1, 2}) == {3: [1, 2]}
+
+    def test_nothing_failed_strands_nothing(self):
+        items = [item(1), item(2, needs=[1])]
+        assert stranded(items, set()) == {}
+
+    def test_a_failure_nothing_depended_on_strands_nothing(self):
+        items = [item(1), item(2), item(3, needs=[1])]
+        assert stranded(items, {2}) == {}
+
+    def test_a_cycle_does_not_hang_it(self):
+        """Plans are written by a model and this one has to end."""
+        items = [item(1), item(2, needs=[3]), item(3, needs=[2])]
+        assert stranded(items, {1}) == {}
+
+    def test_an_item_naming_no_needs_is_never_stranded(self):
+        """It said it needs nothing. Attempting it is the only way to find
+        out whether that was true."""
+        items = [item(1), item(2, needs=[])]
+        assert stranded(items, {1}) == {}
