@@ -23,15 +23,29 @@ from .skills import Skill
 HOME = Path.home() / ".drydock"
 
 
+def _recency(stamp: str) -> float:
+    """A sortable number from a timestamp, and zero when there is not one."""
+    try:
+        return datetime.strptime(stamp, "%Y-%m-%d %H:%M").timestamp()
+    except (ValueError, TypeError):
+        return 0.0
+
+
 @dataclass
 class Project:
     path: Path
     added: str
     last_used: str = ""
+    # A name somebody chose, and whether it sits at the top of the list.
+    # Neither changes anything on disk: a folder called `api-v2-final` can be
+    # called the thing it actually is without renaming it under whatever else
+    # is pointing at that path.
+    label: str = ""
+    pinned: bool = False
 
     @property
     def name(self) -> str:
-        return self.path.name
+        return self.label or self.path.name
 
     @property
     def exists(self) -> bool:
@@ -100,6 +114,27 @@ class Workspace:
         self.projects.insert(0, project)
         self.save()
         return project
+
+    def rename(self, path: str, label: str) -> None:
+        for project in self.projects:
+            if str(project.path) == path:
+                project.label = label.strip()[:60]
+        self.save()
+        self._order()
+
+    def pin(self, path: str, pinned: bool) -> None:
+        for project in self.projects:
+            if str(project.path) == path:
+                project.pinned = pinned
+        self.save()
+        self._order()
+
+    def _order(self) -> None:
+        """Pinned first, then whatever was used most recently."""
+        self.projects = sorted(
+            self.projects, key=lambda p: (not p.pinned, -_recency(p.last_used))
+        )
+        self.save()
 
     def forget(self, path: str) -> None:
         self.projects = [p for p in self.projects if str(p.path) != path]

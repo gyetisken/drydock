@@ -46,11 +46,15 @@ function renderStats() {
   if (!b || !live.el.stats) return;
   const now = live.tests === null ? b.tests : live.tests;
   const landed = [...live.items.values()].filter(i => i.status === "done").length;
+  const started = b.tests || b.failed || b.builds;
   live.el.stats.innerHTML = `
-    <div class="stat ${now < b.tests ? "bad" : "ok"}"><b>${now}</b><span>tests running</span></div>
-    <div class="stat"><b>${b.tests}</b><span>before any change</span></div>
+    ${started ? `
+      <div class="stat ${now < b.tests ? "bad" : "ok"}"><b>${now}</b><span>tests running</span></div>
+      <div class="stat"><b>${b.tests}</b><span>before any change</span></div>`
+    : `<div class="stat"><b>${now}</b><span>tests exist now</span></div>`}
     <div class="stat"><b>${landed}</b><span>items landed</span></div>
-    <div class="stat"><b>$${live.cost.toFixed(2)}</b><span>spent</span></div>`;
+    <div class="stat"><b>$${live.cost.toFixed(2)}</b><span>${
+      S.engine === "claude" ? "on your plan, not billed" : "billed"}</span></div>`;
   $("spend").textContent = `$${live.cost.toFixed(2)}`;
 }
 
@@ -62,24 +66,23 @@ function toolLine(agent, detail) {
   row.className = "toolline";
   row.textContent = `${agent}  ${detail}`;
   box.appendChild(row);
+  const n = box.children.length;
   live.el.tools.querySelector("summary").textContent =
-    `${box.children.length} steps taken`;
+    `${n} step${n === 1 ? "" : "s"} taken`;
 }
 
 const on = {
   "run.started": (e) => {
     S.skillsOn = e.skills || [];
-    desks.forEach(d => { d.state = "idle"; d.note = ""; });
-    DESKS.forEach(d => {
-      const needed = {
-        Verifier: "baseline", Analyst: "analyst",
-        Architect: "planner", Planner: "planner",
-        Engineer: "engineer", Inspector: "engineer", Reviewer: "engineer",
-      }[d.id];
-      if (e.stages && !e.stages.includes(needed)) {
-        const s = desks.get(d.id);
-        s.state = "skipped";
-        s.note = "this job stops before this desk";
+    Office.reset();
+    const NEEDS = {
+      Verifier: "baseline", Analyst: "analyst",
+      Architect: "planner", Planner: "planner",
+      Engineer: "engineer", Inspector: "engineer", Reviewer: "engineer",
+    };
+    Object.entries(NEEDS).forEach(([who, stage]) => {
+      if (e.stages && !e.stages.includes(stage)) {
+        Office.at(who, "skipped", "this job stops before this desk");
       }
     });
     drawOffice();
@@ -96,14 +99,21 @@ const on = {
     station("Verifier", "done", e.green
       ? `${e.tests} tests pass before anything is touched`
       : `${e.failed} failing before anything is touched`);
-    const msg = say("crew", `<div class="body"><p>${e.green
+    const nothing = !e.tests && !e.failed && !e.builds;
+    const opening = nothing
+      ? `There is nothing here yet - no build, no suite. Nothing can be verified
+         until an item creates a way to run something, which is what the first
+         item is for.`
+      : e.green
       ? `The suite is green before anything is touched: <b>${e.tests} tests</b> pass.`
-      : `The suite is <b>not green</b>: ${e.failed} failing. Nothing after this can be called a regression.`}</p>
+      : `The suite is <b>not green</b>: ${e.failed} failing. Nothing after this can be called a regression.`;
+    const msg = say("crew", `<div class="body"><p>${opening}</p>
       <div class="card"><div class="stats"></div></div></div>`);
     live.el.stats = msg.querySelector(".stats");
     renderStats();
   },
   "agent.tool": (e) => toolLine(e.agent, e.detail),
+  "spend": (e) => { live.cost = e.cost; renderStats(); },
   "agent.state": (e) => {
     station(e.agent, e.state, e.note);
     if (e.state === "working") running(true, `${e.agent}: ${e.note}`);
@@ -136,9 +146,17 @@ const on = {
   "item.start": (e) => {
     const i = live.items.get(e.id);
     if (i) { i.status = "working"; i.note = "working on it"; renderPlan(); }
+    Office.at("Engineer", "working", `item ${e.id}: ${e.title}`);
+    Office.send("Engineer");
+    drawOffice();
   },
   "gate": (e) => {
-    if (e.passed) return;
+    const who = e.who === "inspector" ? "Inspector" : "Reviewer";
+    if (e.passed) { Office.send(who); Office.at(who, "done", e.note); drawOffice(); return; }
+    Office.bounce(who);
+    Office.at(who, "failed", e.note);
+    Office.at("Engineer", "working", "told to try again");
+    drawOffice();
     say("crew", `<div class="body"><p><b>${esc(e.who === "inspector"
       ? "The inspector refused item " + e.id : "The reviewer refused item " + e.id)}.</b>
       ${esc(e.note)}</p><p class="why">The suite was green. That is not the same
@@ -154,6 +172,7 @@ const on = {
     const m = /(\d+) tests/.exec(e.note || "");
     if (m) live.tests = parseInt(m[1], 10);
     live.cost = e.cost || live.cost;
+    if (e.outcome === "done") Office.land(e.id); else Office.bounce("Verifier");
     station("Verifier", e.outcome === "done" ? "done" : "failed",
       e.outcome === "done"
         ? `item ${e.id} held the suite, so it stays`
@@ -205,7 +224,7 @@ const on = {
 function watch(key) {
   S.key = key;
   live.items.clear(); live.tests = null; live.baseline = null; live.cost = 0; live.el = {};
-  desks.forEach(d => { d.state = "idle"; d.note = ""; });
+  Office.reset();
   const src = new EventSource("/api/stream/" + key);
   src.onmessage = (m) => {
     const e = JSON.parse(m.data);
@@ -215,207 +234,50 @@ function watch(key) {
 
 /* ---------- the office ---------- */
 
-// Four stations in the order the work passes through them. The fourth is not
-// a model: it runs the build and the suite and decides whether the change is
-// allowed to stay, which is the only opinion in the room that is not a guess.
-
-const DESKS = [
-  { id: "Analyst",   role: "reads the repository",       shirt: "#5b8ddb", row: 0 },
-  { id: "Architect", role: "decides the shape",          shirt: "#56b6c2", row: 0 },
-  { id: "Planner",   role: "turns it into items",        shirt: "#8a7fd0", row: 0 },
-  { id: "Engineer",  role: "one change at a time",       shirt: "#5fc08a", row: 0 },
-  { id: "Verifier",  role: "builds it and runs the suite", shirt: "#d6ac5c", row: 1, code: true },
-  { id: "Inspector", role: "reads the diff for what the suite cannot see",
-    shirt: "#d98bb0", row: 1, code: true },
-  { id: "Reviewer",  role: "did it do the item, and only the item",
-    shirt: "#e2796d", row: 1 },
-];
+// The room itself lives in office.js and is built once. This half only says
+// what changed: who is at which desk, what is on the board, and where the
+// item currently is. Everything that moves, moves there.
 
 const WORDS = {
   idle: "waiting for the station before it",
   working: "working",
   done: "done",
   skipped: "not needed for this job",
-  failed: "stopped",
+  failed: "sent it back",
 };
 
-const desks = new Map(DESKS.map(d => [d.id, { ...d, state: "idle", note: "" }]));
-
 function station(id, state, note) {
-  const d = desks.get(id);
-  if (!d) return;
-  d.state = state;
-  if (note !== undefined) d.note = note;
-  drawOffice();
+  Office.at(id, state, note);
+  drawLegend();
 }
 
-// The room is drawn rather than described, because four cards in a row is a
-// table pretending to be a picture. One inline SVG, using the page's own
-// colour tokens so it follows the theme, and loading nothing from anywhere.
-
-// Crude but enough: break a label on spaces so it never runs under its
-// neighbour. SVG has no text wrapping and one long role was overlapping two
-// desks along.
-function wrap(text, width) {
-  const out = [];
-  let line = "";
-  for (const word of text.split(" ")) {
-    if ((line + " " + word).trim().length > width) { out.push(line.trim()); line = word; }
-    else line += " " + word;
-  }
-  if (line.trim()) out.push(line.trim());
-  return out.slice(0, 2);
-}
-
-const SKIN = "#d7a87f";
-const HAIR = "#46516b";   // reads against both grounds; pure dark vanishes on navy
-
-function person(x, y, d) {
-  const s = d.state;
-  if (s === "skipped") {
-    return `<g opacity=".4">
-      <ellipse cx="${x}" cy="${y + 20}" rx="15" ry="6" fill="var(--line)"/>
-      <rect x="${x - 13}" y="${y + 6}" width="26" height="12" rx="5" fill="var(--line)"/>
-      <rect x="${x - 2}" y="${y + 16}" width="4" height="9" fill="var(--line)"/>
-    </g>`;
-  }
-  const lit = s === "working";
-  return `<g>
-    <ellipse cx="${x}" cy="${y + 30}" rx="19" ry="7" fill="var(--line-soft)"/>
-    <rect x="${x - 17}" y="${y + 4}" width="34" height="26" rx="12" fill="${d.shirt}"
-      opacity="${lit ? 1 : 0.8}"/>
-    <circle cx="${x}" cy="${y - 8}" r="12" fill="${SKIN}"/>
-    <path d="M ${x - 12} ${y - 10} a 12 12 0 0 1 24 0 q -12 -5 -24 0 z" fill="${HAIR}"/>
-    ${lit ? `<g>
-      <circle cx="${x + 25}" cy="${y - 26}" r="2.8" fill="var(--live)">
-        <animate attributeName="opacity" values="1;.15;1" dur="1.1s" repeatCount="indefinite"/></circle>
-      <circle cx="${x + 33}" cy="${y - 26}" r="2.8" fill="var(--live)">
-        <animate attributeName="opacity" values="1;.15;1" dur="1.1s" begin=".35s" repeatCount="indefinite"/></circle>
-      <circle cx="${x + 41}" cy="${y - 26}" r="2.8" fill="var(--live)">
-        <animate attributeName="opacity" values="1;.15;1" dur="1.1s" begin=".7s" repeatCount="indefinite"/></circle>
-    </g>` : ""}
-    ${s === "done" ? `
-      <circle cx="${x + 28}" cy="${y - 20}" r="10.5" fill="var(--ok)"/>
-      <path d="M ${x + 23} ${y - 20} l 3.5 3.6 l 6.2 -7.2" stroke="#fff" stroke-width="2.3"
-        fill="none" stroke-linecap="round" stroke-linejoin="round"/>` : ""}
-    ${s === "failed" ? `
-      <circle cx="${x + 28}" cy="${y - 20}" r="10.5" fill="var(--bad)"/>
-      <path d="M ${x + 24} ${y - 24} l 8 8 M ${x + 32} ${y - 24} l -8 8" stroke="#fff"
-        stroke-width="2.3" stroke-linecap="round"/>` : ""}
-  </g>`;
-}
-
-function workstation(i, d, top) {
-  const x = d.row === 0 ? 96 + i * 178 : 185 + i * 215;
-  const lit = d.state === "working";
-  const dim = d.state === "skipped" ? ".4" : "1";
-  return `<g opacity="${dim}">
-    <rect x="${x - 72}" y="${top}" width="144" height="52" rx="7"
-      fill="var(--raise)" stroke="var(--line)" stroke-width="1.5"/>
-    <rect x="${x - 72}" y="${top}" width="144" height="9" rx="4.5" fill="var(--line)"/>
-    <rect x="${x - 29}" y="${top - 34}" width="58" height="36" rx="4"
-      fill="${HAIR}" opacity="${lit ? ".9" : ".55"}"/>
-    <rect x="${x - 25}" y="${top - 30}" width="50" height="28" rx="2"
-      fill="${lit ? "var(--live)" : "var(--line)"}"/>
-    ${lit ? `<rect x="${x - 25}" y="${top - 30}" width="50" height="28" rx="2"
-      fill="var(--live)"><animate attributeName="opacity" values=".55;1;.55"
-      dur="2.4s" repeatCount="indefinite"/></rect>` : ""}
-    <rect x="${x - 7}" y="${top - 1}" width="14" height="6" fill="${HAIR}" opacity=".6"/>
-    <rect x="${x + 38}" y="${top + 14}" width="26" height="30" rx="3" fill="var(--line-soft)"
-      stroke="var(--line)"/>
-    <path d="M ${x + 44} ${top + 22} h 14 M ${x + 44} ${top + 29} h 14 M ${x + 44} ${top + 36} h 9"
-      stroke="var(--faint)" stroke-width="1.4" opacity=".7"/>
-    ${person(x, top + 76, d)}
-    <text x="${x}" y="${top + 140}" text-anchor="middle" class="svg-name">${esc(d.id)}</text>
-    ${wrap(d.role, 26).map((ln, n) =>
-      `<text x="${x}" y="${top + 156 + n * 14}" text-anchor="middle"
-        class="svg-role">${esc(ln)}</text>`).join("")}
-  </g>`;
-}
-
-function drawOffice() {
-  const items = [...live.items.values()];
-  const landed = items.filter(i => i.status === "done").length;
-  const b = live.baseline;
-  const now = b ? (live.tests === null ? b.tests : live.tests) : null;
-  const held = b ? now >= b.tests : null;
-
-  $("room").innerHTML = `
-    <svg viewBox="0 0 800 574" preserveAspectRatio="xMidYMid meet" class="scene">
-      <defs>
-        <pattern id="tiles" width="40" height="40" patternUnits="userSpaceOnUse">
-          <rect width="40" height="40" fill="var(--bg)"/>
-          <path d="M40 0 V40 M0 40 H40" stroke="var(--line)" stroke-width="1" opacity=".55"/>
-        </pattern>
-      </defs>
-
-      <rect x="0" y="74" width="800" height="500" fill="url(#tiles)"/>
-      <rect x="0" y="0" width="800" height="74" fill="var(--side)"/>
-      <rect x="0" y="70" width="800" height="5" fill="var(--line)"/>
-
-      <!-- the board on the back wall: one tick per item, nothing else -->
-      <g>
-        <rect x="22" y="12" width="408" height="48" rx="6" fill="var(--panel)"
-          stroke="var(--line)" stroke-width="1.5"/>
-        <text x="36" y="30" class="svg-h">THE BOARD</text>
-        ${items.length
-          ? items.slice(0, 24).map((it, n) => {
-              const c = { done: "var(--ok)", working: "var(--live)",
-                          reverted: "var(--bad)", blocked: "var(--bad)" }[it.status]
-                        || "var(--line)";
-              return `<rect x="${36 + n * 14}" y="38" width="10" height="13" rx="2"
-                fill="${c}"><title>${esc(it.title)}</title></rect>`;
-            }).join("") +
-            `<text x="${36 + Math.min(items.length, 24) * 14 + 10}" y="49"
-              class="svg-small">${landed} of ${items.length} landed</text>`
-          : `<text x="36" y="49" class="svg-small">nothing pinned up yet</text>`}
-      </g>
-
-      <!-- the rule of the room, on a sign by the door -->
-      <g>
-        <rect x="446" y="12" width="332" height="48" rx="6" fill="var(--panel)"
-          stroke="${b ? (held ? "var(--ok)" : "var(--bad)") : "var(--line)"}" stroke-width="1.5"/>
-        <text x="460" y="30" class="svg-h">THE SUITE</text>
-        <text x="460" y="49" class="svg-small">${b
-          ? `${now} running now, ${b.tests} before anyone touched it`
-          : "not run yet"}</text>
-      </g>
-
-      <g opacity=".6">
-        <rect x="752" y="178" width="30" height="24" rx="4" fill="var(--line-soft)"
-          stroke="var(--line)"/>
-        <path d="M767 178 q -20 -16 -9 -34 q 16 7 9 34 z" fill="var(--ok)" opacity=".6"/>
-        <path d="M767 178 q 20 -14 11 -29 q -17 6 -11 29 z" fill="var(--ok)" opacity=".42"/>
-      </g>
-
-      ${DESKS.filter(d => d.row === 0)
-        .map((d, i) => workstation(i, desks.get(d.id), 128)).join("")}
-
-      <!-- the gates, on their own row, because they are the only stations
-           that can send work back rather than passing it on -->
-      <text x="400" y="314" text-anchor="middle" class="svg-h">ANY OF THESE CAN SEND AN ITEM BACK</text>
-      <line x1="40" y1="330" x2="760" y2="330" stroke="var(--line)"
-        stroke-width="1.5" stroke-dasharray="5 5"/>
-
-      ${DESKS.filter(d => d.row === 1)
-        .map((d, i) => workstation(i, desks.get(d.id), 382)).join("")}
-    </svg>`;
-
+function drawLegend() {
   const mark = { done: "✓", working: "▸", skipped: "–", failed: "✗", idle: "·" };
-  $("who-list").innerHTML = DESKS.map(d => {
-    const s = desks.get(d.id);
-    return `
-      <div class="who-row ${s.state}">
-        <span class="mk">${mark[s.state]}</span>
-        <b>${esc(d.id)}</b>
-        <span class="st">${esc(s.note || WORDS[s.state])}</span>
-        ${d.code ? '<span class="tag">no model, just code</span>' : ""}
-      </div>`;
-  }).join("");
+  $("who-list").innerHTML = Office.states().map(s => `
+    <div class="who-row ${s.state}">
+      <span class="mk">${mark[s.state]}</span>
+      <b>${esc(s.id)}</b>
+      <span class="st">${esc(s.note || WORDS[s.state])}</span>
+      ${s.code ? '<span class="tag">no model, just code</span>' : ""}
+    </div>`).join("");
 
   $("shelf").innerHTML = (S.skillsOn || []).length
     ? S.skillsOn.map(n => `<code>${esc(n)}</code>`).join("")
     : `<i>none for this job - the crew is working from the repository alone</i>`;
+}
+
+function drawOffice() {
+  Office.mount($("room"));
+  const items = [...live.items.values()];
+  Office.board(items, items.filter(i => i.status === "done").length);
+  const b = live.baseline;
+  if (b) {
+    const now = live.tests === null ? b.tests : live.tests;
+    Office.suite(now, b.tests, !!(b.tests || b.failed || b.builds));
+  } else {
+    Office.suite(null, 0, false);
+  }
+  drawLegend();
 }
 
 function view(which) {
@@ -592,12 +454,15 @@ document.addEventListener("keydown", e => {
 
 function drawSide() {
   $("projects").innerHTML = S.projects.map(p => `
-    <a class="side-item ${p.path === S.project ? "on" : ""}" data-path="${esc(p.path)}">
-      ${esc(p.name)}<small>${p.ok ? esc(p.toolchain) : "not a git repository"}</small></a>`).join("")
+    <a class="side-item ${p.path === S.project ? "on" : ""}" data-path="${esc(p.path)}"
+       title="${esc(p.path)}">
+      ${p.pinned ? '<span class="pin">&#9679;</span>' : ""}${esc(p.name)}
+      <small>${p.ok ? esc(p.toolchain) : "not a git repository"}</small></a>`).join("")
     || `<p class="empty">Nothing here yet. Press + and give it the path to a
         git repository, empty or not.</p>`;
   document.querySelectorAll("#projects .side-item").forEach(el => {
     el.onclick = () => { S.project = el.dataset.path; drawSide(); drawTop(); };
+    el.oncontextmenu = (ev) => { ev.preventDefault(); menuFor(el.dataset.path, ev); };
   });
   $("history").innerHTML = S.runs.slice(0, 12).map(r => `
     <a class="side-item" title="${esc(r.task)}">${esc(r.task)}<small>${esc(r.repo)} · ${r.done}/${r.items} items · $${r.cost.toFixed(2)}</small></a>`).join("")
@@ -610,6 +475,92 @@ function drawTop() {
   $("proj").textContent = p ? p.name : "no project";
   $("chain").textContent = p ? p.toolchain : "";
 }
+
+/* ---------- the project menu ---------- */
+
+// Right-click is where anyone looks for rename and remove, so that is where
+// they are. Removing a project takes it off this list and leaves the folder
+// exactly where it was; nothing in this application deletes anyone's work.
+
+function closeMenu() { $("ctx").style.display = "none"; }
+
+function menuFor(path, ev) {
+  const p = S.projects.find(x => x.path === path);
+  if (!p) return;
+  const rows = [
+    { id: "open", label: "Open" },
+    { id: "pin", label: p.pinned ? "Unpin" : "Pin to the top" },
+    { id: "rename", label: "Rename" },
+    { id: "copy", label: "Copy path" },
+    { id: "forget", label: "Remove from drydock", danger: true,
+      note: "the folder stays where it is" },
+  ];
+  const el = $("ctx");
+  el.innerHTML = rows.map(r => `
+    <div class="ci ${r.danger ? "danger" : ""}" data-do="${r.id}">
+      ${esc(r.label)}${r.note ? `<i>${esc(r.note)}</i>` : ""}</div>`).join("");
+  el.style.display = "block";
+  // Keep it on screen when the click lands near the bottom edge.
+  const h = el.offsetHeight;
+  el.style.left = ev.clientX + "px";
+  el.style.top = Math.min(ev.clientY, window.innerHeight - h - 12) + "px";
+  el.querySelectorAll(".ci").forEach(row => {
+    row.onclick = () => { closeMenu(); act(row.dataset.do, p); };
+  });
+}
+
+async function patch(path, body) {
+  await fetch("/api/projects", {
+    method: "PATCH", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ path, ...body }),
+  });
+  await refresh();
+}
+
+function act(what, p) {
+  if (what === "open") { S.project = p.path; drawSide(); drawTop(); }
+  if (what === "pin") patch(p.path, { pinned: !p.pinned });
+  if (what === "copy") navigator.clipboard?.writeText(p.path);
+  if (what === "rename") rename(p);
+  if (what === "forget") forget(p);
+}
+
+function rename(p) {
+  const el = document.querySelector(`#projects .side-item[data-path="${CSS.escape(p.path)}"]`);
+  if (!el) return;
+  el.innerHTML = `<input class="rename" value="${esc(p.name)}" spellcheck="false">`;
+  const box = el.querySelector("input");
+  box.focus(); box.select();
+  const save = () => { box.onblur = null; patch(p.path, { label: box.value.trim() }); };
+  box.onblur = save;
+  box.onkeydown = (e) => {
+    if (e.key === "Enter") save();
+    if (e.key === "Escape") { box.onblur = null; drawSide(); }
+  };
+}
+
+async function forget(p) {
+  const el = document.querySelector(`#projects .side-item[data-path="${CSS.escape(p.path)}"]`);
+  if (!el) return;
+  el.classList.add("confirming");
+  el.innerHTML = `<span class="ask">Remove <b>${esc(p.name)}</b> from the list?</span>
+    <span class="row"><button class="btn small" data-yes>Remove</button>
+    <button class="btn small ghost" data-no>Keep</button></span>
+    <small>The folder on disk is not touched.</small>`;
+  el.querySelector("[data-no]").onclick = (e) => { e.stopPropagation(); drawSide(); };
+  el.querySelector("[data-yes]").onclick = async (e) => {
+    e.stopPropagation();
+    await fetch("/api/projects", {
+      method: "DELETE", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ path: p.path }),
+    });
+    if (S.project === p.path) S.project = null;
+    await refresh();
+  };
+}
+
+document.addEventListener("click", closeMenu);
+document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeMenu(); });
 
 /* ---------- composer ---------- */
 

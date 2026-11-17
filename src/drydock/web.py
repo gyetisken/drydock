@@ -129,6 +129,8 @@ PAGE = """<!doctype html><html lang="en"><head><meta charset="utf-8">
 
 </div>
 
+<div class="ctx" id="ctx" style="display:none"></div>
+
 <div class="sheet" id="sheet" style="display:none">
   <div class="sheet-bg" id="sheet-bg"></div>
   <div class="sheet-card">
@@ -169,6 +171,7 @@ PAGE = """<!doctype html><html lang="en"><head><meta charset="utf-8">
   </div>
 </div>
 
+<script src="/static/office.js"></script>
 <script src="/static/chat.js"></script></body></html>"""
 
 
@@ -367,6 +370,8 @@ def state() -> dict:
             {
                 "path": str(p.path),
                 "name": p.name,
+                "folder": p.path.name,
+                "pinned": p.pinned,
                 "toolchain": p.toolchain(),
                 "last_used": p.last_used,
                 "ok": p.exists,
@@ -416,7 +421,28 @@ def add_project(body: AddProject) -> JSONResponse:
 
 @app.delete("/api/projects")
 def forget_project(body: AddProject) -> dict:
+    """Take a project off the list. The folder on disk is not touched.
+
+    Nothing here deletes anyone's work. Removing a repository from a sidebar
+    is a filing decision, and a program that reads it as permission to delete
+    a directory has made a much larger decision on somebody's behalf.
+    """
     workspace.forget(body.path)
+    return {"ok": True}
+
+
+class EditProject(BaseModel):
+    path: str
+    label: str | None = None
+    pinned: bool | None = None
+
+
+@app.patch("/api/projects")
+def edit_project(body: EditProject) -> dict:
+    if body.label is not None:
+        workspace.rename(body.path, body.label)
+    if body.pinned is not None:
+        workspace.pin(body.path, body.pinned)
     return {"ok": True}
 
 

@@ -161,7 +161,7 @@ class Session:
                     engine=self.engine,
                     model=self.model,
                 )
-                self.run.spend(usage)
+                self._spent(usage, "Architect")
                 shape = as_briefing(found)
                 self.feed.emit(
                     "agent.state",
@@ -196,12 +196,24 @@ class Session:
                 model=self.model,
                 shape=shape,
             )
-            self.run.spend(usage)
+            self._spent(usage, "Planner")
             self._after_plan(auto_run)
 
         except Exception as exc:  # noqa: BLE001 - the page has to be told
             self.error = f"{type(exc).__name__}: {exc}"
             self.feed.emit("run.error", detail=self.error)
+
+    def _spent(self, usage, who: str) -> None:
+        """Record what a station cost and say so immediately.
+
+        The page used to show $0.00 for the whole of the first two minutes,
+        because the figure was only sent with the plan. Money was being spent
+        the entire time, and a number that is wrong while looking precise is
+        worse than no number.
+        """
+        self.run.spend(usage)
+        self.run.save()
+        self.feed.emit("spend", cost=round(self.run.cost, 2), who=who)
 
     def _survey(self, b, chain, commit: str) -> None:
         """Read the repository, and keep what was read."""
@@ -223,8 +235,7 @@ class Session:
             memory=self.memory,
             commit=commit,
         )
-        self.run.spend(usage)
-        self.run.save()
+        self._spent(usage, "Analyst")
 
         # The next job in this repository starts from these facts instead of
         # paying a second time to find them.
