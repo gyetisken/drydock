@@ -52,13 +52,22 @@ def find_browser() -> str:
     return ""
 
 
+# How long one width is given before the browser is taken away from it. A
+# page that holds a connection open - a stream, a socket, a dashboard that
+# polls - never finishes loading, so the browser never exits on its own and
+# the budget above does not apply to it. Short, because the picture is
+# usually already written by the time this matters.
+PATIENCE = 20
+
+
 def take(
     url: str, into: Path, widths: tuple[str, ...] = ("desktop", "phone")
 ) -> list[Shot]:
     """Render the page at each width. Empty when there is no browser to do it.
 
-    Raises nothing on a missing browser: a check that cannot run has to say
-    so to whoever asked, not take the run down.
+    Raises nothing, ever. A check that could not run has to say so to
+    whoever asked for it, not take the run down - and the page most worth
+    looking at is often the one least willing to finish loading.
     """
     browser = find_browser()
     if not browser:
@@ -70,25 +79,40 @@ def take(
         width, height = WIDTHS[name]
         out = into / f"{name}.png"
         with tempfile.TemporaryDirectory(prefix="drydock-shot-") as profile:
-            subprocess.run(  # the browser is one already installed here
-                [
-                    browser,
-                    "--headless=new",
-                    "--disable-gpu",
-                    "--hide-scrollbars",
-                    "--force-color-profile=srgb",
-                    f"--user-data-dir={profile}",
-                    f"--window-size={width},{height}",
-                    f"--screenshot={out}",
-                    # Long enough for fonts and any entrance animation; short
-                    # enough that a hung page does not hold up a run.
-                    "--virtual-time-budget=4000",
-                    url,
-                ],
-                capture_output=True,
-                timeout=60,
-                check=False,
-            )
+            command = [
+                browser,
+                "--headless=new",
+                "--disable-gpu",
+                "--hide-scrollbars",
+                "--force-color-profile=srgb",
+                f"--user-data-dir={profile}",
+                f"--window-size={width},{height}",
+                f"--screenshot={out}",
+                # Long enough for fonts and any entrance animation; short
+                # enough that a hung page does not hold up a run.
+                "--virtual-time-budget=4000",
+                # Take the picture even if the page never finishes loading.
+                # Anything holding a connection open - a stream, a socket, a
+                # dashboard that polls - never finishes, and without this the
+                # browser waits for it and the page is never looked at. Which
+                # is the wrong way round: a live page is the one most worth
+                # looking at.
+                "--timeout=6000",
+                url,
+            ]
+            try:
+                subprocess.run(  # the browser is one already installed here
+                    command, capture_output=True, timeout=PATIENCE, check=False
+                )
+            except subprocess.TimeoutExpired:
+                # It would not leave. The picture is very often already on
+                # disk by this point - the page rendered and then went on
+                # waiting for a connection that does not end - so the file is
+                # checked below either way, and this is not an error unless
+                # it turns out there is nothing there.
+                pass
+            except OSError:
+                return shots
         if out.exists() and out.stat().st_size > 1000:
             shots.append(Shot(width=name, path=out))
     return shots

@@ -5,6 +5,8 @@ nothing to look at, so the check is for work that changed what somebody sees
 - and the question of which work that is must not be a guess made per run.
 """
 
+import pathlib
+
 from drydock.orchestrate import _changes_the_view
 
 
@@ -66,3 +68,80 @@ def test_the_two_verdicts_do_not_share_a_name():
     assert "_show_it(" in source, "the critic is no longer called at all"
     assert "verdict, spend = _show_it(" not in source
     assert "verdict = _show_it(" not in source
+
+
+class TestAPageThatNeverFinishesLoading:
+    """A stream, a socket, a dashboard that polls - none of them ever reach
+    'loaded', so the browser waits for them. It used to wait sixty seconds
+    and then raise, which is the wrong way round twice: the page most worth
+    looking at is the live one, and a check that cannot run has to say so
+    rather than take the run down."""
+
+    def test_the_browser_is_told_to_take_the_picture_anyway(
+        self, tmp_path, monkeypatch
+    ):
+        """Without this flag the picture is never written at all, and a live
+        page is simply never looked at."""
+        from drydock import shot
+
+        seen: list[str] = []
+        monkeypatch.setattr(shot, "find_browser", lambda: "/bin/true")
+        monkeypatch.setattr(
+            shot.subprocess, "run", lambda command, **kw: seen.extend(command)
+        )
+
+        shot.take("http://localhost:1/", tmp_path, widths=("desktop",))
+        assert "--timeout=6000" in seen
+
+    def test_a_browser_that_will_not_exit_is_not_an_error(self, tmp_path, monkeypatch):
+        from drydock import shot
+
+        monkeypatch.setattr(shot, "find_browser", lambda: "/bin/true")
+        monkeypatch.setattr(
+            shot.subprocess,
+            "run",
+            lambda *a, **k: (_ for _ in ()).throw(
+                shot.subprocess.TimeoutExpired(cmd="chrome", timeout=20)
+            ),
+        )
+        assert shot.take("http://localhost:1/", tmp_path) == []
+
+    def test_a_picture_written_before_it_hung_is_still_used(
+        self, tmp_path, monkeypatch
+    ):
+        """Which is the usual case: the page rendered and then went on
+        waiting for a connection that does not end."""
+        from drydock import shot
+
+        def writes_then_hangs(command, **kw):
+            for flag in command:
+                if flag.startswith("--screenshot="):
+                    pathlib.Path(flag.split("=", 1)[1]).write_bytes(b"x" * 2000)
+            raise shot.subprocess.TimeoutExpired(cmd="chrome", timeout=20)
+
+        monkeypatch.setattr(shot, "find_browser", lambda: "/bin/true")
+        monkeypatch.setattr(shot.subprocess, "run", writes_then_hangs)
+
+        got = shot.take("http://localhost:1/", tmp_path, widths=("desktop",))
+        assert [s.width for s in got] == ["desktop"]
+
+    def test_a_browser_that_cannot_be_started_is_not_an_error(
+        self, tmp_path, monkeypatch
+    ):
+        from drydock import shot
+
+        monkeypatch.setattr(shot, "find_browser", lambda: "/nope")
+        monkeypatch.setattr(
+            shot.subprocess,
+            "run",
+            lambda *a, **k: (_ for _ in ()).throw(OSError("no such file")),
+        )
+        assert shot.take("http://localhost:1/", tmp_path) == []
+
+    def test_no_browser_at_all_says_nothing_rather_than_raising(
+        self, tmp_path, monkeypatch
+    ):
+        from drydock import shot
+
+        monkeypatch.setattr(shot, "find_browser", lambda: "")
+        assert shot.take("http://localhost:1/", tmp_path) == []
