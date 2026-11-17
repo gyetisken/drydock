@@ -33,7 +33,70 @@ CANDIDATES = (
     "microsoft-edge",
 )
 
-WIDTHS = {"phone": (420, 1800), "desktop": (1440, 2200)}
+WIDTHS = {"phone": (390, 1800), "desktop": (1440, 2200)}
+
+# Taking the picture through the devtools protocol rather than with
+# --screenshot, because --window-size is not a phone.
+#
+# A page that says `width=device-width` gets the window width on a desktop
+# browser and 980px when the browser does not think it is a device - and
+# headless Chrome does not. So --window-size=390 produced a picture of a
+# 980px-wide page with 390px of it showing, and every narrow render looked
+# like text cut off at the right edge. The critic refused eight items on
+# that picture in one afternoon. The page was fine every time.
+SHOOT = r"""
+const [, , target, widthArg, heightArg, out] = process.argv;
+const width = Number(widthArg);
+const height = Number(heightArg);
+const { spawn } = await import('node:child_process');
+const { mkdtempSync, writeFileSync } = await import('node:fs');
+
+const chrome = spawn(process.env.DRYDOCK_BROWSER, [
+  '--headless=new', '--disable-gpu', '--hide-scrollbars',
+  '--force-color-profile=srgb', '--remote-debugging-port=0',
+  `--window-size=${width},${height}`,
+  '--user-data-dir=' + mkdtempSync('/tmp/drydock-shoot-'), 'about:blank',
+]);
+
+const stop = (said) => { console.log(said); chrome.kill(); process.exit(0); };
+setTimeout(() => stop('the browser did not answer'), 40000);
+
+const wsUrl = await new Promise((ok, no) => {
+  chrome.stderr.on('data', (b) => {
+    const m = /ws:\/\/[^\s]+/.exec(b.toString());
+    if (m) ok(m[0]);
+  });
+  chrome.on('exit', () => no(new Error('the browser stopped')));
+});
+
+const ws = new WebSocket(wsUrl);
+let id = 0;
+const waiting = new Map();
+ws.onmessage = (e) => {
+  const m = JSON.parse(e.data);
+  if (waiting.has(m.id)) { waiting.get(m.id)(m); waiting.delete(m.id); }
+};
+await new Promise((ok) => { ws.onopen = ok; });
+const send = (method, params = {}, sessionId) => new Promise((ok) => {
+  const n = ++id;
+  waiting.set(n, ok);
+  ws.send(JSON.stringify({ id: n, method, params, sessionId }));
+});
+
+const { result: { targetId } } = await send('Target.createTarget', { url: 'about:blank' });
+const { result: { sessionId } } = await send('Target.attachToTarget', { targetId, flatten: true });
+await send('Emulation.setDeviceMetricsOverride', {
+  width, height, deviceScaleFactor: 1, mobile: width < 700,
+}, sessionId);
+await send('Page.enable', {}, sessionId);
+await send('Page.navigate', { url: target }, sessionId);
+await new Promise((r) => setTimeout(r, 4000));
+
+const shot = await send('Page.captureScreenshot', { format: 'png' }, sessionId);
+if (!shot.result || !shot.result.data) stop('the page would not be photographed');
+writeFileSync(out, Buffer.from(shot.result.data, 'base64'));
+stop('ok');
+"""
 
 
 @dataclass
@@ -60,6 +123,32 @@ def find_browser() -> str:
 PATIENCE = 20
 
 
+def _through_devtools(url: str, out: Path, width: int, height: int) -> bool:
+    """Photograph the page as a device of this width would see it."""
+    node = shutil.which("node")
+    browser = find_browser()
+    if not node or not browser:
+        return False
+    with tempfile.TemporaryDirectory(prefix="drydock-shoot-") as scratch:
+        script = Path(scratch) / "shoot.mjs"
+        script.write_text(SHOOT)
+        try:
+            subprocess.run(
+                [node, str(script), url, str(width), str(height), str(out)],
+                capture_output=True,
+                text=True,
+                timeout=PATIENCE + 40,
+                check=False,
+                env={
+                    "PATH": "/usr/bin:/bin:/usr/local/bin",
+                    "DRYDOCK_BROWSER": browser,
+                },
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            return False
+    return out.exists() and out.stat().st_size > 1000
+
+
 def take(
     url: str, into: Path, widths: tuple[str, ...] = ("desktop", "phone")
 ) -> list[Shot]:
@@ -78,6 +167,13 @@ def take(
     for name in widths:
         width, height = WIDTHS[name]
         out = into / f"{name}.png"
+        if _through_devtools(url, out, width, height):
+            shots.append(Shot(width=name, path=out))
+            continue
+        # No Node on this machine. The flag alone cannot emulate a device,
+        # so a narrow picture taken this way is a crop of a wide page
+        # rather than a phone - usable for colour and hierarchy, not for
+        # anything about what fits.
         with tempfile.TemporaryDirectory(prefix="drydock-shot-") as profile:
             command = [
                 browser,
@@ -88,28 +184,15 @@ def take(
                 f"--user-data-dir={profile}",
                 f"--window-size={width},{height}",
                 f"--screenshot={out}",
-                # Long enough for fonts and any entrance animation; short
-                # enough that a hung page does not hold up a run.
                 "--virtual-time-budget=4000",
-                # Take the picture even if the page never finishes loading.
-                # Anything holding a connection open - a stream, a socket, a
-                # dashboard that polls - never finishes, and without this the
-                # browser waits for it and the page is never looked at. Which
-                # is the wrong way round: a live page is the one most worth
-                # looking at.
                 "--timeout=6000",
                 url,
             ]
             try:
-                subprocess.run(  # the browser is one already installed here
+                subprocess.run(
                     command, capture_output=True, timeout=PATIENCE, check=False
                 )
             except subprocess.TimeoutExpired:
-                # It would not leave. The picture is very often already on
-                # disk by this point - the page rendered and then went on
-                # waiting for a connection that does not end - so the file is
-                # checked below either way, and this is not an error unless
-                # it turns out there is nothing there.
                 pass
             except OSError:
                 return shots

@@ -145,3 +145,49 @@ class TestAPageThatNeverFinishesLoading:
 
         monkeypatch.setattr(shot, "find_browser", lambda: "")
         assert shot.take("http://localhost:1/", tmp_path) == []
+
+
+class TestAPhoneIsNotAWindowThatHappensToBeNarrow:
+    """The worst bug of the day, and it was in the measuring instrument.
+
+    A page that says `width=device-width` gets the window width on a
+    desktop browser and 980px when the browser does not believe it is a
+    device - and headless Chrome does not. So a 390px window produced a
+    picture of a 980px page with 390px of it showing, and every narrow
+    render looked like text cut off at the right edge. Eight items were
+    refused on that picture in one afternoon. The pages were fine.
+    """
+
+    def test_the_picture_is_taken_through_device_emulation(self):
+        import inspect
+
+        from drydock import shot
+
+        source = inspect.getsource(shot)
+        assert "Emulation.setDeviceMetricsOverride" in source
+        assert "mobile: width < 700" in source
+
+    def test_the_phone_width_is_a_phone(self):
+        """420 was neither a common device nor narrow enough to catch
+        anything. 390 is the width of the phone most people have."""
+        from drydock.shot import WIDTHS
+
+        assert WIDTHS["phone"][0] == 390
+
+    def test_the_flag_alone_is_only_a_fallback(self):
+        """It cannot emulate a device, so what it produces is a crop of a
+        wide page. Kept for machines with no node, and labelled as such."""
+        import inspect
+
+        from drydock import shot
+
+        source = inspect.getsource(shot.take)
+        assert "No Node on this machine" in source
+
+    def test_nothing_to_photograph_with_is_still_not_an_error(
+        self, tmp_path, monkeypatch
+    ):
+        from drydock import shot
+
+        monkeypatch.setattr(shot, "find_browser", lambda: "")
+        assert shot.take("http://localhost:1/", tmp_path) == []
