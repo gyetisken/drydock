@@ -319,137 +319,17 @@ select { background:transparent; color:var(--muted); border:1px solid var(--line
 .tabs button { padding:4px 11px; font-size:11.5px; border-radius:6px }
 
 /* ---------- the office ----------
-   The room is built once and then only changed, so everything below is about
-   what a change looks like rather than what a thing looks like. Status is
-   always a sentence and finished work always carries a tick; there are no
-   percentages anywhere, because a job of eleven items that must each hold a
-   test suite has no meaningful halfway point. */
-.office { flex:1; overflow-y:auto; padding:20px 28px 10px }
-.floor { max-width:1000px; margin:0 auto; display:flex; flex-direction:column; gap:14px }
-.room { background:var(--panel); border:1px solid var(--line); border-radius:16px;
-  padding:8px; overflow:hidden }
-.scene { display:block; width:100%; height:auto }
-
-/* the room itself */
-.scene .wall { fill:var(--side) }
-.scene .skirting { fill:var(--line) }
-.scene .floor { fill:var(--bg) }
-.scene .grout { stroke:var(--line); stroke-width:1; opacity:.5; fill:none }
-.scene .frame { fill:none; stroke:var(--line); stroke-width:3 }
-.scene .mullion { stroke:var(--line); stroke-width:3 }
-.scene .sky-top { stop-color:var(--accent-dim); stop-opacity:.75 }
-.scene .sky-bottom { stop-color:var(--live); stop-opacity:.28 }
-
-.scene .sign rect { fill:var(--panel); stroke:var(--line); stroke-width:1.5;
-  transition:stroke .4s }
-.scene .sign.held rect { stroke:var(--ok) }
-.scene .sign.dropped rect { stroke:var(--bad) }
-.scene .sign-h { fill:var(--faint); font:600 9.5px ui-sans-serif,-apple-system,sans-serif;
-  letter-spacing:.11em }
-.scene .sign-s { fill:var(--muted); font:11.5px ui-sans-serif,-apple-system,sans-serif }
-.scene .sign-big { fill:var(--fg); font:600 26px ui-sans-serif,-apple-system,sans-serif }
-.scene .card { fill:var(--line); transition:fill .45s }
-.scene .card.done { fill:var(--ok) }
-.scene .card.working { fill:var(--live) }
-.scene .card.reverted, .scene .card.blocked { fill:var(--bad) }
-
-.scene .divider .dash { stroke:var(--line); stroke-width:1.5; stroke-dasharray:6 6; fill:none }
-
-/* desks */
-.scene .desktop { fill:var(--raise); stroke:var(--line); stroke-width:1.5 }
-.scene .deskedge { fill:var(--line) }
-.scene .deskleg { fill:var(--line) }
-.scene .deskshadow { fill:var(--line-soft); opacity:.6 }
-.scene .case { fill:var(--fg); opacity:.72 }
-.scene .glass { fill:var(--line); transition:fill .4s }
-.scene .stand { fill:var(--fg); opacity:.5 }
-.scene .code rect { fill:var(--panel); opacity:0; transition:opacity .3s }
-.scene .mug { fill:var(--accent); opacity:.65 }
-.scene .steam { stroke:var(--faint); stroke-width:1.5; fill:none; opacity:0 }
-.scene .paper { fill:var(--line-soft); stroke:var(--line) }
-.scene .ws { transition:opacity .4s }
-.scene .ws.unused { opacity:.3 }
-
-.scene .ws.lit .glass { fill:var(--live) }
-.scene .ws.lit .code rect { opacity:.85; animation:typing 1.6s steps(3) infinite }
-.scene .ws.lit .steam { opacity:.7; animation:steam 2.8s ease-in-out infinite }
-@keyframes typing { 0% { opacity:.2 } 50% { opacity:.9 } 100% { opacity:.2 } }
-@keyframes steam { 0% { opacity:0; transform:translateY(2px) }
-  40% { opacity:.6 } 100% { opacity:0; transform:translateY(-8px) } }
-
-/* people */
-.scene .p { transition:transform 1.15s cubic-bezier(.33,.72,.3,1), opacity .4s }
-.scene .p .shadow { fill:var(--line); opacity:.5 }
-.scene .p .head { fill:#d8a87e }
-.scene .p .hair { fill:#3a4257 }
-.scene .p .chair rect { fill:var(--line); opacity:0; transition:opacity .35s }
-.scene .p .legs { opacity:0; transition:opacity .2s }
-.scene .p .leg { fill:#3a4257; opacity:.85 }
-.scene .p .think { opacity:0 }
-.scene .p .think circle { fill:var(--live) }
-.scene .p .badge { opacity:0; transition:opacity .3s }
-.scene .p .badge circle { fill:var(--ok) }
-.scene .p .badge path { stroke:#fff; stroke-width:2.4; fill:none;
-  stroke-linecap:round; stroke-linejoin:round }
-.scene .p .badge.no circle { fill:var(--bad) }
-.scene .p .badge.no { display:none }
-.scene .p .badge.ok { display:none }
-
-.scene .p.absent { opacity:0; pointer-events:none }
-.scene .p.busy .chair rect { opacity:1 }
-.scene .p.busy .torso { animation:lean 3.4s ease-in-out infinite }
-.scene .p.busy .arm.l { animation:tap .42s ease-in-out infinite alternate }
-.scene .p.busy .arm.r { animation:tap .42s .21s ease-in-out infinite alternate }
-.scene .p.busy .think { opacity:1 }
-.scene .p.busy .think circle:nth-child(1) { animation:blip 1.1s infinite }
-.scene .p.busy .think circle:nth-child(2) { animation:blip 1.1s .36s infinite }
-.scene .p.busy .think circle:nth-child(3) { animation:blip 1.1s .72s infinite }
-.scene .p.finished .badge.ok { display:block; opacity:1; animation:pop .45s ease-out }
-.scene .p.finished .chair rect { opacity:1 }
-.scene .p.rejected .badge.no { display:block; opacity:1; animation:shake .4s ease-in-out }
-
-.scene .p.walking .legs { opacity:1 }
-.scene .p.walking .leg.l { animation:step .36s ease-in-out infinite alternate }
-.scene .p.walking .leg.r { animation:step .36s .18s ease-in-out infinite alternate }
-.scene .p.walking .torso { animation:bob .36s ease-in-out infinite alternate }
-.scene .p.walking .chair rect { opacity:0 }
-
-@keyframes step { from { transform:translateY(0) } to { transform:translateY(-4px) } }
-@keyframes bob  { from { transform:translateY(0) } to { transform:translateY(-2px) } }
-@keyframes lean { 0%,100% { transform:translateY(0) } 50% { transform:translateY(-1.5px) } }
-@keyframes tap  { from { transform:translateY(0) } to { transform:translateY(-3px) } }
-@keyframes blip { 0%,100% { opacity:1 } 50% { opacity:.15 } }
-@keyframes pop  { 0% { transform:scale(.3); opacity:0 } 70% { transform:scale(1.15) }
-  100% { transform:scale(1); opacity:1 } }
-@keyframes shake { 0%,100% { transform:translateX(0) } 25% { transform:translateX(-3px) }
-  75% { transform:translateX(3px) } }
-
-/* the item itself, crossing the floor */
-.scene .token { transition:transform 1.05s cubic-bezier(.4,.1,.3,1), opacity .3s }
-.scene .token rect { fill:var(--panel); stroke:var(--accent); stroke-width:2 }
-.scene .token .lines { stroke:var(--accent); stroke-width:1.6; opacity:.6 }
-.scene .token.bad rect { stroke:var(--bad) }
-.scene .token.bad .lines { stroke:var(--bad) }
-.scene .token.landed rect { stroke:var(--ok) }
-
-/* props */
-.scene .cooler { fill:var(--raise); stroke:var(--line) }
-.scene .coolerwater { fill:var(--live); opacity:.45 }
-.scene .pot { fill:var(--line-soft); stroke:var(--line) }
-.scene .leaf { fill:var(--ok); opacity:.55; transform-origin:881px 566px }
-.scene .leaf.a { animation:sway 6s ease-in-out infinite }
-.scene .leaf.b { animation:sway 6s 1.4s ease-in-out infinite reverse; opacity:.4 }
-@keyframes sway { 0%,100% { transform:rotate(-2deg) } 50% { transform:rotate(3deg) } }
-
-/* labels */
-.scene .label { transition:opacity .4s }
-.scene .label.faded { opacity:.35 }
-.scene .nm { fill:var(--fg); font:600 12.5px ui-sans-serif,-apple-system,sans-serif }
-.scene .rl { fill:var(--faint); font:11px ui-sans-serif,-apple-system,sans-serif }
-
-@media (prefers-reduced-motion: reduce) {
-  .scene * { animation:none !important; transition:none !important }
-}
+   A canvas of 16-pixel tiles, scaled by whole numbers with smoothing off,
+   because pixel art stops being pixel art the moment it is interpolated.
+   Status is still a sentence underneath and finished work still carries a
+   tick: the room is the picture, the list is the record. */
+.office { flex:1; overflow-y:auto; padding:18px 26px 10px }
+.floor { max-width:1040px; margin:0 auto; display:flex; flex-direction:column; gap:14px }
+.room { background:#1b1f2b; border:1px solid var(--line); border-radius:14px;
+  padding:0; overflow:hidden; line-height:0;
+  box-shadow:inset 0 0 70px rgba(0,0,0,.45) }
+.scene { display:block; width:100%; height:auto;
+  image-rendering:pixelated; image-rendering:crisp-edges }
 
 /* the readable half */
 .legend { display:flex; flex-direction:column; gap:10px }

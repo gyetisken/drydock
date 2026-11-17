@@ -172,7 +172,7 @@ const on = {
     const m = /(\d+) tests/.exec(e.note || "");
     if (m) live.tests = parseInt(m[1], 10);
     live.cost = e.cost || live.cost;
-    if (e.outcome === "done") Office.land(e.id); else Office.bounce("Verifier");
+    if (e.outcome === "done") Office.land(); else Office.bounce("Verifier");
     station("Verifier", e.outcome === "done" ? "done" : "failed",
       e.outcome === "done"
         ? `item ${e.id} held the suite, so it stays`
@@ -285,7 +285,7 @@ function view(which) {
   $("office").style.display = which === "office" ? "" : "none";
   document.querySelectorAll("#views button").forEach(b =>
     b.classList.toggle("on", b.dataset.view === which));
-  if (which === "office") drawOffice();
+  if (which === "office") drawOffice(); else Office.pause();
 }
 document.querySelectorAll("#views button").forEach(b =>
   (b.onclick = () => view(b.dataset.view)));
