@@ -1,0 +1,33 @@
+name: checks
+
+# Everything this program does to other people's repositories, done to its
+# own: the suite runs, the linter passes, and the formatter has nothing to
+# say. A branch that fails any of the three is not a branch to merge.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+
+      - name: Install
+        run: uv sync --all-extras --dev
+
+      - name: Tests
+        run: uv run pytest -q
+
+      - name: Lint
+        run: uv run ruff check src tests
+
+      - name: Format
+        run: uv run ruff format --check src tests

@@ -9,7 +9,6 @@ failure mode is quiet, because a resumed run that is subtly worse still
 looks like a resumed run.
 """
 
-from pathlib import Path
 
 import pytest
 
