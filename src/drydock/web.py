@@ -647,6 +647,21 @@ def start(body: StartJob) -> JSONResponse:
             status_code=400,
         )
 
+    busy = workspace.busy_with(Path(body.project))
+    if busy:
+        return JSONResponse(
+            {
+                "ok": False,
+                "reason": (
+                    "a crew is already working in that repository. Stop it "
+                    "first - starting another now would put two of them in "
+                    "the same tree."
+                ),
+                "key": busy,
+            },
+            status_code=409,
+        )
+
     skills = [load_skill(command.skill)] if command.skill else []
     standing = next(
         (p.instructions for p in workspace.projects if str(p.path) == body.project),
@@ -893,8 +908,29 @@ def resume(run_id: str) -> JSONResponse:
             status_code=400,
         )
 
-    session = Session.resume(run, engine=run.engine, model=run.model)
+    # Resuming a run that is still going starts a second crew on the same
+    # repository. Both work the same item, both commit into the same tree,
+    # and the first one to finish cleans up the other's worker. It is the
+    # worst thing this program can do to somebody's code and it was one
+    # click away: the only clue in the record was two heartbeats in the
+    # same second reporting different amounts of elapsed time.
     key = f"{run.id}-resumed"
+    busy = workspace.busy_with(Path(run.repo))
+    if busy:
+        return JSONResponse(
+            {
+                "ok": False,
+                "reason": (
+                    "a crew is already working in that repository. Stop it "
+                    "first - starting another now would put two of them in "
+                    "the same tree."
+                ),
+                "key": busy,
+            },
+            status_code=409,
+        )
+
+    session = Session.resume(run, engine=run.engine, model=run.model)
     workspace.sessions[key] = session
     return JSONResponse({"ok": True, "key": key, "left": len(left)})
 

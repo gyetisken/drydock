@@ -183,6 +183,22 @@ class Workspace:
                 project.last_used = datetime.now().strftime("%Y-%m-%d %H:%M")
         self.save()
 
+    def busy_with(self, repo: Path) -> str:
+        """The key of a crew already working in this repository, if there is
+        one.
+
+        One repository, one crew. Two of them work the same item, commit
+        into the same tree, and the first to finish cleans up the other's
+        worker - which is the worst thing this program can do to somebody's
+        code. It was one click away, and the only clue in the record was
+        two heartbeats in the same second reporting different amounts of
+        elapsed time.
+        """
+        for key, session in self.sessions.items():
+            if session.running and session.repo == repo:
+                return key
+        return ""
+
     def start(
         self,
         repo: Path,
