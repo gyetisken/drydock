@@ -1,0 +1,84 @@
+"""The slash commands.
+
+Most of them come from the installed skills, because a skill already knows
+what it is for and what to ask. Registering commands separately would mean two
+places to keep in step, and the second one would be the one that rots.
+
+A handful are built in, for work that is not a skill: running a task with no
+packaged knowledge behind it, and looking at what is installed.
+"""
+
+from dataclasses import dataclass
+from pathlib import Path
+
+from .skills import Skill, discover
+
+
+@dataclass(frozen=True)
+class Command:
+    name: str
+    summary: str
+    asks: str = ""
+    skill: Skill | None = None
+    task_template: str = ""
+
+    def task_for(self, answer: str) -> str:
+        if not self.task_template:
+            return answer
+        if "{what}" in self.task_template:
+            return self.task_template.format(what=answer.strip())
+        return self.task_template
+
+
+BUILT_IN = [
+    Command(
+        name="/do",
+        summary="Describe a change in your own words. No packaged knowledge, just the crew.",
+        asks="what you want changed",
+    ),
+    Command(
+        name="/audit",
+        summary="Read the project and report what is fragile, without changing anything.",
+        task_template=(
+            "Survey this repository and report what is fragile: what would break "
+            "first, what is untested, what is coupled to something it should not "
+            "be. Change nothing."
+        ),
+    ),
+]
+
+
+def available(skills_root: Path) -> list[Command]:
+    commands = list(BUILT_IN)
+    for skill in discover(skills_root) if skills_root.exists() else []:
+        if not skill.command:
+            continue
+        commands.append(
+            Command(
+                name=skill.command,
+                summary=skill.description,
+                asks=skill.asks,
+                skill=skill,
+                task_template=skill.task,
+            )
+        )
+    return sorted(commands, key=lambda c: c.name)
+
+
+def match(text: str, commands: list[Command]) -> tuple[Command | None, str]:
+    """Split typed text into the command and whatever followed it."""
+    text = text.strip()
+    if not text.startswith("/"):
+        return None, text
+    head, _, rest = text.partition(" ")
+    for command in commands:
+        if command.name == head:
+            return command, rest.strip()
+    return None, text
+
+
+def suggest(prefix: str, commands: list[Command]) -> list[Command]:
+    prefix = prefix.strip().lower()
+    if not prefix.startswith("/"):
+        return []
+    return [c for c in commands if c.name.startswith(prefix)]

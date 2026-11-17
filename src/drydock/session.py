@@ -20,11 +20,14 @@ from .skills import Skill
 
 
 class Session:
-    def __init__(self, repo: Path, task: str, skills: list[Skill]) -> None:
+    def __init__(
+        self, repo: Path, task: str, skills: list[Skill], budget: float = 0.0
+    ) -> None:
         self.feed = Feed()
         self.repo = repo
         self.task = task
         self.skills = skills
+        self.budget = budget
         self.run: Run | None = None
         self.error: str | None = None
         self._thread: threading.Thread | None = None
@@ -52,6 +55,7 @@ class Session:
         try:
             chain = detect(self.repo)
             self.run = Run.start(self.repo, self.task, [s.name for s in self.skills])
+            self.run.budget = self.budget
             self.feed.emit(
                 "run.started",
                 repo=self.repo.name,
@@ -85,7 +89,12 @@ class Session:
                 note="reading the repository",
             )
             self.run.inventory, usage = survey(
-                self.repo, self.task, b, self.skills, self._agent_event("Analyst")
+                self.repo,
+                self.task,
+                b,
+                self.skills,
+                self._agent_event("Analyst"),
+                budget=self.run.left if self.budget else 0.0,
             )
             self.run.spend(usage)
             self.run.save()

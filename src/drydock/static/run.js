@@ -123,7 +123,8 @@ function connect() {
       <div class="act mono"></div>
     </div>`).join("");
 
-  const source = new EventSource("/stream");
+  const key = location.pathname.split("/").pop();
+  const source = new EventSource("/api/stream/" + key);
   source.onmessage = (msg) => {
     const event = JSON.parse(msg.data);
     (handlers[event.kind] || (() => {}))(event);
@@ -133,7 +134,7 @@ function connect() {
 $("approve").onclick = async () => {
   $("approve").disabled = true;
   $("hint").textContent = "working the plan, one item at a time";
-  await fetch("/approve", { method: "POST" });
+  await fetch("/api/approve/" + location.pathname.split("/").pop(), { method: "POST" });
 };
 
 connect();

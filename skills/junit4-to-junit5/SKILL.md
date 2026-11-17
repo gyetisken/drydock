@@ -2,6 +2,8 @@
 name: junit4-to-junit5
 description: Move a Java test suite from JUnit 4 to JUnit 5 without losing a test. Use when a project depends on junit:junit 4.x and wants Jupiter.
 applies_to: [Java, Maven, Gradle]
+command: /migrate-junit
+task: Migrate the test suite from JUnit 4 to JUnit 5. Every test must still run and pass.
 ---
 
 # JUnit 4 to JUnit 5

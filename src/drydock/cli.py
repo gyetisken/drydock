@@ -172,22 +172,14 @@ def _cmd_run(args) -> int:
     return 0
 
 
-def _cmd_watch(args) -> int:
-    """Run a job with a page watching it."""
+def _cmd_app(args) -> int:
+    """Open the application."""
     import uvicorn
 
-    from . import web
-    from .session import Session
-
-    repo = Path(args.repo).expanduser().resolve()
-    chain = detect(repo)
-    skills = _chosen_skills(args.skill, chain)
-
-    web.session = Session(repo, args.task, skills)
-    web.session.start(auto_run=args.auto)
-
-    print(f"watching at http://127.0.0.1:{args.port}")
-    uvicorn.run(web.app, host="127.0.0.1", port=args.port, log_level="warning")
+    print(f"drydock at http://127.0.0.1:{args.port}")
+    uvicorn.run(
+        "drydock.web:app", host="127.0.0.1", port=args.port, log_level="warning"
+    )
     return 0
 
 
@@ -245,13 +237,9 @@ def main() -> None:
     r.add_argument("--items", type=int, help="stop after this many items")
     r.set_defaults(func=_cmd_run)
 
-    t = sub.add_parser("watch", help="run a job with a live page")
-    t.add_argument("--repo", required=True)
-    t.add_argument("--task", required=True)
-    t.add_argument("--skill", action="append")
+    t = sub.add_parser("app", help="open the application")
     t.add_argument("--port", type=int, default=8400)
-    t.add_argument("--auto", action="store_true", help="do not wait for approval")
-    t.set_defaults(func=_cmd_watch)
+    t.set_defaults(func=_cmd_app)
 
     k = sub.add_parser("skills", help="list installed skills")
     k.set_defaults(func=_cmd_skills)

@@ -64,3 +64,40 @@ button { background:var(--fg); color:var(--bg); border:0; border-radius:8px;
 button.ghost { background:transparent; color:var(--muted); border:1px solid var(--line) }
 button:disabled { opacity:.4; cursor:default }
 .hint { color:var(--faint); font-size:13px }
+
+/* home screen */
+a { color:var(--live); text-decoration:none }
+.projects { display:grid; grid-template-columns:repeat(auto-fill,minmax(250px,1fr));
+  gap:10px; margin-bottom:14px }
+.project { background:var(--panel); border:1px solid var(--line); border-radius:11px;
+  padding:13px 15px; cursor:pointer }
+.project:hover { border-color:#39415a }
+.project.on { border-color:var(--live); background:#141b27 }
+.project.gone { opacity:.45 }
+.pname { font-weight:600; font-size:14px }
+.ppath { color:var(--faint); font-size:11.5px; margin-top:3px;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis }
+.pmeta { color:var(--muted); font-size:12px; margin-top:6px }
+
+input { background:var(--bg); color:var(--fg); border:1px solid var(--line);
+  border-radius:8px; padding:10px 13px; font-size:14.5px; font-family:inherit; flex:1 }
+input:focus { outline:2px solid var(--live); outline-offset:-1px; border-color:transparent }
+.cmdbar { display:flex; gap:10px; margin-bottom:8px }
+.cmdbar input { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:14px }
+
+.suggest { margin-bottom:10px }
+.sug { display:flex; gap:14px; align-items:baseline; padding:9px 13px; cursor:pointer;
+  border:1px solid transparent; border-radius:9px }
+.sug:hover { background:var(--panel); border-color:var(--line) }
+.scmd { color:var(--live); font-size:13.5px; min-width:130px }
+.ssum { color:var(--muted); font-size:13px; flex:1 }
+.sskill { color:var(--faint); font-size:11.5px }
+
+.runs { display:flex; flex-direction:column; gap:4px }
+.runrow { display:flex; gap:14px; align-items:baseline; padding:8px 12px;
+  border-bottom:1px solid var(--line); font-size:13px }
+.runrow:hover { background:var(--panel) }
+.dim { color:var(--faint) }
+.rrepo { color:var(--fg); min-width:90px }
+.rtask { color:var(--muted); flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis }
+.rnum { min-width:52px; text-align:right }

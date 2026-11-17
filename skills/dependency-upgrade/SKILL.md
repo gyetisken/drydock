@@ -1,6 +1,9 @@
 ---
 name: dependency-upgrade
 description: Raise a dependency across a major version and repair what it breaks. Use for framework and library upgrades where the API has changed.
+command: /upgrade
+task: Upgrade {what} and repair everything the new version breaks.
+asks: which dependency, and to what version
 ---
 
 # Upgrading a dependency across a major version

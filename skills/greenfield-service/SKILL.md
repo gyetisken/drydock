@@ -1,6 +1,9 @@
 ---
 name: greenfield-service
 description: Build a new service from nothing, with tests from the first commit. Use when the repository is empty or holds only a README.
+command: /new
+task: Build {what}. Tests from the first commit, and nothing is finished until they pass.
+asks: what the service should do
 ---
 
 # Starting a service from nothing

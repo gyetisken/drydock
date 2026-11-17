@@ -29,6 +29,9 @@ class Skill:
     description: str
     path: Path
     applies_to: tuple[str, ...] = ()
+    command: str = ""
+    task: str = ""
+    asks: str = ""
     sections: dict[str, str] | None = None
 
     @property
@@ -83,6 +86,12 @@ def discover(root: Path) -> list[Skill]:
                 description=meta.get("description", ""),
                 path=skill_file.parent,
                 applies_to=tuple(meta.get("applies_to", [])),
+                # A skill declares the command that invokes it. Keeping the
+                # two together means installing a skill installs its command,
+                # and nothing has to be registered in a second place.
+                command=meta.get("command", ""),
+                task=meta.get("task", ""),
+                asks=meta.get("asks", ""),
             )
         )
     return skills
@@ -96,6 +105,9 @@ def load(skill: Skill) -> Skill:
         description=skill.description,
         path=skill.path,
         applies_to=skill.applies_to,
+        command=skill.command,
+        task=skill.task,
+        asks=skill.asks,
         sections=_split_sections(body),
     )
 
