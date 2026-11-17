@@ -6,7 +6,6 @@ the page loaded perfectly in a browser.
 
 import socket
 import threading
-from pathlib import Path
 
 from drydock.preview import _announced, _answers, how_to_run
 
@@ -47,7 +46,9 @@ class TestReadingWhatTheServerSays:
         """Astro's second invocation exits immediately and names where the
         first one is listening. That address is the answer."""
         log = tmp_path / "out.log"
-        log.write_text('{"message":"Dev server already running at http://localhost:5173 (pid 1)"}')
+        log.write_text(
+            '{"message":"Dev server already running at http://localhost:5173 (pid 1)"}'
+        )
         assert _announced(log) == 5173
 
     def test_the_last_address_wins(self, tmp_path):
@@ -64,6 +65,7 @@ class TestReadingWhatTheServerSays:
 class TestHowToRunIt:
     def test_a_start_script_is_preferred_over_dev(self, tmp_path):
         import json
+
         (tmp_path / "package.json").write_text(
             json.dumps({"scripts": {"dev": "vite", "start": "node ."}})
         )

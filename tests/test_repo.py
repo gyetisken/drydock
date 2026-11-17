@@ -17,7 +17,9 @@ def make(tmp_path: Path) -> Repo:
     subprocess.run(["git", "config", "user.email", "t@t"], cwd=tmp_path, check=True)
     subprocess.run(["git", "config", "user.name", "t"], cwd=tmp_path, check=True)
     subprocess.run(
-        ["git", "commit", "-q", "--allow-empty", "-m", "start"], cwd=tmp_path, check=True
+        ["git", "commit", "-q", "--allow-empty", "-m", "start"],
+        cwd=tmp_path,
+        check=True,
     )
     return Repo(tmp_path)
 
