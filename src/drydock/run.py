@@ -36,6 +36,12 @@ class Run(BaseModel):
     inventory: Inventory | None = None
     plan: Plan | None = None
     results: list[ItemResult] = Field(default_factory=list)
+    # Why each unfinished item was refused last time it was tried. Kept
+    # because a resumed run used to throw this away: the results for items
+    # that did not land are dropped so they can be attempted again, and the
+    # engineer then started from nothing and made the identical mistake. The
+    # same hours band was refused three times for the same missing times.
+    refused: dict[int, str] = Field(default_factory=dict)
     tokens_in: int = 0
     tokens_out: int = 0
     tokens_cached: int = 0

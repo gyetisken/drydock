@@ -180,7 +180,20 @@ def _one_item(
     where the work happens and nothing about how it is judged.
     """
     here = Repo(where)
-    attempt, failure, result = 1, "", None
+    # What this item was refused for before, if it has been tried before. A
+    # resumed run used to start the item from nothing, and the engineer made
+    # the same mistake it had already been corrected on.
+    earlier = run.refused.pop(item.id, "")
+    failure = (
+        f"This item was attempted before and sent back. What was said:\n\n"
+        f"{earlier}\n\nNothing from that attempt is on disk - it was thrown "
+        "away - so you are starting from a clean tree. Start by working out "
+        "what the complaint is about, because it is the same item and the "
+        "same complaint is waiting."
+        if earlier
+        else ""
+    )
+    attempt, result = 1, None
     # One question per item. A loop in which the engineer and the planner
     # talk until they agree has no bound on it, and the thing being settled
     # is usually one sentence.

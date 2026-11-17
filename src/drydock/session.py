@@ -832,7 +832,11 @@ class Session:
         # not one to step over. Everything after it was never attempted
         # anyway, because the loop stops at the first failure.
         while run.results and run.results[-1].outcome.value != "done":
-            run.results.pop()
+            dropped = run.results.pop()
+            # The result goes; the reason it failed does not. It is the one
+            # thing that makes the next attempt different from the last.
+            if dropped.note:
+                run.refused[dropped.item.id] = dropped.note
         run.save()
 
         # Whatever was being written when this stopped belongs to an item

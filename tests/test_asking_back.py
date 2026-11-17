@@ -252,3 +252,52 @@ class TestTheOrdinaryCase:
 
         assert fake.asked == []
         assert result.outcome is Outcome.BLOCKED
+
+
+class TestWhatWasSaidLastTime:
+    """A resumed run drops the results of items that did not land, so they
+    can be tried again. It used to drop the reason with them, and the
+    engineer started from nothing: the same hours band was refused three
+    times for the same missing times."""
+
+    def test_the_engineer_is_told_why_it_was_sent_back(self, shop, monkeypatch):
+        fake = Fake(monkeypatch, [finished()])
+        run = a_run(shop)
+        run.refused = {1: "The hours band has no hours in it."}
+        fake.run_it(run)
+
+        assert "no hours in it" in fake.briefed[0]
+
+    def test_it_says_the_tree_is_clean(self, shop, monkeypatch):
+        """Otherwise the engineer goes looking for the half-finished work the
+        complaint is about, and it was thrown away."""
+        fake = Fake(monkeypatch, [finished()])
+        run = a_run(shop)
+        run.refused = {1: "rejected on two counts"}
+        fake.run_it(run)
+
+        assert "thrown away" in fake.briefed[0]
+
+    def test_an_item_never_tried_is_told_nothing(self, shop, monkeypatch):
+        fake = Fake(monkeypatch, [finished()])
+        fake.run_it(a_run(shop))
+
+        assert fake.briefed == [""]
+
+    def test_a_refusal_about_another_item_is_not_handed_over(self, shop, monkeypatch):
+        fake = Fake(monkeypatch, [finished()])
+        run = a_run(shop)
+        run.refused = {7: "something about item seven"}
+        fake.run_it(run)
+
+        assert fake.briefed == [""]
+
+    def test_it_is_said_once(self, shop, monkeypatch):
+        """The second attempt has its own, fresher complaint to work from."""
+        fake = Fake(monkeypatch, [asks("one?"), finished()])
+        run = a_run(shop)
+        run.refused = {1: "the old complaint"}
+        fake.run_it(run)
+
+        assert "the old complaint" in fake.briefed[0]
+        assert "the old complaint" not in fake.briefed[1]
