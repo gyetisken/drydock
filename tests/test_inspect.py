@@ -5,6 +5,8 @@ point of testing this hard is that these are the failures a green build is
 specifically unable to report.
 """
 
+import pytest
+
 from drydock.inspect import look
 
 
@@ -143,3 +145,51 @@ class TestImprovisedAssets:
 
     def test_nothing_happens_without_a_repository_to_look_in(self):
         assert look(self.added("corner.jpg")).clean
+
+
+class TestCredentialsAreRecognisedOnSight:
+    """Every prefix here was chosen by the provider so that a leaked key
+    can be spotted, which is the only reason this can be a regular
+    expression rather than a judgement. It is matched in the diff before
+    the commit, because a committed key cannot be taken back by deleting
+    it: the history has it, and so does anything that mirrored it."""
+
+    @pytest.mark.parametrize(
+        "secret",
+        [
+            "sk-ant-api03-abcDEF123456789012345",
+            "sk-proj-abcdefghijklmnopqrstuvwxyz",
+            "AKIAIOSFODNN7EXAMPLE",
+            "ghp_abcdefghijklmnopqrst12",
+            "gho_abcdefghijklmnopqrst12",
+            "github_pat_11ABCDEFG0abcdefghijkl",
+            "AIzaSyA1234567890abcdefghijklmnopqrstu",
+            "sk_live_abcdefghijklmnopqrstu",
+            "glpat-abcdefghijklmnop",
+            "xoxb-1234567890-abc",
+            "npm_abcdefghijklmnopqrstuvwxyz1234",
+            "-----BEGIN OPENSSH PRIVATE KEY-----",
+        ],
+    )
+    def test_it_is_caught(self, secret):
+        report = look(f"+++ b/config.js\n+const key = '{secret}';\n")
+        assert not report.clean
+        assert "credential" in report.reason.lower()
+
+    @pytest.mark.parametrize(
+        "innocent",
+        [
+            "task-list-container-wrapper",
+            "disk-usage-reporter-module",
+            "background-color: var(--paper);",
+            "--skip-tests",
+            "const stripeKey = process.env.STRIPE_KEY;",
+            "AKIA123",
+            "ghp_short",
+        ],
+    )
+    def test_ordinary_code_is_not(self, innocent):
+        """A refusal nobody can act on is worse than no check at all: it
+        costs an attempt and teaches the engineer nothing."""
+        report = look(f"+++ b/app.css\n+{innocent}\n")
+        assert report.clean, report.reason

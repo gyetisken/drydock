@@ -47,13 +47,31 @@ SILENCER = re.compile(
 ASSERTION = re.compile(r"\bassert|\bexpect\s*\(|\bshould\b", re.IGNORECASE)
 
 # Things that must never be committed, whatever the item was about.
+# Credentials that are recognisable on sight. Each of these is a prefix a
+# provider chose precisely so that a leaked key can be spotted, which is the
+# whole reason this can be a regular expression rather than a judgement.
+#
+# A committed key cannot be taken back by deleting it: the history has it,
+# and anything that mirrored the repository has it too. So this is matched in
+# the diff, before the commit, rather than looked for afterwards.
 SECRET = re.compile(
     r"""
-      sk-ant-[A-Za-z0-9_-]{10}
+      \bsk-[A-Za-z0-9_-]{20}          # Anthropic, OpenAI, and others alike
+                                      # The boundary matters: without it
+                                      # `task-list-container-wrapper` is a
+                                      # credential, and a refusal nobody can
+                                      # act on is worse than no check.
     | \bAKIA[0-9A-Z]{16}\b
-    | -----BEGIN\s+(?:RSA\s+|EC\s+|OPENSSH\s+)?PRIVATE\s+KEY-----
-    | ghp_[A-Za-z0-9]{20}
-    | xox[baprs]-[A-Za-z0-9-]{10}
+    | -----BEGIN\s+(?:RSA\s+|EC\s+|DSA\s+|OPENSSH\s+|PGP\s+)?PRIVATE\s+KEY-----
+    | gh[pousr]_[A-Za-z0-9]{20}       # GitHub, all five token kinds
+    | github_pat_[A-Za-z0-9_]{20}     # and the fine-grained ones
+    | xox[baprse]-[A-Za-z0-9-]{10}
+    | \bAIza[0-9A-Za-z_-]{30}         # Google
+    | \b[rs]k_live_[A-Za-z0-9]{20}    # Stripe
+    | glpat-[A-Za-z0-9_-]{15}         # GitLab
+    | dop_v1_[a-f0-9]{30}             # DigitalOcean
+    | SG\.[A-Za-z0-9_-]{20}           # SendGrid
+    | npm_[A-Za-z0-9]{30}
     """,
     re.VERBOSE,
 )
