@@ -82,6 +82,25 @@ A test file put there becomes a route, and the build tries to render it and
 dies importing a test runner. Tests go beside the module they test, or in a
 top-level tests directory - never in `src/pages`, `app`, `routes` or `pages`.
 
+**Test the data, not the rendering.** A framework page is markup around a
+few decisions, and the decisions are the testable part: which hours belong
+to today, whether the shop is open at a given minute, how a price is
+formatted, which of the seven rows gets highlighted. Put each of those in a
+plain module and unit-test the module.
+
+Do not reach for a component-rendering harness to assert what the markup
+looks like. Every framework has one - Astro's container API, Testing
+Library, Svelte's test utils - and each of them costs an hour of wiring,
+breaks on the next minor version, and asserts the one thing somebody is
+going to look at anyway. If you find yourself reading a framework's own
+source inside `node_modules` to work out how to render a component in a
+test, stop: that is the signal that the thing you are trying to assert is
+not a test's job.
+
+What the markup looks like is judged by somebody looking at the rendered
+page. Write the unit tests for the logic, keep them fast, and let the page
+be seen.
+
 **The things a suite cannot see.** Contrast, hierarchy, a hero that pushes
 the content below the fold, a form that is unusable with a thumb. No test
 catches any of them, so they have to be looked at deliberately before the

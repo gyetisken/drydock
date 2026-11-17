@@ -11,7 +11,7 @@ record; duplicating any of it here would create a second truth that drifts.
 
 import json
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import datetime
 from pathlib import Path
 
 from .detect import detect
@@ -116,7 +116,7 @@ class Workspace:
         for existing in self.projects:
             if existing.path == path:
                 return existing
-        project = Project(path, datetime.now(UTC).strftime("%Y-%m-%d"))
+        project = Project(path, datetime.now().strftime("%Y-%m-%d"))
         self.projects.insert(0, project)
         self.save()
         return project
@@ -155,7 +155,7 @@ class Workspace:
     def touch(self, path: Path) -> None:
         for project in self.projects:
             if project.path == path:
-                project.last_used = datetime.now(UTC).strftime("%Y-%m-%d %H:%M")
+                project.last_used = datetime.now().strftime("%Y-%m-%d %H:%M")
         self.save()
 
     def start(
@@ -182,7 +182,7 @@ class Workspace:
         session.start(auto_run=False)
         # The session has an id only once its run exists, so it is keyed by the
         # same clock the run uses and reconciled when the run appears.
-        key = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
+        key = datetime.now().strftime("%Y%m%d-%H%M%S")
         self.sessions[key] = session
         self.touch(repo)
         return session

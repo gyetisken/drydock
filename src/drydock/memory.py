@@ -17,7 +17,7 @@ import json
 import os
 import re
 from dataclasses import asdict, dataclass, field, fields
-from datetime import UTC, datetime
+from datetime import datetime
 from pathlib import Path
 
 
@@ -191,7 +191,7 @@ class Memory:
         in front of us. The moment the repository moves on, a fact about it is
         a claim about the past.
         """
-        now = datetime.now(UTC).strftime("%Y-%m-%d %H:%M")
+        now = datetime.now().strftime("%Y-%m-%d %H:%M")
         known = {n.text for n in self.notes}
         for fact in facts:
             if fact not in known:
@@ -203,7 +203,7 @@ class Memory:
         if not direction.strip():
             return
         self.direction = direction
-        self.directed_on = datetime.now(UTC).strftime("%Y-%m-%d")
+        self.directed_on = datetime.now().strftime("%Y-%m-%d")
 
     def answered(self, question: str, answer: str, commit: str) -> None:
         """Keep an answer, with the commit it was true at.
@@ -218,7 +218,7 @@ class Memory:
                 "question": question.strip()[:300],
                 "answer": answer.strip()[:4000],
                 "commit": commit,
-                "at": datetime.now(UTC).strftime("%Y-%m-%d %H:%M"),
+                "at": datetime.now().strftime("%Y-%m-%d %H:%M"),
             }
         )
 
@@ -249,7 +249,7 @@ class Memory:
                 "done": done,
                 "total": total,
                 "dollars": round(dollars, 4),
-                "at": datetime.now(UTC).strftime("%Y-%m-%d %H:%M"),
+                "at": datetime.now().strftime("%Y-%m-%d %H:%M"),
             }
         )
 

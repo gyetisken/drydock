@@ -6,7 +6,7 @@ the plan can be reviewed, edited by hand and resumed, rather than regenerated
 from scratch because a later stage failed.
 """
 
-from datetime import UTC, datetime
+from datetime import datetime
 from pathlib import Path
 
 from pydantic import BaseModel, Field
@@ -44,7 +44,9 @@ class Run(BaseModel):
 
     @classmethod
     def start(cls, repo: Path, task: str, skills: list[str] | None = None) -> "Run":
-        now = datetime.now(UTC)
+        # Local, like everything else anybody reads. The offset is kept in
+        # `started` so the record stays unambiguous.
+        now = datetime.now().astimezone()
         return cls(
             id=now.strftime("%Y%m%d-%H%M%S"),
             repo=str(repo),
@@ -67,7 +69,10 @@ class Run(BaseModel):
 
     @classmethod
     def latest(cls) -> "Run":
-        runs = sorted(Path("runs").glob("*.json"))
+        # By when it was written, not by its name. Names are local clock
+        # times, and on the hour the clocks go back the newest run would
+        # sort an hour early.
+        runs = sorted(Path("runs").glob("*.json"), key=lambda p: p.stat().st_mtime)
         if not runs:
             raise SystemExit("no runs yet")
         return cls.model_validate_json(runs[-1].read_text())

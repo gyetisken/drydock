@@ -13,7 +13,7 @@ import json
 import queue
 import threading
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import datetime
 from typing import Any
 
 
@@ -21,7 +21,10 @@ from typing import Any
 class Event:
     kind: str
     data: dict[str, Any] = field(default_factory=dict)
-    at: str = field(default_factory=lambda: datetime.now(UTC).strftime("%H:%M:%S"))
+    # Local time, because every one of these is read by somebody sitting in
+    # front of the machine. Stamped in UTC it was five hours off their own
+    # clock, which makes "when did this stop" unanswerable by looking.
+    at: str = field(default_factory=lambda: datetime.now().strftime("%H:%M:%S"))
 
     def sse(self) -> str:
         payload = json.dumps({"kind": self.kind, "at": self.at, **self.data})

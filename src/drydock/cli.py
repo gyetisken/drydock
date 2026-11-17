@@ -215,7 +215,7 @@ def refresh_skills(which: str | None, about: str, write: bool, model: str) -> No
     notice.
     """
     import tempfile
-    from datetime import UTC, datetime
+    from datetime import datetime
 
     from .scout import as_note, check
 
@@ -225,7 +225,7 @@ def refresh_skills(which: str | None, about: str, write: bool, model: str) -> No
         if not installed:
             raise SystemExit(f"no skill named {which}")
 
-    today = datetime.now(UTC).strftime("%Y-%m-%d")
+    today = datetime.now().strftime("%Y-%m-%d")
     spent = 0.0
 
     with tempfile.TemporaryDirectory(prefix="drydock-scout-") as scratch:
