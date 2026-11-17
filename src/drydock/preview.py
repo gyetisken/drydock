@@ -14,6 +14,7 @@ than inventing a command.
 
 import json
 import os
+import re
 import socket
 import subprocess
 import threading
@@ -29,6 +30,10 @@ class Preview:
     command: str
     process: subprocess.Popen
     log: Path
+    # Whether this process is the one serving. A dev server that hands off to
+    # a daemon it already started is serving the right thing, and stopping
+    # our handle would stop nothing.
+    ours: bool = True
 
 
 _RUNNING: dict[str, Preview] = {}
@@ -51,14 +56,39 @@ def _free_port() -> int:
         return sock.getsockname()[1]
 
 
+# Nearly every dev server prints the address it is actually serving on, and
+# several of them choose that address themselves. Astro in particular runs a
+# daemon, ignores PORT, and a second invocation exits immediately saying the
+# first one is already up - with the URL in the message. Insisting on a port
+# we picked means never finding any of them.
+ANNOUNCED = re.compile(r"https?://(?:localhost|127\.0\.0\.1|\[::1\]):(\d{2,5})")
+
+
+def _announced(log: Path) -> int | None:
+    try:
+        found = ANNOUNCED.findall(log.read_text())
+    except OSError:
+        return None
+    return int(found[-1]) if found else None
+
+
 def _answers(port: int) -> bool:
-    with socket.socket() as sock:
-        sock.settimeout(0.4)
+    """Whether anything is listening, on either address family.
+
+    This used to try IPv4 only, and a dev server bound to [::1] - which is
+    what Node does by default when given `localhost` - was invisible to it.
+    The server was up, the page loaded in a browser, and drydock reported
+    that it had never started.
+    """
+    for family, host in ((socket.AF_INET, "127.0.0.1"), (socket.AF_INET6, "::1")):
         try:
-            sock.connect(("127.0.0.1", port))
-            return True
+            with socket.socket(family, socket.SOCK_STREAM) as sock:
+                sock.settimeout(0.4)
+                sock.connect((host, port))
+                return True
         except OSError:
-            return False
+            continue
+    return False
 
 
 def how_to_run(repo: Path) -> tuple[str, str]:
@@ -117,22 +147,32 @@ def start(repo: Path, timeout: float = 25.0) -> Preview:
 
     deadline = time.time() + timeout
     while time.time() < deadline:
-        if process.poll() is not None:
+        said = _announced(log)
+        # The port it says it is on, then the one we asked for. A server that
+        # exited may still have announced a useful address on its way out -
+        # Astro's second invocation reports where the first one is listening.
+        for candidate in [p for p in (said, port) if p]:
+            if _answers(candidate):
+                preview = Preview(
+                    project=str(repo),
+                    url=f"http://localhost:{candidate}",
+                    command=command,
+                    process=process,
+                    log=log,
+                    ours=process.poll() is None,
+                )
+                with _LOCK:
+                    _RUNNING[str(repo)] = preview
+                return preview
+
+        # A command that hands off to a daemon exits before the daemon is
+        # listening. Having been told an address, keep knocking on it rather
+        # than giving up because the process we started has gone.
+        if process.poll() is not None and said is None:
             raise RuntimeError(
-                f"`{command}` exited straight away.\n\n"
+                f"`{command}` stopped without serving anything.\n\n"
                 + log.read_text()[-900:].strip()
             )
-        if _answers(port):
-            preview = Preview(
-                project=str(repo),
-                url=f"http://127.0.0.1:{port}",
-                command=command,
-                process=process,
-                log=log,
-            )
-            with _LOCK:
-                _RUNNING[str(repo)] = preview
-            return preview
         time.sleep(0.25)
 
     process.terminate()
@@ -145,7 +185,8 @@ def start(repo: Path, timeout: float = 25.0) -> Preview:
 def running(repo: Path) -> Preview | None:
     with _LOCK:
         preview = _RUNNING.get(str(repo))
-    if preview and preview.process.poll() is None:
+    # Still good if the port answers, whether or not our own handle is alive.
+    if preview and _answers(int(preview.url.rsplit(":", 1)[1])):
         return preview
     if preview:
         with _LOCK:
@@ -165,7 +206,7 @@ def stop(repo: Path | None = None) -> int:
             _RUNNING.clear()
     stopped = 0
     for preview in targets:
-        if preview.process.poll() is None:
+        if preview.ours and preview.process.poll() is None:
             preview.process.terminate()
             try:
                 preview.process.wait(timeout=5)
