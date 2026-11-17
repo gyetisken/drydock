@@ -82,6 +82,24 @@ A test file put there becomes a route, and the build tries to render it and
 dies importing a test runner. Tests go beside the module they test, or in a
 top-level tests directory - never in `src/pages`, `app`, `routes` or `pages`.
 
+**An inverted section sets its own colour.** This is the single most
+common way a page that is correct in the code renders as half a page. A
+palette has two ink colours and two grounds - a dark ink for the light
+ground, a light ink for the dark one - and a section that flips to the dark
+ground inherits the ink from the page it sits in. The headings usually get
+an explicit colour because somebody was thinking about them; the second
+column of the table does not, and it renders near-black on black.
+
+Nothing in the markup is wrong when this happens, which is why reading the
+code does not catch it. The hours table of a shop site was written three
+times with `<td>{open} - {close}</td>` sitting right there in the row, and
+three times the page showed seven day names and no times.
+
+So: when a section inverts, set `color` on the section itself, not on the
+elements inside it that you happened to think about. Then read the section
+back and ask which text in it has no colour of its own - that text is
+taking the page's, and the page's is the wrong one.
+
 **Test the data, not the rendering.** A framework page is markup around a
 few decisions, and the decisions are the testable part: which hours belong
 to today, whether the shop is open at a given minute, how a price is
