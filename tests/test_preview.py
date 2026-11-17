@@ -75,3 +75,86 @@ class TestHowToRunIt:
         command, why = how_to_run(tmp_path)
         assert command == ""
         assert "does not say" in why
+
+
+class TestAPreviewThatOutlivedTheApplication:
+    """A dev server does not stop because the thing that started it did. It
+    keeps the port, keeps watching the files and keeps serving whatever it
+    last built - so the next run either cannot take the port or starts a
+    second server beside the first, and somebody looks at a page built an
+    hour ago and reports that their change did nothing."""
+
+    def test_one_that_is_still_up_is_found_again(self, tmp_path, monkeypatch):
+        from drydock import preview
+
+        monkeypatch.setenv("DRYDOCK_HOME", str(tmp_path / "home"))
+        monkeypatch.setattr(preview, "_answers", lambda port: True)
+        _write_a_note(preview, tmp_path / "nero", 4321, pid=0)
+
+        found = preview.running(tmp_path / "nero")
+        assert found is not None
+        assert found.url == "http://localhost:4321"
+
+    def test_one_that_has_gone_is_struck_off(self, tmp_path, monkeypatch):
+        """The note is a cache of something the operating system knows, and
+        the port is the thing that settles it."""
+        from drydock import preview
+
+        monkeypatch.setenv("DRYDOCK_HOME", str(tmp_path / "home"))
+        monkeypatch.setattr(preview, "_answers", lambda port: False)
+        _write_a_note(preview, tmp_path / "nero", 4321, pid=0)
+
+        assert preview.running(tmp_path / "nero") is None
+        assert not list((tmp_path / "home" / "previews").glob("*.json"))
+
+    def test_a_note_that_cannot_be_read_is_struck_off(self, tmp_path, monkeypatch):
+        from drydock import preview
+
+        monkeypatch.setenv("DRYDOCK_HOME", str(tmp_path / "home"))
+        where = tmp_path / "home" / "previews"
+        where.mkdir(parents=True)
+        (where / preview._note_name(tmp_path / "nero")).write_text("{ not json")
+
+        assert preview.running(tmp_path / "nero") is None
+
+    def test_two_projects_keep_two_notes(self, tmp_path, monkeypatch):
+        from drydock import preview
+
+        monkeypatch.setenv("DRYDOCK_HOME", str(tmp_path / "home"))
+        monkeypatch.setattr(preview, "_answers", lambda port: True)
+        _write_a_note(preview, tmp_path / "nero", 4321, pid=0)
+        _write_a_note(preview, tmp_path / "other", 4322, pid=0)
+
+        assert preview.running(tmp_path / "nero").url.endswith("4321")
+        assert preview.running(tmp_path / "other").url.endswith("4322")
+
+    def test_stopping_reaches_one_this_application_did_not_start(
+        self, tmp_path, monkeypatch
+    ):
+        """Which is the whole point: finding it is no use if it cannot then
+        be taken down."""
+        from drydock import preview
+
+        monkeypatch.setenv("DRYDOCK_HOME", str(tmp_path / "home"))
+        monkeypatch.setattr(preview, "_answers", lambda port: True)
+        preview._RUNNING.clear()
+        _write_a_note(preview, tmp_path / "nero", 4321, pid=0)
+
+        assert preview.stop(tmp_path / "nero") == 0  # pid 0: nothing to signal
+        assert not list((tmp_path / "home" / "previews").glob("*.json"))
+
+
+def _write_a_note(preview, repo, port: int, pid: int) -> None:
+    import json
+
+    where = preview._roster()
+    (where / preview._note_name(repo)).write_text(
+        json.dumps(
+            {
+                "project": str(repo),
+                "url": f"http://localhost:{port}",
+                "command": "npm run dev",
+                "pid": pid,
+            }
+        )
+    )

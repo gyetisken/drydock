@@ -12,9 +12,11 @@ guessed - if the project does not say how to run itself, this says so rather
 than inventing a command.
 """
 
+import contextlib
 import json
 import os
 import re
+import signal
 import socket
 import subprocess
 import threading
@@ -38,6 +40,110 @@ class Preview:
 
 _RUNNING: dict[str, Preview] = {}
 _LOCK = threading.Lock()
+
+
+def _roster() -> Path:
+    """Where running previews are written down, outside any one process.
+
+    A dict in memory is lost when the application restarts and a dev server
+    is not: it keeps the port, keeps watching the files, and keeps serving
+    whatever it last built. The next run then either fails to take the port
+    or starts a second server beside the first, and somebody looks at a page
+    that was built an hour ago and reports that their change did nothing.
+    """
+    home = Path(os.environ.get("DRYDOCK_HOME") or Path.home() / ".drydock")
+    where = home / "previews"
+    where.mkdir(parents=True, exist_ok=True)
+    return where
+
+
+def _note_name(repo: Path | str) -> str:
+    """One file per project, named so it can be found again."""
+    return str(repo).strip("/").replace("/", "-") + ".json"
+
+
+def _write_down(preview: Preview) -> None:
+    try:
+        (_roster() / _note_name(preview.project)).write_text(
+            json.dumps(
+                {
+                    "project": preview.project,
+                    "url": preview.url,
+                    "command": preview.command,
+                    "pid": preview.process.pid,
+                }
+            )
+        )
+    except OSError:
+        pass  # the roster is a convenience, never a precondition
+
+
+def _strike_off(project: str) -> None:
+    try:
+        (_roster() / _note_name(project)).unlink(missing_ok=True)
+    except OSError:
+        pass
+
+
+def _written_down(repo: Path) -> Preview | None:
+    """A preview started before this application was, if it is still up."""
+    note = _roster() / _note_name(repo)
+    try:
+        said = json.loads(note.read_text())
+        port = int(said["url"].rsplit(":", 1)[1])
+    except (OSError, ValueError, KeyError, IndexError):
+        note.unlink(missing_ok=True)
+        return None
+    if not _answers(port):
+        note.unlink(missing_ok=True)
+        return None
+    return Preview(
+        project=said["project"],
+        url=said["url"],
+        command=said.get("command", ""),
+        # Not ours to hold: it belongs to an application that has gone. The
+        # pid is kept so it can still be stopped.
+        process=_Elsewhere(int(said.get("pid") or 0)),
+        log=Path(said.get("log", "")),
+        ours=True,
+    )
+
+
+class _Elsewhere:
+    """A process this application did not start but can still signal."""
+
+    def __init__(self, pid: int) -> None:
+        self.pid = pid
+
+    def poll(self) -> int | None:
+        if not self.pid:
+            return 0
+        try:
+            os.kill(self.pid, 0)
+        except ProcessLookupError:
+            return 0
+        except PermissionError:
+            return None
+        return None
+
+    def terminate(self) -> None:
+        if self.pid:
+            with contextlib.suppress(OSError):
+                os.kill(self.pid, signal.SIGTERM)
+
+    def kill(self) -> None:
+        if self.pid:
+            with contextlib.suppress(OSError):
+                os.kill(self.pid, signal.SIGKILL)
+
+    def wait(self, timeout: float | None = None) -> int:
+        waited = 0.0
+        while self.poll() is None and (timeout is None or waited < timeout):
+            time.sleep(0.1)
+            waited += 0.1
+        if self.poll() is None:
+            raise subprocess.TimeoutExpired(cmd="preview", timeout=timeout or 0)
+        return 0
 
 
 def _log_for(repo: Path) -> Path:
@@ -163,6 +269,7 @@ def start(repo: Path, timeout: float = 25.0) -> Preview:
                 )
                 with _LOCK:
                     _RUNNING[str(repo)] = preview
+                _write_down(preview)
                 return preview
 
         # A command that hands off to a daemon exits before the daemon is
@@ -191,7 +298,16 @@ def running(repo: Path) -> Preview | None:
     if preview:
         with _LOCK:
             _RUNNING.pop(str(repo), None)
-    return None
+        _strike_off(str(repo))
+
+    # Nothing in memory. There may still be one from before this application
+    # started - a dev server does not stop because the thing that started it
+    # did.
+    left_over = _written_down(repo)
+    if left_over:
+        with _LOCK:
+            _RUNNING[str(repo)] = left_over
+    return left_over
 
 
 def stop(repo: Path | None = None) -> int:
@@ -204,8 +320,12 @@ def stop(repo: Path | None = None) -> int:
         )
         if repo is None:
             _RUNNING.clear()
+    if repo is not None and not targets:
+        left_over = _written_down(repo)
+        targets = [left_over] if left_over else []
     stopped = 0
     for preview in targets:
+        _strike_off(preview.project)
         if preview.ours and preview.process.poll() is None:
             preview.process.terminate()
             try:
