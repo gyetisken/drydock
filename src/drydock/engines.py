@@ -44,6 +44,10 @@ class EngineResult:
     # always; when it is not, nothing was changed and the item is waiting
     # on an answer rather than on another attempt.
     question: str = ""
+    # The worker was taken away rather than finishing. Not the same thing as
+    # an item the engineer could not do, and it calls for the opposite
+    # response: try the same item again rather than giving up on it.
+    died: bool = False
     dollars: float = 0.0
     turns: int = 0
 
@@ -447,6 +451,7 @@ class ClaudeCodeEngine:
                 summary=reason,
                 files_changed=[],
                 noticed=[],
+                died=_was_killed(process.returncode) and not overran,
                 dollars=dollars,
                 turns=turns,
             )
@@ -645,6 +650,19 @@ class ClaudeCodeEngine:
         payload = json.loads(out.read_text())
         out.unlink(missing_ok=True)
         return payload, dollars, turns
+
+
+def _was_killed(code: int | None) -> bool:
+    """Whether a worker was taken away rather than deciding to stop.
+
+    A process killed by a signal reports a negative code here, and one whose
+    own runtime caught the signal and exited reports 128 plus the number -
+    which is what the worker does. Either way nobody asked it to stop and
+    the item it was given has not been tried.
+    """
+    if code is None:
+        return False
+    return code < 0 or 128 < code < 160
 
 
 def _why_it_stopped(which: str, seconds: float) -> str:

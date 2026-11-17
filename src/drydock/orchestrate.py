@@ -194,6 +194,11 @@ def _one_item(
         else ""
     )
     attempt, result = 1, None
+    # One restart for a worker that was taken away rather than one that
+    # failed. Two items ran side by side and one of them was killed by
+    # something outside the item; the item was reported blocked and the
+    # four that needed it never ran at all.
+    revived = False
     # One question per item. A loop in which the engineer and the planner
     # talk until they agree has no bound on it, and the thing being settled
     # is usually one sentence.
@@ -225,6 +230,17 @@ def _one_item(
             ), None
 
         run.spend(usage)
+
+        # It was killed rather than finishing. Nothing it wrote is trusted,
+        # but nothing about the item has been learned either, so this is not
+        # an attempt and the right response is to try the same item again.
+        if report.get("died") and not revived:
+            revived = True
+            here.discard()
+            if on_gate:
+                on_gate(item, "restarted", True, report.get("summary", ""))
+            failure = ""
+            continue
 
         # It stopped to ask rather than to guess. Nothing was written, so
         # this does not count as an attempt - the item has not been tried

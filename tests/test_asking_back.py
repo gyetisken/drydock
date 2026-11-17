@@ -301,3 +301,61 @@ class TestWhatWasSaidLastTime:
 
         assert "the old complaint" in fake.briefed[0]
         assert "the old complaint" not in fake.briefed[1]
+
+
+class TestAWorkerThatWasTakenAway:
+    """Two items ran side by side and one of them was killed by something
+    outside the item - exit 143, no report, nothing said. It was treated as
+    an item the engineer could not do, so the item was blocked and the four
+    items that needed it never ran. Nothing about the item had been learned;
+    the right response is to try the same item again."""
+
+    def test_the_item_is_tried_again(self, shop, monkeypatch):
+        fake = Fake(monkeypatch, [was_killed(), finished()])
+        result = fake.run_it(a_run(shop))
+
+        assert result.outcome is Outcome.DONE
+
+    def test_it_does_not_spend_an_attempt(self, shop, monkeypatch):
+        fake = Fake(monkeypatch, [was_killed(), finished()])
+        assert fake.run_it(a_run(shop)).attempts == 1
+
+    def test_the_next_attempt_is_not_told_it_failed(self, shop, monkeypatch):
+        """There is nothing to tell it. Handing over 'exited 143' as though
+        it were a complaint about the work sends it looking for a problem
+        that is not in the repository."""
+        fake = Fake(monkeypatch, [was_killed(), finished()])
+        fake.run_it(a_run(shop))
+
+        assert fake.briefed == ["", ""]
+
+    def test_it_is_restarted_once(self, shop, monkeypatch):
+        """A worker killed twice is a machine problem, and looping on it
+        burns the run rather than reporting it."""
+        fake = Fake(monkeypatch, [was_killed(), was_killed()])
+        result = fake.run_it(a_run(shop))
+
+        assert result.outcome is Outcome.BLOCKED
+
+    def test_the_restart_is_announced(self, shop, monkeypatch):
+        fake = Fake(monkeypatch, [was_killed(), finished()])
+        fake.run_it(a_run(shop))
+
+        assert any(who == "restarted" for who, _ in fake.gates)
+
+    def test_an_ordinary_failure_is_still_a_failure(self, shop, monkeypatch):
+        """The engineer saying it cannot do this is information. Restarting
+        on it would run the same item into the same wall."""
+        fake = Fake(monkeypatch, [gave_up(), finished()])
+        result = fake.run_it(a_run(shop))
+
+        assert result.outcome is Outcome.BLOCKED
+
+
+def was_killed() -> dict:
+    return {
+        "done": False,
+        "summary": "the worker stopped without writing a report and exited 143",
+        "files_changed": [],
+        "died": True,
+    }

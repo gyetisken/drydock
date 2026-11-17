@@ -289,3 +289,35 @@ class TestTheWorkersOutputIsNotTrusted:
 
         _, turns, _ = ClaudeCodeEngine()._read(_Says(["{ not json", "[]", ""]), None)
         assert turns == 0
+
+
+class TestTellingTheTwoKindsOfStopApart:
+    """An item the engineer could not do and a worker that was taken away
+    read the same from here - no report, a non-zero exit - and call for
+    opposite responses."""
+
+    def test_a_signal_is_a_worker_that_was_taken_away(self):
+        from drydock.engines import _was_killed
+
+        assert _was_killed(143)  # its runtime caught the signal and exited
+        assert _was_killed(137)
+        assert _was_killed(-15)  # or it was killed outright
+        assert _was_killed(-9)
+
+    def test_an_ordinary_failure_is_not(self):
+        from drydock.engines import _was_killed
+
+        assert not _was_killed(0)
+        assert not _was_killed(1)
+        assert not _was_killed(2)
+        assert not _was_killed(127)
+        assert not _was_killed(None)
+
+    def test_a_worker_stopped_by_the_clock_is_not_counted_as_taken_away(self):
+        """This program sent that signal, on purpose, and the item really
+        did run out of time. Restarting it would run it out again."""
+        from drydock.engines import _was_killed
+
+        assert _was_killed(143)  # the signal, in isolation
+        # and in context the engine reports died=False, because it knows it
+        # was the one holding the clock. Pinned where that decision is made.

@@ -175,6 +175,7 @@ def work(
                 "files_changed": result.files_changed,
                 "noticed": result.noticed,
                 "question": result.question,
+                "died": result.died,
             },
             _AsUsage(result),
         )
