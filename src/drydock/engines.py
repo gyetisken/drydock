@@ -418,6 +418,15 @@ class ClaudeCodeEngine:
             stderr=subprocess.PIPE,
             text=True,
             bufsize=1,
+            # Its own session, so that nothing can take it down by
+            # signalling a group. Started as an ordinary child it sits in
+            # this application's process group along with every preview
+            # server, and anything in there that cleans up after itself by
+            # signalling the group - which is what npm does - stops the
+            # worker too. A healthy one died twice this way, mid-sentence,
+            # with no clock of ours anywhere near it. The preview already
+            # ran in its own session; the workers did not.
+            start_new_session=True,
         )
         process.drydock_repo = str(repo)
         _watch(process)
@@ -652,6 +661,15 @@ class ClaudeCodeEngine:
             stderr=subprocess.PIPE,
             text=True,
             bufsize=1,
+            # Its own session, so that nothing can take it down by
+            # signalling a group. Started as an ordinary child it sits in
+            # this application's process group along with every preview
+            # server, and anything in there that cleans up after itself by
+            # signalling the group - which is what npm does - stops the
+            # worker too. A healthy one died twice this way, mid-sentence,
+            # with no clock of ours anywhere near it. The preview already
+            # ran in its own session; the workers did not.
+            start_new_session=True,
         )
         process.drydock_repo = str(repo)
         _watch(process)

@@ -171,3 +171,34 @@ class TestStopping:
 
     def test_nothing_running_stops_nothing(self, home):
         assert engines.stop_workers(Path("/some/repo")) == 0
+
+
+class TestAWorkerCannotBeTakenDownBySomebodyElse:
+    """Started as an ordinary child, a worker sits in this application's
+    process group along with every preview server it has started. Anything
+    in that group which cleans up after itself by signalling the group -
+    which is what npm does when a dev server is stopped - takes the worker
+    with it. A healthy one died twice that way, mid-sentence, with neither
+    of this program's own clocks anywhere near it.
+
+    The preview was already started in its own session. The workers were
+    not, which is the asymmetry that made this possible.
+    """
+
+    def test_both_kinds_of_worker_get_their_own_session(self):
+        import inspect
+
+        from drydock import engines
+
+        source = inspect.getsource(engines)
+        starts = source.count("stdin=subprocess.PIPE")
+        sessions = source.count("start_new_session=True")
+        assert starts == 2, "there are two places a worker is started"
+        assert sessions == starts, "and each of them has to open its own session"
+
+    def test_the_preview_keeps_its_own_too(self):
+        import inspect
+
+        from drydock import preview
+
+        assert "start_new_session=True" in inspect.getsource(preview)
