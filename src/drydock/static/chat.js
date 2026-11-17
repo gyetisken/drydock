@@ -59,6 +59,42 @@ function renderStats() {
   $("spend").textContent = `$${live.cost.toFixed(2)}`;
 }
 
+// Each landed item offers its own diff, read back out of git on demand. It
+// is not kept with the run: the commit is the record, and a second copy is a
+// copy that can disagree with it.
+function showDiffLink(e) {
+  const msg = say("crew", `<div class="body">
+    <p><b>Item ${e.id} landed.</b> ${esc(e.note)}</p>
+    <details class="diff"><summary>See what changed</summary>
+      <div class="patch">reading the commit…</div></details></div>`, "dim");
+  const box = msg.querySelector("details");
+  box.addEventListener("toggle", async () => {
+    if (!box.open || box.dataset.loaded) return;
+    box.dataset.loaded = "1";
+    const r = await (await fetch(`/api/diff/${S.key}/${e.id}`)).json();
+    const out = msg.querySelector(".patch");
+    if (!r.ok) { out.textContent = r.reason; return; }
+    out.innerHTML = paint(r.patch) +
+      (r.clipped ? `<div class="why">The rest of the diff is not shown. An item
+        this large cannot be read as one change.</div>` : "");
+    box.querySelector("summary").textContent =
+      `What changed in item ${e.id} · ${r.commit}`;
+  }, { once: false });
+}
+
+// Colouring a diff is four lines of CSS and makes the difference between a
+// wall of text and something a person will actually read.
+function paint(patch) {
+  return patch.split("\n").map(line => {
+    const cls = line.startsWith("+++") || line.startsWith("---") ? "meta"
+      : line.startsWith("+") ? "add"
+      : line.startsWith("-") ? "del"
+      : line.startsWith("@@") ? "hunk"
+      : line.startsWith("diff ") || line.startsWith("index ") ? "meta" : "";
+    return `<div class="dl ${cls}">${esc(line) || "&nbsp;"}</div>`;
+  }).join("");
+}
+
 function toolLine(agent, detail) {
   if (!live.el.tools) return;
   live.el.tools.querySelector("details").style.display = "";
@@ -164,6 +200,9 @@ const on = {
       as the change being right, which is what this desk is for.</p></div>`, "dim");
   },
   "item.done": (e) => {
+    // Every landed item is its own commit, so the diff can be shown exactly
+    // as the repository holds it rather than as something reconstructed.
+    if (e.outcome === "done") showDiffLink(e);
     const i = live.items.get(e.id);
     if (i) {
       i.status = e.outcome;

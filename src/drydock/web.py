@@ -14,6 +14,8 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from .commands import available, match
+from .repo import Repo
+from .run import Run
 from .skills import load as load_skill
 from .workspace import Workspace
 
@@ -508,6 +510,37 @@ def start(body: StartJob) -> JSONResponse:
     )
     key = next(k for k, v in workspace.sessions.items() if v is session)
     return JSONResponse({"ok": True, "key": key})
+
+
+@app.get("/api/diff/{run_id}/{item_id}")
+def item_diff(run_id: str, item_id: int) -> dict:
+    """The change one item made, read back out of the repository.
+
+    Not stored with the run: the commit is the record, and a copy of it kept
+    somewhere else is a copy that can disagree with the repository.
+    """
+    try:
+        run = Run.load(run_id)
+    except (OSError, ValueError):
+        return {"ok": False, "reason": "no such run"}
+
+    result = next((r for r in run.results if r.item.id == item_id), None)
+    if result is None:
+        return {"ok": False, "reason": "no such item in that run"}
+    if not result.commit:
+        return {
+            "ok": False,
+            "reason": "this item was rolled back, so there is no commit to show",
+        }
+
+    patch = Repo(Path(run.repo)).show(result.commit)
+    return {
+        "ok": True,
+        "commit": result.commit[:10],
+        "title": result.item.title,
+        "patch": patch[:120_000],
+        "clipped": len(patch) > 120_000,
+    }
 
 
 @app.post("/api/stop/{key}")

@@ -53,6 +53,15 @@ class Repo:
         self._git("add -A -N")
         return self._git("diff --no-color HEAD")[1]
 
+    def show(self, commit: str) -> str:
+        """What one commit changed, as a diff.
+
+        Each item is its own commit, so this is exactly the change one item
+        made - which is the only unit at which a reader can usefully ask
+        whether they agree with it.
+        """
+        return self._git(f"show --no-color --stat --patch {_quote(commit)}")[1]
+
     def diff(self, against: str = "HEAD~1") -> str:
         return self._git(f"diff {against} --unified=3")[1]
 
