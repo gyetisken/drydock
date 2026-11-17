@@ -318,6 +318,13 @@ def _one_item(
                 )
 
         if verdict.passed and not refusal:
+            # The bar moves up with the work. It was the count from before
+            # the run started and never shifted, so an item could delete
+            # every test an earlier item had added and still clear it as
+            # long as it stayed at the number the repository began with -
+            # while the pull request said every item left the suite at
+            # least as large as it found it. It does now.
+            run.baseline.tests_run = max(run.baseline.tests_run, verdict.tests_run)
             commit = here.commit(f"{item.id}. {item.title}\n\n{report['summary']}")
             return ItemResult(
                 item=item,

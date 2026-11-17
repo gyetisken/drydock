@@ -112,6 +112,7 @@ class _Chain:
 class _Passed:
     passed = True
     reason = "2 tests pass"
+    tests_run = 2
     check = Check(
         name="tests", command="npm test", passed=True, seconds=1.0, detail="2 pass"
     )

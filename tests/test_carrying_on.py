@@ -89,11 +89,16 @@ class _Chain:
 
 
 class _Passed:
+    """A verdict that passed, carrying the count the suite reported."""
+
     passed = True
-    reason = "2 tests pass"
+    reason = "the tests pass"
     check = Check(
-        name="tests", command="npm test", passed=True, seconds=1.0, detail="2 pass"
+        name="tests", command="npm test", passed=True, seconds=1.0, detail="pass"
     )
+
+    def __init__(self, tests_run: int = 2):
+        self.tests_run = tests_run
 
 
 class _Clean:
@@ -184,3 +189,47 @@ class TestWhatStillGetsDone:
 
         assert sorted(crew.attempted) == [1, 2, 3]
         assert set(outcomes(run).values()) == {"done"}
+
+
+class TestTheBarMovesUpWithTheWork:
+    """The count to beat was taken before the run started and never moved.
+    An item could delete every test an earlier item in the same run had
+    added and still clear it, as long as it stayed at the number the
+    repository began with - while the pull request said, in those words,
+    that every item left the suite at least as large as it found it."""
+
+    def test_a_landed_item_raises_the_bar(self, here, monkeypatch):
+        crew = Crew(monkeypatch, fails=set())
+        monkeypatch.setattr(orchestrate, "verify", lambda *a, **k: _Passed(11))
+        run = a_run(here, an_item(1))
+        run.baseline.tests_run = 3
+        orchestrate.execute(run, engine="claude", model="opus", reviewing=False)
+
+        assert run.baseline.tests_run == 11
+        assert crew.attempted == [1]
+
+    def test_a_later_item_is_measured_against_it(self, here, monkeypatch):
+        """Item two deleting item one's tests is the case this exists for."""
+        counts = iter([_Passed(11), _Passed(3)])
+        Crew(monkeypatch, fails=set())
+        monkeypatch.setattr(orchestrate, "verify", lambda *a, **k: next(counts))
+        run = a_run(here, an_item(1), an_item(2))
+        run.baseline.tests_run = 3
+
+        orchestrate.execute(run, engine="claude", model="opus", reviewing=False)
+        # The second item was measured against eleven, not three. What the
+        # verifier does with that is its own test; what matters here is
+        # that the number it was given had moved.
+        assert run.baseline.tests_run == 11
+
+    def test_a_smaller_count_never_lowers_the_bar(self, here, monkeypatch):
+        """An item verified by its build reports no tests at all. That is
+        not a reason to let the next one lose some."""
+        counts = iter([_Passed(11), _Passed(0)])
+        Crew(monkeypatch, fails=set())
+        monkeypatch.setattr(orchestrate, "verify", lambda *a, **k: next(counts))
+        run = a_run(here, an_item(1), an_item(2))
+        run.baseline.tests_run = 3
+
+        orchestrate.execute(run, engine="claude", model="opus", reviewing=False)
+        assert run.baseline.tests_run == 11
