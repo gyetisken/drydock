@@ -124,6 +124,9 @@ class Workspace:
         for path in sorted(Path("runs").glob("*.json"), reverse=True)[:limit]:
             try:
                 runs.append(Run.model_validate_json(path.read_text()))
-            except Exception:  # noqa: BLE001 - an old run must not break the list
+            except Exception as exc:  # noqa: BLE001
+                # A run saved by an older version must not take the list down
+                # with it; the history is a convenience, not a source of truth.
+                print(f"skipping {path.name}: {exc}")
                 continue
         return runs

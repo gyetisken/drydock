@@ -34,6 +34,7 @@ class Session:
         self.skills = skills
         self.budget = budget
         self.engine = engine
+        self.stopping = False
         self.run: Run | None = None
         self.error: str | None = None
         self._thread: threading.Thread | None = None
@@ -102,6 +103,7 @@ class Session:
                 self.skills,
                 self._agent_event("Analyst"),
                 budget=self.run.left if self.budget else 0.0,
+                engine=self.engine,
             )
             self.run.spend(usage)
             self.run.save()
@@ -194,6 +196,7 @@ class Session:
             skills=self.skills,
             on_event=self._agent_event("Engineer"),
             on_item=on_item,
+            should_stop=lambda: self.stopping,
         )
         self.feed.emit(
             "agent.state", agent="Engineer", state="done", note="plan finished"
@@ -205,6 +208,19 @@ class Session:
             cost=round(self.run.cost, 2),
         )
         self.feed.close()
+
+    def stop(self) -> None:
+        """Ask the run to stop at the next safe point.
+
+        Not a kill. The crew is in the middle of an item, and killing it there
+        leaves half an edit on disk with no commit to undo it. The flag is read
+        between items, where the tree is clean.
+        """
+        self.stopping = True
+        self.feed.emit(
+            "stopping",
+            note="will stop after the current item, so nothing is left half done",
+        )
 
     def approve(self) -> None:
         self._thread = threading.Thread(target=self.work_the_plan, daemon=True)

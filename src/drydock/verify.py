@@ -26,6 +26,16 @@ class Verdict:
 
 
 def verify(repo: Path, item_verify: str, base: Baseline, commands: dict) -> Verdict:
+    if not commands.get("tests"):
+        # Nothing to run yet. On a greenfield job this is true until the item
+        # that creates the project lands, and calling that a pass would be
+        # agreeing that an empty repository is working software.
+        return Verdict(
+            passed=False,
+            reason="there is still no way to run anything in this repository",
+            check=Check(name="tests", command="", passed=False, seconds=0.0),
+        )
+
     if item_verify == "build":
         result = check("build", commands["build"], repo)
         return Verdict(

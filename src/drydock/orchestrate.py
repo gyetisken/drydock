@@ -13,6 +13,7 @@ test stop complaining, and the second attempt is where that starts.
 from pathlib import Path
 
 from .agent import BudgetExceeded
+from .detect import detect
 from .engineer import work
 from .models import ItemResult, Outcome
 from .repo import Repo
@@ -28,13 +29,15 @@ def execute(
     skills=None,
     on_event=None,
     on_item=None,
+    should_stop=None,
 ) -> Run:
     repo_path = Path(run.repo)
     repo = Repo(repo_path)
-    commands = {
-        "build": run.inventory.build_command,
-        "tests": run.inventory.test_command,
-    }
+
+    def commands_now() -> dict:
+        """Read the toolchain again, because an item may have created it."""
+        chain = detect(repo_path)
+        return {"build": chain.build_command, "tests": chain.test_command}
 
     if not repo.is_clean():
         raise SystemExit(
@@ -50,6 +53,11 @@ def execute(
         if item.id in done:
             continue
         if stop_after is not None and len(run.results) >= stop_after:
+            break
+
+        if should_stop and should_stop():
+            if on_item:
+                on_item(item, "stopped")
             break
 
         if run.budget and run.left <= 0:
@@ -70,7 +78,7 @@ def execute(
                     repo_path,
                     run.task,
                     item,
-                    commands["build"],
+                    commands_now()["build"],
                     failure,
                     skills,
                     on_event,
@@ -95,7 +103,7 @@ def execute(
                 repo.discard()
                 break
 
-            verdict = verify(repo_path, item.verify_with, run.baseline, commands)
+            verdict = verify(repo_path, item.verify_with, run.baseline, commands_now())
             if verdict.passed:
                 commit = repo.commit(f"{item.id}. {item.title}\n\n{report['summary']}")
                 result = ItemResult(

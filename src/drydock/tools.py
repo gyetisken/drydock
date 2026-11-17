@@ -42,7 +42,7 @@ def read_only(repo: Path) -> list[Tool]:
 
     def list_files(path: str = ".", depth: int = 2) -> str:
         pruned = " ".join(f"-not -path '*/{name}/*'" for name in IGNORED)
-        code, out = run(f"find {path} -maxdepth {depth} {pruned}", repo, 60)
+        _, out = run(f"find {path} -maxdepth {depth} {pruned}", repo, 60)
         return out[:MAX_OUTPUT]
 
     def read_file(path: str, start: int = 1, lines: int = 200) -> str:

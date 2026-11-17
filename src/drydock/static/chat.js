@@ -125,7 +125,11 @@ const on = {
         this item was attempted, because each one assumes the last one landed.</p></div>`);
     }
   },
+  "stopping": (e) => {
+    say("crew", `<div class="body"><p>Stopping. ${esc(e.note)}</p></div>`, "dim");
+  },
   "run.summary": (e) => {
+    $("stop").style.display = "none";
     say("crew", `<div class="body"><p><b>${e.done} of ${e.total} items landed.</b>
       $${e.cost.toFixed(2)} spent. The work is on its own branch; nothing touched
       your main branch.</p></div>`);
@@ -169,12 +173,14 @@ function drawSide() {
   $("projects").innerHTML = S.projects.map(p => `
     <a class="side-item ${p.path === S.project ? "on" : ""}" data-path="${esc(p.path)}">
       ${esc(p.name)}<small>${p.ok ? esc(p.toolchain) : "not a git repository"}</small></a>`).join("")
-    || `<p class="hint" style="padding:0 10px">No projects yet.</p>`;
+    || `<p class="empty">Nothing here yet. Press + and give it the path to a
+        git repository, empty or not.</p>`;
   document.querySelectorAll("#projects .side-item").forEach(el => {
     el.onclick = () => { S.project = el.dataset.path; drawSide(); drawTop(); };
   });
-  $("history").innerHTML = S.runs.slice(0, 10).map(r => `
-    <a class="side-item">${esc(r.task.slice(0, 34))}<small>${esc(r.repo)} · ${r.done}/${r.items} · $${r.cost.toFixed(2)}</small></a>`).join("");
+  $("history").innerHTML = S.runs.slice(0, 12).map(r => `
+    <a class="side-item">${esc(r.task.slice(0, 38))}<small>${esc(r.repo)} · ${r.done}/${r.items} items · $${r.cost.toFixed(2)}</small></a>`).join("")
+    || `<p class="empty">No runs yet.</p>`;
   drawTop();
 }
 
@@ -228,6 +234,9 @@ async function send() {
   const body = await res.json();
   if (!body.ok) { fail(body.reason); return; }
   watch(body.key);
+  $("stop").style.display = "";
+  $("stop").disabled = false;
+  $("stop").textContent = "Stop";
 }
 
 function fail(reason) {
@@ -251,6 +260,19 @@ $("box").addEventListener("keydown", (e) => {
   }
 });
 
+$("plus").onclick = () => {
+  $("addbox").classList.toggle("open");
+  if ($("addbox").classList.contains("open")) $("newpath").focus();
+};
+$("cancel").onclick = () => { $("addbox").classList.remove("open"); $("newpath").value = ""; };
+$("newpath").onkeydown = (e) => { if (e.key === "Enter") $("add").click(); };
+
+$("stop").onclick = async () => {
+  $("stop").disabled = true;
+  $("stop").textContent = "stopping";
+  await fetch("/api/stop/" + S.key, { method: "POST" });
+};
+
 $("add").onclick = async () => {
   const path = $("newpath").value.trim();
   if (!path) return;
@@ -260,7 +282,9 @@ $("add").onclick = async () => {
   });
   const body = await res.json();
   if (!body.ok) { fail(body.reason); return; }
-  $("newpath").value = ""; S.project = null;
+  $("newpath").value = "";
+  $("addbox").classList.remove("open");
+  S.project = null;
   await refresh();
 };
 

@@ -11,6 +11,7 @@ from pathlib import Path
 
 from .agent import JUDGEMENT, Agent, Tool
 from .detect import Toolchain, count, detect
+from .engines import ClaudeCodeEngine
 from .models import Baseline, Inventory
 from .parse import read_test_counts
 from .shell import check
@@ -44,7 +45,15 @@ Survey the repository and report."""
 
 
 def baseline(repo: Path, chain: Toolchain) -> Baseline:
-    """Run the build and the suite untouched. Nothing is a regression without this."""
+    """Run the build and the suite untouched. Nothing is a regression without this.
+
+    An empty repository has nothing to run, and that is a legitimate baseline
+    rather than a failure: zero tests pass, and the first thing the crew builds
+    is the thing that will say whether anything still does.
+    """
+    if not chain.build_command:
+        return Baseline(builds=True, tests_run=0, tests_failed=0, tests_skipped=0)
+
     build = check("build", chain.build_command, repo)
     tests = check("tests", chain.test_command, repo)
     run, failed, skipped = read_test_counts(tests.detail)
@@ -92,8 +101,28 @@ def survey(
     model: str | None = None,
     max_turns: int = 20,
     budget: float = 0.0,
+    engine: str = "api",
 ) -> tuple[Inventory, object]:
     chain = detect(repo)
+
+    if engine == "claude":
+        found, dollars, turns = ClaudeCodeEngine().structured(
+            repo,
+            SYSTEM + briefing(skills or [], "survey"),
+            PROMPT.format(
+                repo=repo.name,
+                build_tool=chain.build_tool,
+                language=chain.language,
+                baseline=f"{base.tests_run} tests, {base.tests_failed} failing"
+                if base.tests_run
+                else "nothing to run yet",
+                task=task,
+            ),
+            '{"findings": ["..."], "risks": ["..."]}',
+            on_event=on_event,
+        )
+        return _inventory(chain, repo, found), _Spend(dollars, turns)
+
     agent = Agent(
         name="Analyst",
         system=SYSTEM + briefing(skills or [], "survey"),
@@ -118,7 +147,20 @@ def survey(
         ),
         final_tool=_report_tool(),
     )
-    inventory = Inventory(
+    return _inventory(chain, repo, found), agent.usage
+
+
+class _Spend:
+    """What a Claude Code call cost, shaped like the API engine's accounting."""
+
+    def __init__(self, dollars: float, turns: int) -> None:
+        self.input_tokens = self.output_tokens = self.cached_tokens = 0
+        self.turns = turns
+        self.dollars = dollars
+
+
+def _inventory(chain: Toolchain, repo: Path, found: dict) -> Inventory:
+    return Inventory(
         build_tool=chain.build_tool,
         language=chain.language,
         build_command=chain.build_command,
@@ -128,4 +170,3 @@ def survey(
         findings=found.get("findings", []),
         risks=found.get("risks", []),
     )
-    return inventory, agent.usage

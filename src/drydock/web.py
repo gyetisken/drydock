@@ -31,23 +31,29 @@ PAGE = """<!doctype html><html lang="en"><head><meta charset="utf-8">
 <body><div class="app">
 
   <aside>
-    <div class="brand">drydock<span>changes code, proves it still works</span></div>
-    <div class="side-h">Projects</div>
-    <div class="side-list" id="projects"></div>
-    <div class="side-h">Earlier</div>
-    <div class="side-list" id="history" style="flex:0 0 auto;max-height:200px"></div>
-    <div class="side-foot">
-      <div class="addrow">
-        <input id="newpath" placeholder="path to a repository" spellcheck="false">
-        <button class="btn ghost" id="add">Add</button>
+    <div class="brand"><b>drydock</b><i>changes code, proves it still works</i></div>
+
+    <div class="side-h">Projects <button id="plus" title="add a repository">+</button></div>
+    <div class="addbox" id="addbox">
+      <input id="newpath" placeholder="/path/to/a/git/repository" spellcheck="false">
+      <div class="row">
+        <button class="btn small" id="add">Add</button>
+        <button class="btn small ghost" id="cancel">Cancel</button>
       </div>
     </div>
+    <div class="side-list" id="projects"></div>
+
+    <div class="side-h">Earlier</div>
+    <div class="side-list grow" id="history"></div>
   </aside>
 
   <main>
     <div class="topbar">
-      <b id="proj">no project</b><span id="chain"></span>
-      <span class="right" id="spend"></span>
+      <b id="proj">no project</b><span class="sub" id="chain"></span>
+      <div class="right">
+        <span id="spend"></span>
+        <button class="btn small ghost" id="stop" style="display:none">Stop</button>
+      </div>
     </div>
 
     <div class="thread" id="thread">
@@ -55,9 +61,10 @@ PAGE = """<!doctype html><html lang="en"><head><meta charset="utf-8">
         <div class="msg"><div class="body">
           <p>Pick a project on the left, then type a command. <code>/</code> shows
           what the crew can do.</p>
-          <p class="why">Every change is made on its own branch, one item at a time,
-          and each has to leave the test suite at least as healthy as it found it.
-          One that does not is rolled back before the next begins.</p>
+          <p class="why">Work happens on its own branch, one item at a time. Each
+          item has to leave the test suite at least as healthy as it found it, and
+          one that does not is rolled back before the next begins. Nothing is
+          changed until you approve the plan.</p>
         </div></div>
       </div>
     </div>
@@ -66,7 +73,7 @@ PAGE = """<!doctype html><html lang="en"><head><meta charset="utf-8">
       <div class="menu" id="menu" style="display:none"></div>
       <div class="cbox">
         <textarea id="box" rows="1" placeholder="/ to see commands" spellcheck="false"></textarea>
-        <select id="engine" title="who pays for the work"></select>
+        <select id="engine" title="whose account does the work"></select>
       </div>
       <div class="hint" id="hint"></div>
     </div></div>
@@ -192,6 +199,15 @@ def start(body: StartJob) -> JSONResponse:
     )
     key = next(k for k, v in workspace.sessions.items() if v is session)
     return JSONResponse({"ok": True, "key": key})
+
+
+@app.post("/api/stop/{key}")
+def stop(key: str) -> dict:
+    session = workspace.session_for(key)
+    if session is None:
+        return {"ok": False, "reason": "no such run"}
+    session.stop()
+    return {"ok": True}
 
 
 @app.get("/api/stream/{key}")

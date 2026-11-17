@@ -67,11 +67,34 @@ TOOLCHAINS = [
 ]
 
 
+# A repository with nothing in it is not an error. It is where a greenfield
+# job starts, and the first item of that plan is the one that creates the build
+# file this would otherwise be looking for.
+NOTHING = Toolchain(
+    language="unknown",
+    build_tool="none yet",
+    build_command="",
+    test_command="",
+    source_glob="**/*",
+    test_glob="**/*test*",
+)
+
+
 def detect(repo: Path) -> Toolchain:
+    """Work out how this repository is built, as it stands right now.
+
+    Called again after every item rather than once at the start, because a
+    greenfield job changes the answer: there is no build file until the first
+    item writes one, and from then on there is.
+    """
     for marker, toolchain in TOOLCHAINS:
         if (repo / marker).exists():
             return toolchain
-    raise SystemExit(f"{repo}: no build file recognised (pom.xml, pyproject.toml, ...)")
+    return NOTHING
+
+
+def is_empty(chain: Toolchain) -> bool:
+    return chain is NOTHING
 
 
 def count(repo: Path, glob: str) -> int:

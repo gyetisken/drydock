@@ -12,6 +12,7 @@ reporting honestly goes first, because every later item is measured against it.
 from pathlib import Path
 
 from .agent import Agent, Tool
+from .engines import ClaudeCodeEngine
 from .models import Baseline, Inventory, Plan
 from .skills import Skill, briefing
 from .tools import read_only
@@ -119,8 +120,32 @@ def plan(
     skills: list[Skill] | None = None,
     on_event=None,
     budget: float = 0.0,
+    engine: str = "api",
 ) -> tuple[Plan, object]:
     chosen = skills or []
+    filled = PROMPT.format(
+        repo=repo.name,
+        build_tool=inventory.build_tool,
+        language=inventory.language,
+        tests_run=base.tests_run,
+        tests_failed=base.tests_failed,
+        tests_skipped=base.tests_skipped,
+        task=task,
+        findings="\n".join(f"- {f}" for f in inventory.findings),
+        risks="\n".join(f"- {r}" for r in inventory.risks),
+    )
+
+    if engine == "claude":
+        result, dollars, turns = ClaudeCodeEngine().structured(
+            repo,
+            SYSTEM + briefing(chosen, "plan") + briefing(chosen, "verify"),
+            filled,
+            '{"summary": "...", "items": [{"id": 1, "title": "...", '
+            '"rationale": "...", "files": ["..."], "verify_with": "build|tests"}]}',
+            on_event=on_event,
+        )
+        return Plan.model_validate(result), _Spend(dollars, turns)
+
     agent = Agent(
         name="Planner",
         # The planner is given both its own guidance and what the skill says
@@ -132,18 +157,12 @@ def plan(
         budget=budget,
         on_event=on_event,
     )
-    result = agent.run(
-        PROMPT.format(
-            repo=repo.name,
-            build_tool=inventory.build_tool,
-            language=inventory.language,
-            tests_run=base.tests_run,
-            tests_failed=base.tests_failed,
-            tests_skipped=base.tests_skipped,
-            task=task,
-            findings="\n".join(f"- {f}" for f in inventory.findings),
-            risks="\n".join(f"- {r}" for r in inventory.risks),
-        ),
-        final_tool=_plan_tool(),
-    )
+    result = agent.run(filled, final_tool=_plan_tool())
     return Plan.model_validate(result), agent.usage
+
+
+class _Spend:
+    def __init__(self, dollars: float, turns: int) -> None:
+        self.input_tokens = self.output_tokens = self.cached_tokens = 0
+        self.turns = turns
+        self.dollars = dollars

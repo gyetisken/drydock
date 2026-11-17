@@ -148,6 +148,84 @@ class ClaudeCodeEngine:
             turns=turns,
         )
 
+    def structured(
+        self,
+        repo: Path,
+        system: str,
+        prompt: str,
+        shape: str,
+        read_only: bool = True,
+        on_event=None,
+    ) -> tuple[dict, float, int]:
+        """Ask for an answer in a given shape, and get it as a file.
+
+        Claude Code answers in prose, and parsing prose is how an agent
+        pipeline starts producing confident nonsense. Having it write a JSON
+        file instead means the answer either validates or visibly does not.
+        """
+        out = repo / ".drydock-out.json"
+        out.unlink(missing_ok=True)
+
+        instruction = (
+            f"{prompt}\n\nWrite your answer to .drydock-out.json in the repository "
+            f"root as exactly this JSON and nothing else:\n{shape}\n"
+            "Write no other file and change nothing else."
+        )
+        tools = "Read Glob Grep" + ("" if read_only else " Edit Write")
+        command = [
+            self.binary,
+            "-p",
+            "--output-format",
+            "stream-json",
+            "--verbose",
+            "--model",
+            self.model,
+            "--max-turns",
+            str(self.max_turns),
+            "--permission-mode",
+            "acceptEdits",
+            "--allowedTools",
+            f"{tools} Write(.drydock-out.json)",
+            "--append-system-prompt",
+            system,
+        ]
+
+        process = subprocess.Popen(
+            command,
+            cwd=repo,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            bufsize=1,
+        )
+        process.stdin.write(instruction)
+        process.stdin.close()
+
+        dollars, turns = 0.0, 0
+        for line in process.stdout:
+            line = line.strip()
+            if not line.startswith("{"):
+                continue
+            try:
+                event = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            dollars = event.get("total_cost_usd", dollars)
+            turns = event.get("num_turns", turns)
+            if on_event:
+                _report(event, on_event)
+        process.wait(timeout=60)
+
+        if not out.exists():
+            raise EngineUnavailable(
+                "the worker finished without writing an answer. Try the API "
+                "engine, or run the same command again."
+            )
+        payload = json.loads(out.read_text())
+        out.unlink(missing_ok=True)
+        return payload, dollars, turns
+
 
 def _report(event: dict, on_event) -> None:
     """Turn one stream-json line into the same shape the API engine emits."""
