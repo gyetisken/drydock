@@ -42,6 +42,11 @@ Three rules hold whatever is being built:
   cleaned up afterwards.
 - Name the pieces by what they do, not by what they are. A folder called
   `utils` is a folder nobody can describe.
+- Each page exists for somebody with a question, and the shape has to hold
+  the answer. A computed status - open now, 3 unread, last updated - is an
+  addition to the underlying information and never a replacement for it. A
+  restaurant page that says only "closed now" tells the person reading it at
+  midnight nothing they came for, and no test will ever catch that.
 
 Do not plan the work. Say what it is made of and what the first test proves."""
 

@@ -11,6 +11,7 @@ import threading
 from pathlib import Path
 from typing import ClassVar
 
+from . import preview
 from .analyst import baseline, survey
 from .architect import as_briefing, design
 from .commands import STAGES
@@ -429,6 +430,16 @@ class Session:
             "agent.state", agent="Engineer", state="done", note="plan finished"
         )
         landed = sum(1 for r in self.run.results if r.outcome.value == "done")
+
+        # A job that finished everything it set out to do should end with the
+        # thing running, not with instructions for running it. Nobody wants a
+        # button; they want the link.
+        link = ""
+        if landed and landed == len(self.run.plan.items):
+            try:
+                link = preview.start(self.repo).url
+            except (LookupError, RuntimeError, TimeoutError) as exc:
+                self.feed.emit("preview.failed", detail=str(exc)[:600])
         self.memory.record(
             self.run.task, landed, len(self.run.plan.items), self.run.cost
         )
@@ -439,7 +450,8 @@ class Session:
             total=len(self.run.plan.items),
             cost=round(self.run.cost, 2),
             engine=self.engine,
-            remembered=len([n for n in self.memory.notes]),
+            remembered=len(self.memory.notes),
+            url=link,
         )
         self.feed.close()
 

@@ -44,6 +44,12 @@ is judged by that suite.
 Name files. "The test classes" is not a plan. If the survey counted them, the
 item says which ones or how many and on what pattern.
 
+An item that renders something has to say what a visitor gets from it, not
+only what gets computed. The failure that survives every check is the page
+that is correct and useless: a live "closed now" where somebody wanted the
+opening hours. If an item produces a derived status, the item also says what
+it sits beside.
+
 Say each item twice. The title and the rationale are for whoever does the
 work and are as specific as they need to be. The plain line is for the person
 deciding whether to let this happen at all, who is not going to open the

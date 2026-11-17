@@ -376,10 +376,26 @@ const on = {
       <p class="why">Each one is its own commit on
       <code>drydock/${esc((S.key || "").replace(/-resumed$/, ""))}</code>, and nothing
       touched your main branch. ${kept}</p>
-      ${finished ? `<div class="actions">
+      ${e.url ? `<div class="live-link">
+        <span class="dot ok"></span>
+        <span>It is running at
+          <a href="${esc(e.url)}" target="_blank" rel="noopener">${esc(e.url)}</a></span>
+        <button class="btn small ghost" id="stop-preview">Stop it</button>
+      </div>` : finished ? `<div class="actions">
         <button class="btn" id="open-it">Open it</button>
         <span class="hint" id="open-said">Starts the project and opens it in a tab.</span>
       </div>` : ""}</div>`);
+
+    const stopper = msg.querySelector("#stop-preview");
+    if (stopper) stopper.onclick = async () => {
+      stopper.disabled = true;
+      await fetch("/api/preview", {
+        method: "DELETE", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ project: S.project }),
+      });
+      msg.querySelector(".live-link").innerHTML =
+        `<span class="hint">Stopped. Run it again from the command below.</span>`;
+    };
 
     const open = msg.querySelector("#open-it");
     if (open) open.onclick = async () => {
@@ -403,6 +419,9 @@ const on = {
       window.open(body.url, "_blank", "noopener");
     };
   },
+  "preview.failed": (e) => say("crew", `<div class="body"><p>The work is done,
+    but starting it did not go well.</p><pre class="why">${esc(e.detail)}</pre></div>`,
+    "dim"),
   "run.error": (e) => (running(false),
     Keys.notify("drydock stopped", e.detail), say("crew", `<div class="body"><p class="why">${esc(e.detail)}</p></div>`)),
   "awaiting.approval": () => {

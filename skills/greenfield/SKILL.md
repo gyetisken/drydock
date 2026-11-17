@@ -37,6 +37,24 @@ nobody wrote, in a history where they cannot be reviewed and cannot be
 removed without rewriting it. The ignore file costs one line in the item that
 is being written anyway, and it has to exist before the install, not after.
 
+**Every page exists for somebody with a question. Answer the question.**
+This is the failure that passes every test and is still wrong, and it is
+worth more attention than any of the others, because nothing in the
+verification can catch it.
+
+A restaurant site showed "Closed now. Opens next on Tuesday at 17:00" and
+nothing else about hours. The logic was correct, the test asserted it, and it
+is useless: somebody reading a restaurant's website at eleven at night wants
+to know when it is open, and was told only that it is not open at eleven at
+night. The live line is worth having. It is worth having *next to the week*,
+never instead of it.
+
+The shape of that mistake is general. A status derived from data is an
+addition to the data, not a replacement for it. "3 unread" does not replace
+the list. "Last updated 2 hours ago" does not replace the content. Whenever
+an item renders something computed, ask what the visitor came for, and make
+sure the page still contains it.
+
 Then one feature per item, each with its test in the same item. A plan that
 puts the tests in a later item will reach that item with nothing to test
 against and no way back.

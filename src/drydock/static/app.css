@@ -558,3 +558,10 @@ textarea#inst:focus { border-color:var(--accent-dim) }
 .steps-list div { font:11.5px/1.75 ui-monospace,SFMono-Regular,Menlo,monospace;
   color:var(--muted) }
 .steps-list div:last-child { color:var(--fg) }
+
+.live-link { display:flex; align-items:center; gap:10px; margin-top:13px;
+  padding:11px 13px; background:color-mix(in srgb,var(--ok) 10%,transparent);
+  border:1px solid color-mix(in srgb,var(--ok) 32%,transparent);
+  border-radius:10px; font-size:12.5px }
+.live-link a { color:var(--ok); font-weight:600 }
+.live-link .btn { margin-left:auto }
