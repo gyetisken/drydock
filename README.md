@@ -144,11 +144,11 @@ uv run drydock skills
 uv run pytest -q
 ```
 
-249 of them, and they are mostly about failures that looked like successes: a
-green suite whose test count could not be read, a finished item thrown away
-for want of a report, a design decision that never reached the engineer who
-writes the CSS, a resumed run that quietly dropped the skills it was working
-under.
+Three hundred-odd, and they are mostly about failures that looked like
+successes: a green suite whose test count could not be read, a finished item
+thrown away for want of a report, a design decision that never reached the
+engineer who writes the CSS, a resumed run that quietly dropped the skills it
+was working under.
 
 ## Built with
 
