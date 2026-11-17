@@ -82,6 +82,34 @@ A test file put there becomes a route, and the build tries to render it and
 dies importing a test runner. Tests go beside the module they test, or in a
 top-level tests directory - never in `src/pages`, `app`, `routes` or `pages`.
 
+**The page never scrolls sideways.** Not "rarely", not "only the hero" -
+never, at any width down to 320px. A page that does is the most common
+broken page on the web and it is the first thing anybody notices on a
+phone: the sentence runs off the edge mid-word and the last two words of
+every line are gone. It has cost this crew three items across three runs
+and the cause was the same each time.
+
+Three things cause it, and they are all avoidable:
+
+- **A full-bleed band built out of `100vw`.** `width: 100vw; left: 50%;
+  transform: translateX(-50%)` is the trick everybody knows and it is
+  wrong twice: `100vw` includes the scrollbar, and `left: 50%` resolves
+  against the containing block, which is the padded content column rather
+  than the viewport. Do it with the grid instead - give the page a grid
+  with a `full` track either side of the content track, and let the band
+  take `grid-column: full`. No viewport units, no transform, nothing to
+  resolve against the wrong thing.
+- **Display type set in fixed `rem`.** `font-size: 8.5rem` is 136px, and
+  four capitals at 136px do not fit in a 390px phone. Display sizes are
+  `clamp()` or they are broken on a phone: `clamp(2.5rem, 12vw, 8.5rem)`.
+  A scale contrast that only holds at 1440 is not a scale contrast.
+- **A grid with fixed column widths that never collapses.** Twelve columns
+  at a fixed gutter is a desktop layout. On a phone it has to become one.
+
+Then check it rather than assuming it: look at the page at 390px. If
+anything is cut off at the right edge, nothing else about the item matters
+yet.
+
 **An inverted section sets its own colour.** This is the single most
 common way a page that is correct in the code renders as half a page. A
 palette has two ink colours and two grounds - a dark ink for the light
