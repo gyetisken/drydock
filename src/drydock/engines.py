@@ -98,6 +98,12 @@ def _shell_rule(build_command: str) -> str:
 # dirty seconds after cleaning it - an orphan from the previous run was
 # recreating the files behind it. A process nobody can stop is not a worker,
 # it is a leak with a shell.
+# How often a quiet worker is looked in on, and how long it has to have
+# been quiet before that is worth saying. Named rather than written into
+# the loop so a test can wind them down instead of sitting through them.
+QUIET_EVERY = 30
+QUIET_AFTER = 90
+
 _WORKERS: set[subprocess.Popen] = set()
 _WORKERS_LOCK = threading.Lock()
 
@@ -458,9 +464,34 @@ class ClaudeCodeEngine:
         alarm.daemon = True
         alarm.start()
 
+        # A worker can go quiet for minutes in the middle of a turn, and
+        # from outside that is indistinguishable from a hang. It went nine
+        # minutes without a word on the nero site while the window showed a
+        # spinner, which is the one failure this program must not have: it
+        # looks exactly like working.
+        spoke_at = [time.monotonic()]
+        quiet = threading.Event()
+
+        def still_there() -> None:
+            while not quiet.wait(QUIET_EVERY):
+                since = time.monotonic() - spoke_at[0]
+                if since >= QUIET_AFTER and on_event:
+                    on_event(
+                        "engine",
+                        f"still working - nothing said for {int(since // 60)}m "
+                        f"{int(since % 60):02d}s, "
+                        f"{int((self.seconds - (time.monotonic() - began)) // 60)}m "
+                        "left before it is stopped",
+                    )
+
+        began = time.monotonic()
+        heartbeat = threading.Thread(target=still_there, daemon=True)
+        heartbeat.start()
+
         dollars, turns = 0.0, 0
         try:
             for line in process.stdout:
+                spoke_at[0] = time.monotonic()
                 line = line.strip()
                 if not line.startswith("{"):
                     continue
@@ -474,6 +505,7 @@ class ClaudeCodeEngine:
                     _report(event, on_event)
         finally:
             alarm.cancel()
+            quiet.set()
 
         try:
             process.wait(timeout=30)

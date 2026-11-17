@@ -156,7 +156,12 @@ def work(
     if engine == "claude":
         # The worker is whatever Claude Code is signed in as. Everything that
         # decides whether its work survives still happens here.
-        result = ClaudeCodeEngine(model=for_work(model)).work(
+        # A retry is the expensive case. The first attempt is given the
+        # faster model because most items are ordinary and it is checked
+        # hard either way; once an item has come back refused, the attempt
+        # that follows is the one that must not fail, and another ten
+        # minutes of the same mistake costs far more than the difference.
+        result = ClaudeCodeEngine(model=model if retry_of else for_work(model)).work(
             repo,
             SYSTEM + briefing(skills or [], "engineer") + direction,
             prompt,

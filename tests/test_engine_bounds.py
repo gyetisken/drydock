@@ -78,3 +78,77 @@ def test_a_worker_that_will_not_terminate_is_killed():
     fake.returncode = None
     engine(minutes=5)._read(fake, None)
     assert fake.killed
+
+
+class TestAWorkerThatGoesQuiet:
+    """A worker can spend minutes inside a single turn. From outside, that
+    is indistinguishable from a hang, and a spinner answers neither
+    question. One of these went nine minutes without a word on a live run
+    while the window showed it working, which is the one failure this
+    program must not have: it looks exactly like working."""
+
+    def test_it_says_how_long_it_has_been_quiet(self, monkeypatch):
+        from drydock import engines
+
+        monkeypatch.setattr(engines, "QUIET_EVERY", 0.05)
+        monkeypatch.setattr(engines, "QUIET_AFTER", 0.1)
+
+        said: list[tuple[str, str]] = []
+        worker = _Silent(for_seconds=0.4)
+        engines.ClaudeCodeEngine(minutes=10)._read(
+            worker, lambda kind, text: said.append((kind, text))
+        )
+
+        assert any("still working" in text for _, text in said)
+        assert any("before it is stopped" in text for _, text in said)
+
+    def test_a_worker_that_keeps_talking_is_left_alone(self, monkeypatch):
+        from drydock import engines
+
+        monkeypatch.setattr(engines, "QUIET_EVERY", 0.05)
+        monkeypatch.setattr(engines, "QUIET_AFTER", 5)
+
+        said: list[tuple[str, str]] = []
+        worker = _Silent(for_seconds=0.3)
+        engines.ClaudeCodeEngine(minutes=10)._read(
+            worker, lambda kind, text: said.append((kind, text))
+        )
+
+        assert not any("still working" in text for _, text in said)
+
+
+class _Silent:
+    """A worker that says nothing at all and then ends."""
+
+    returncode = 0
+
+    def __init__(self, for_seconds: float):
+        self.seconds = for_seconds
+        self.stdout = self
+        self.stderr = _Reader("")
+
+    def __iter__(self):
+        import time as real
+
+        real.sleep(self.seconds)
+        return iter([])
+
+    def poll(self):
+        return None
+
+    def wait(self, timeout=None):
+        return 0
+
+    def kill(self):
+        pass
+
+    def terminate(self):
+        pass
+
+
+class _Reader:
+    def __init__(self, text):
+        self.text = text
+
+    def read(self):
+        return self.text
