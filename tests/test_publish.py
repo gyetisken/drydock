@@ -304,3 +304,43 @@ class TestWhatTheWorkIsReviewedAgainst:
 
         monkeypatch.setattr(publish.Repo, "_git", lambda self, cmd: (0, "drydock/x\n"))
         assert publish._base_branch(publish.Repo(tmp_path), "drydock/x") == ""
+
+
+class TestTheExchangeIsPublished:
+    """An item that turned on a decision nobody had taken, and the decision.
+    It is the one place two stations talk to each other, the most
+    interesting thing that happens in a run, and it was being gathered from
+    the log and then dropped on the floor."""
+
+    def test_the_question_and_the_answer_both_appear(self, tmp_path):
+        run = a_run(tmp_path)
+        log = tmp_path / "talk.log"
+        log.write_text(
+            "\n".join(
+                json.dumps(e)
+                for e in [
+                    {
+                        "kind": "gate",
+                        "id": 1,
+                        "who": "asked",
+                        "note": "raw price, or with VAT?",
+                    },
+                    {
+                        "kind": "gate",
+                        "id": 1,
+                        "who": "answered",
+                        "note": "with VAT: it is a customer-facing till",
+                    },
+                ]
+            )
+        )
+        out = body(run, evidence_from(run, log))
+
+        assert "raw price, or with VAT?" in out
+        assert "customer-facing till" in out
+        assert "stopped and asked" in out
+
+    def test_an_item_with_no_question_says_nothing_about_one(self, tmp_path):
+        run = a_run(tmp_path)
+        out = body(run, evidence_from(run, a_log(tmp_path)))
+        assert "stopped and asked" not in out

@@ -152,6 +152,16 @@ def body(run, evidence: list[Evidence], url: str = "") -> str:
             lines.append(f"- **Reviewer** — {said['reviewer']}")
         if said.get("critic"):
             lines.append(f"- **Critic** — {said['critic']}")
+        # The one place two stations talked to each other. It is the most
+        # interesting thing that happens in a run and it was being thrown
+        # away here: an item that turned on a decision nobody had taken,
+        # and the decision, in the words it was settled with.
+        if said.get("asked"):
+            lines.append("")
+            lines.append(f"> **The engineer stopped and asked.** {said['asked']}")
+            if said.get("answered"):
+                lines.append(">")
+                lines.append(f"> **It was settled.** {said['answered']}")
         lines.append("")
         lines.append("</details>")
         lines.append("")
