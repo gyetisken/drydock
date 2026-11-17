@@ -12,7 +12,24 @@ from dataclasses import dataclass, field
 
 import anthropic
 
-MODEL = "claude-opus-5"
+# Judgement runs on the expensive model; looking things up does not. The split
+# is per agent rather than global because the Analyst spends most of its turns
+# grepping, and paying Opus prices to read a file listing is waste.
+JUDGEMENT = "claude-opus-5"
+LOOKUP = "claude-haiku-4-5"
+MODEL = JUDGEMENT
+
+
+class BudgetExceeded(RuntimeError):
+    """Raised when a run has spent what it was allowed to spend."""
+
+
+# Opus 5 list price, dollars per million tokens.
+PRICES = {
+    "claude-opus-5": (5.0, 25.0),
+    "claude-sonnet-5": (3.0, 15.0),
+    "claude-haiku-4-5": (1.0, 5.0),
+}
 
 
 @dataclass
@@ -42,12 +59,28 @@ class Tool:
 class Usage:
     input_tokens: int = 0
     output_tokens: int = 0
+    cached_tokens: int = 0
     turns: int = 0
+    dollars: float = 0.0
 
-    def add(self, message) -> None:
-        self.input_tokens += message.usage.input_tokens
-        self.output_tokens += message.usage.output_tokens
+    def add(self, message, model: str) -> None:
+        use = message.usage
+        cached = getattr(use, "cache_read_input_tokens", 0) or 0
+        fresh = use.input_tokens
+        self.input_tokens += fresh
+        self.cached_tokens += cached
+        self.output_tokens += use.output_tokens
         self.turns += 1
+
+        rate_in, rate_out = PRICES.get(model, PRICES["claude-opus-5"])
+        # A cache read is charged at a tenth of the input rate; a write at
+        # 1.25x. Writes are not broken out here because the loop writes one
+        # breakpoint per turn and the difference is inside the rounding.
+        self.dollars += (
+            fresh / 1e6 * rate_in
+            + cached / 1e6 * rate_in * 0.1
+            + use.output_tokens / 1e6 * rate_out
+        )
 
 
 @dataclass
@@ -55,7 +88,9 @@ class Agent:
     name: str
     system: str
     tools: list[Tool] = field(default_factory=list)
-    max_turns: int = 30
+    max_turns: int = 20
+    model: str = JUDGEMENT
+    budget: float = 0.0
     usage: Usage = field(default_factory=Usage)
     on_event: Callable[[str, str], None] | None = None
 
@@ -87,13 +122,29 @@ class Agent:
 
         for turn in range(self.max_turns):
             message = client.messages.create(
-                model=MODEL,
+                model=self.model,
                 max_tokens=16000,
-                system=self.system,
+                # The system prompt and the tool list are identical on every
+                # turn of a loop that can run twenty times, and the transcript
+                # only grows at the end. Caching the prefix turns the repeated
+                # part of the bill into a tenth of itself.
+                system=[
+                    {
+                        "type": "text",
+                        "text": self.system,
+                        "cache_control": {"type": "ephemeral"},
+                    }
+                ],
                 tools=tools,
-                messages=messages,
+                messages=_with_cache_breakpoint(messages),
             )
-            self.usage.add(message)
+            self.usage.add(message, self.model)
+
+            if self.budget and self.usage.dollars > self.budget:
+                raise BudgetExceeded(
+                    f"{self.name} spent ${self.usage.dollars:.2f} of a "
+                    f"${self.budget:.2f} budget and was stopped"
+                )
 
             calls = [b for b in message.content if b.type == "tool_use"]
             for block in message.content:
@@ -138,6 +189,45 @@ class Agent:
             messages.append({"role": "user", "content": results})
 
         raise RuntimeError(f"{self.name} did not finish within {self.max_turns} turns")
+
+
+def _with_cache_breakpoint(messages: list[dict]) -> list[dict]:
+    """Mark the end of the history so everything before it can be reused.
+
+    The marker has to land on a content block, and by the second turn almost
+    every message in this loop carries a list of blocks rather than a string:
+    assistant turns hold tool_use blocks, user turns hold tool_result blocks.
+    An earlier version only handled the string case, so the breakpoint was
+    silently never placed and the cache stayed nearly empty while the bill did
+    not.
+
+    Only the last message is marked. The four available breakpoints are better
+    spent elsewhere, and a marker at the end already covers everything before
+    it.
+    """
+    if not messages:
+        return messages
+
+    marked = list(messages)
+    last = dict(marked[-1])
+    content = last.get("content")
+
+    if isinstance(content, str):
+        last["content"] = [
+            {"type": "text", "text": content, "cache_control": {"type": "ephemeral"}}
+        ]
+    elif isinstance(content, list) and content:
+        blocks = [
+            block if isinstance(block, dict) else block.model_dump()
+            for block in content
+        ]
+        blocks[-1] = {**blocks[-1], "cache_control": {"type": "ephemeral"}}
+        last["content"] = blocks
+    else:
+        return messages
+
+    marked[-1] = last
+    return marked
 
 
 def _result(call_id: str, content: str, is_error: bool = False) -> dict:

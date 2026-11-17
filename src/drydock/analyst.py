@@ -9,12 +9,12 @@ it gets read-only tools to answer it with evidence rather than recall.
 
 from pathlib import Path
 
-from .agent import Agent, Tool
+from .agent import JUDGEMENT, Agent, Tool
 from .detect import Toolchain, count, detect
 from .models import Baseline, Inventory
 from .parse import read_test_counts
 from .shell import check
-from .skills import briefing
+from .skills import Skill, briefing
 from .tools import read_only
 
 SYSTEM = """You are surveying a codebase before any change is made to it.
@@ -84,13 +84,26 @@ def _report_tool() -> Tool:
 
 
 def survey(
-    repo: Path, task: str, base: Baseline, on_event=None
+    repo: Path,
+    task: str,
+    base: Baseline,
+    skills: list[Skill] | None = None,
+    on_event=None,
+    model: str | None = None,
+    max_turns: int = 20,
+    budget: float = 0.0,
 ) -> tuple[Inventory, object]:
     chain = detect(repo)
     agent = Agent(
         name="Analyst",
         system=SYSTEM + briefing(skills or [], "survey"),
         tools=read_only(repo),
+        # The survey is mostly reading, and the judgement it does make is
+        # checked by a person before anything is changed, so it runs on the
+        # expensive model only when asked to.
+        model=model or JUDGEMENT,
+        max_turns=max_turns,
+        budget=budget,
         on_event=on_event,
     )
     found = agent.run(

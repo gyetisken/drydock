@@ -26,6 +26,9 @@ class Run(BaseModel):
     results: list[ItemResult] = Field(default_factory=list)
     tokens_in: int = 0
     tokens_out: int = 0
+    tokens_cached: int = 0
+    dollars: float = 0.0
+    budget: float = 0.0
 
     @classmethod
     def start(cls, repo: Path, task: str, skills: list[str] | None = None) -> "Run":
@@ -60,11 +63,18 @@ class Run(BaseModel):
     def spend(self, usage) -> None:
         self.tokens_in += usage.input_tokens
         self.tokens_out += usage.output_tokens
+        self.tokens_cached += getattr(usage, "cached_tokens", 0)
+        self.dollars += getattr(usage, "dollars", 0.0)
+
+    @property
+    def left(self) -> float:
+        """What is still allowed to be spent. Infinite when no budget was set."""
+        return float("inf") if not self.budget else max(0.0, self.budget - self.dollars)
 
     @property
     def cost(self) -> float:
-        """Claude Opus 5 list pricing, in dollars."""
-        return self.tokens_in / 1e6 * 5 + self.tokens_out / 1e6 * 25
+        """What this run has actually cost, priced per model as it went."""
+        return self.dollars
 
 
 def event_printer(prefix: str = "  "):

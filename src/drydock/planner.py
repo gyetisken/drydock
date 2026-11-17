@@ -118,6 +118,7 @@ def plan(
     base: Baseline,
     skills: list[Skill] | None = None,
     on_event=None,
+    budget: float = 0.0,
 ) -> tuple[Plan, object]:
     chosen = skills or []
     agent = Agent(
@@ -127,7 +128,8 @@ def plan(
         # being remembered later by whoever reads the diff.
         system=SYSTEM + briefing(chosen, "plan") + briefing(chosen, "verify"),
         tools=read_only(repo),
-        max_turns=12,
+        max_turns=10,
+        budget=budget,
         on_event=on_event,
     )
     result = agent.run(

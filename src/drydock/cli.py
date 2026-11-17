@@ -72,6 +72,7 @@ def _cmd_survey(args) -> int:
     chain = detect(repo)
     skills = _chosen_skills(args.skill, chain)
     run = Run.start(repo, args.task, [s.name for s in skills])
+    run.budget = args.budget
     print(f"{chain.build_tool} / {chain.language}")
     if skills:
         print(f"skills: {', '.join(s.name for s in skills)}")
@@ -88,13 +89,32 @@ def _cmd_survey(args) -> int:
     run.save()
 
     print("\nsurveying")
-    run.inventory, usage = survey(repo, args.task, b, skills, event_printer())
+    run.inventory, usage = survey(
+        repo,
+        args.task,
+        b,
+        skills,
+        event_printer(),
+        model=args.model,
+        budget=run.left if run.budget else 0.0,
+    )
     run.spend(usage)
     run.save()
 
     print(f"\n{len(run.inventory.findings)} findings, {len(run.inventory.risks)} risks")
-    print(f"run {run.id}  ${run.cost:.2f}")
+    print(_spend(run))
     return 0
+
+
+def _spend(run) -> str:
+    cached = run.tokens_cached
+    saved = cached / 1e6 * 5 * 0.9 if cached else 0.0
+    note = (
+        f" ({cached:,} tokens came from cache, saving about ${saved:.2f})"
+        if cached
+        else ""
+    )
+    return f"run {run.id}  ${run.cost:.2f}{note}"
 
 
 def _cmd_plan(args) -> int:
@@ -121,7 +141,7 @@ def _cmd_plan(args) -> int:
         print(_wrap(item.rationale))
         print(f"      files: {', '.join(item.files[:4])}")
         print()
-    print(f"{len(run.plan.items)} items   run {run.id}   ${run.cost:.2f}")
+    print(f"{len(run.plan.items)} items   {_spend(run)}")
     return 0
 
 
@@ -148,7 +168,26 @@ def _cmd_run(args) -> int:
         print(
             f"  {result.item.id:>2}. {MARK[result.outcome.value]:<9} {result.note[:70]}"
         )
-    print(f"\n{len(run.results)}/{len(run.plan.items)} items   ${run.cost:.2f}")
+    print(f"\n{len(run.results)}/{len(run.plan.items)} items   {_spend(run)}")
+    return 0
+
+
+def _cmd_watch(args) -> int:
+    """Run a job with a page watching it."""
+    import uvicorn
+
+    from . import web
+    from .session import Session
+
+    repo = Path(args.repo).expanduser().resolve()
+    chain = detect(repo)
+    skills = _chosen_skills(args.skill, chain)
+
+    web.session = Session(repo, args.task, skills)
+    web.session.start(auto_run=args.auto)
+
+    print(f"watching at http://127.0.0.1:{args.port}")
+    uvicorn.run(web.app, host="127.0.0.1", port=args.port, log_level="warning")
     return 0
 
 
@@ -188,6 +227,13 @@ def main() -> None:
         action="append",
         help="a skill to bring to this job; repeat for several",
     )
+    s.add_argument(
+        "--budget",
+        type=float,
+        default=0.0,
+        help="dollars this run may spend; it stops rather than exceeding it",
+    )
+    s.add_argument("--model", help="override the model for the survey")
     s.set_defaults(func=_cmd_survey)
 
     p = sub.add_parser("plan", help="turn the survey into an ordered list of changes")
@@ -198,6 +244,14 @@ def main() -> None:
     r.add_argument("--run")
     r.add_argument("--items", type=int, help="stop after this many items")
     r.set_defaults(func=_cmd_run)
+
+    t = sub.add_parser("watch", help="run a job with a live page")
+    t.add_argument("--repo", required=True)
+    t.add_argument("--task", required=True)
+    t.add_argument("--skill", action="append")
+    t.add_argument("--port", type=int, default=8400)
+    t.add_argument("--auto", action="store_true", help="do not wait for approval")
+    t.set_defaults(func=_cmd_watch)
 
     k = sub.add_parser("skills", help="list installed skills")
     k.set_defaults(func=_cmd_skills)

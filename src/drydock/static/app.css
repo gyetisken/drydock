@@ -1,0 +1,66 @@
+:root {
+  --bg:#0f1115; --panel:#161920; --line:#242833; --fg:#e7e9ee; --muted:#8c93a3;
+  --faint:#5a6070; --ok:#58c98b; --bad:#e8706a; --warn:#e0b65c; --live:#6aa9f0;
+}
+* { box-sizing:border-box }
+body { margin:0; background:var(--bg); color:var(--fg);
+  font:15px/1.55 ui-sans-serif,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif }
+.mono, code { font-family:ui-monospace,SFMono-Regular,Menlo,monospace }
+.wrap { max-width:1180px; margin:0 auto; padding:28px 24px 80px }
+
+header { display:flex; align-items:baseline; gap:16px; flex-wrap:wrap; margin-bottom:6px }
+h1 { font-size:21px; margin:0; letter-spacing:-.02em }
+.task { color:var(--muted); font-size:14px }
+.meta { margin:0 0 26px; color:var(--faint); font-size:13px }
+
+.board { display:grid; grid-template-columns:repeat(auto-fit,minmax(215px,1fr));
+  gap:12px; margin-bottom:14px }
+.desk { background:var(--panel); border:1px solid var(--line); border-radius:12px;
+  padding:14px 16px; min-height:104px; position:relative; overflow:hidden }
+.desk .who { display:flex; align-items:center; gap:8px; font-weight:600; font-size:14px }
+.dot { width:8px; height:8px; border-radius:50%; background:var(--faint); flex:none }
+.desk.working .dot { background:var(--live); animation:pulse 1.4s ease-in-out infinite }
+.desk.done .dot { background:var(--ok) }
+.desk.failed .dot { background:var(--bad) }
+.desk.working { border-color:#2b3a52 }
+@keyframes pulse { 0%,100% { opacity:1 } 50% { opacity:.25 } }
+.desk .note { color:var(--muted); font-size:13px; margin-top:7px; min-height:34px }
+.desk .act { color:var(--faint); font-size:11.5px; margin-top:6px;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis }
+
+.scores { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr));
+  gap:12px; margin-bottom:26px }
+.score { background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:13px 16px }
+.score b { display:block; font-size:25px; letter-spacing:-.02em; font-variant-numeric:tabular-nums }
+.score span { color:var(--muted); font-size:12px }
+.score.ok b { color:var(--ok) } .score.bad b { color:var(--bad) }
+
+h2 { font-size:12px; text-transform:uppercase; letter-spacing:.09em; color:var(--faint);
+  font-weight:600; margin:0 0 12px }
+.summary { color:var(--muted); font-size:14px; margin:0 0 16px; max-width:88ch }
+
+.items { display:flex; flex-direction:column; gap:7px; margin-bottom:28px }
+.item { background:var(--panel); border:1px solid var(--line); border-radius:10px;
+  padding:11px 14px; display:flex; gap:12px; align-items:flex-start }
+.item .mark { width:19px; flex:none; text-align:center; font-size:14px; color:var(--faint); line-height:1.5 }
+.item.working { border-color:#2b3a52 }
+.item.working .mark { color:var(--live) }
+.item.done .mark { color:var(--ok) }
+.item.reverted .mark, .item.blocked .mark { color:var(--bad) }
+.item .title { font-size:14px }
+.item.done .title { color:var(--muted) }
+.item .why { color:var(--faint); font-size:12.5px; margin-top:3px }
+.item .num { color:var(--faint); font-size:12px; min-width:20px }
+
+.feed { background:var(--panel); border:1px solid var(--line); border-radius:12px;
+  padding:12px 14px; max-height:260px; overflow-y:auto; font-size:12.5px }
+.feed div { color:var(--muted); padding:2px 0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis }
+.feed .t { color:var(--faint); margin-right:8px }
+.feed .who { color:var(--live); margin-right:8px }
+
+.bar { display:flex; gap:10px; align-items:center; margin:18px 0 26px; flex-wrap:wrap }
+button { background:var(--fg); color:var(--bg); border:0; border-radius:8px;
+  padding:9px 18px; font-size:14px; font-weight:600; cursor:pointer; font-family:inherit }
+button.ghost { background:transparent; color:var(--muted); border:1px solid var(--line) }
+button:disabled { opacity:.4; cursor:default }
+.hint { color:var(--faint); font-size:13px }

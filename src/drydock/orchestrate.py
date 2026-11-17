@@ -12,6 +12,7 @@ test stop complaining, and the second attempt is where that starts.
 
 from pathlib import Path
 
+from .agent import BudgetExceeded
 from .engineer import work
 from .models import ItemResult, Outcome
 from .repo import Repo
@@ -22,6 +23,7 @@ from .verify import verify
 def execute(
     run: Run,
     stop_after: int | None = None,
+    per_item: float = 2.5,
     skills=None,
     on_event=None,
     on_item=None,
@@ -49,20 +51,36 @@ def execute(
         if stop_after is not None and len(run.results) >= stop_after:
             break
 
+        if run.budget and run.left <= 0:
+            # A run that has spent its budget stops between items, where the
+            # tree is clean and the next item can be resumed later, rather
+            # than halfway through an edit.
+            if on_item:
+                on_item(item, "out_of_budget")
+            break
+
         if on_item:
             on_item(item, "start")
 
         attempt, failure, result = 1, "", None
         while attempt <= 2:
-            report, usage = work(
-                repo_path,
-                run.task,
-                item,
-                commands["build"],
-                failure,
-                skills,
-                on_event,
-            )
+            try:
+                report, usage = work(
+                    repo_path,
+                    run.task,
+                    item,
+                    commands["build"],
+                    failure,
+                    skills,
+                    on_event,
+                    budget=min(run.left, per_item) if run.budget else per_item,
+                )
+            except BudgetExceeded as stop:
+                repo.discard()
+                result = ItemResult(
+                    item=item, outcome=Outcome.BLOCKED, attempts=attempt, note=str(stop)
+                )
+                break
             run.spend(usage)
 
             if not report.get("done"):

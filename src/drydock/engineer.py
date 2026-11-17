@@ -94,6 +94,7 @@ def work(
     retry_of: str = "",
     skills: list[Skill] | None = None,
     on_event=None,
+    budget: float = 0.0,
 ) -> tuple[dict, object]:
     prompt = PROMPT.format(
         repo=repo.name,
@@ -115,7 +116,8 @@ def work(
         name="Engineer",
         system=SYSTEM + briefing(skills or [], "engineer"),
         tools=write_tools(repo, build_command),
-        max_turns=40,
+        max_turns=30,
+        budget=budget,
         on_event=on_event,
     )
     return agent.run(prompt, final_tool=_report_tool()), agent.usage
