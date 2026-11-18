@@ -112,6 +112,13 @@ nobody outside the work can read is a plan that gets approved without being
 read, and the approval is the one thing standing between a suggestion and
 somebody's repository.
 
+**Say which items are worth looking at.** Some items are judged by looking
+at the page they produce; the rest are judged by the build passing. A
+stylesheet nobody imports, a test command, a content module, a config file,
+a placeholder - none of those are looked at, and sending somebody to look
+at them gets the item refused for being what it was asked to be. An item
+whose whole point is what it looks like is looked at, and should be.
+
 Separate the mechanical from the judged. A rename that a tool can do belongs in
 its own item. A rewrite that changes meaning belongs in another, on its own,
 where a failure points at one decision.

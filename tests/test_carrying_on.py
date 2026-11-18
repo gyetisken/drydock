@@ -233,3 +233,55 @@ class TestTheBarMovesUpWithTheWork:
 
         orchestrate.execute(run, engine="claude", model="opus", reviewing=False)
         assert run.baseline.tests_run == 11
+
+
+class TestWhichItemsAreLookedAt:
+    """A critic sent to judge a placeholder page refuses it for being a
+    placeholder. That is true and useless, and three attempts went on an
+    item that had been finished the first time."""
+
+    def test_the_planner_decides_when_it_has_said(self):
+        from drydock.models import Item
+
+        scaffolding = Item(
+            id=1,
+            title="the project runs and has a test command",
+            rationale="first",
+            files=["package.json"],
+            verify_with="tests",
+            worth_looking_at=False,
+        )
+        assert scaffolding.worth_looking_at is False
+
+    def test_saying_nothing_leaves_it_to_the_diff(self):
+        """Older plans, and any item the planner skipped the question on."""
+        from drydock.models import Item
+
+        item = Item(id=1, title="t", rationale="r", files=[], verify_with="tests")
+        assert item.worth_looking_at is None
+
+    def test_the_diff_still_knows_a_page_when_it_sees_one(self):
+        from drydock.orchestrate import _changes_the_view
+
+        assert _changes_the_view("+++ b/src/pages/index.astro\n+<h1>x</h1>\n")
+        assert _changes_the_view("+++ b/app/globals.css\n+body{}\n")
+        assert not _changes_the_view("+++ b/src/hours/week.js\n+export const x=1\n")
+
+    def test_it_survives_the_run_being_written_down(self):
+        from drydock.models import Item, Plan
+
+        plan = Plan(
+            summary="s",
+            items=[
+                Item(
+                    id=1,
+                    title="t",
+                    rationale="r",
+                    files=[],
+                    verify_with="tests",
+                    worth_looking_at=False,
+                )
+            ],
+        )
+        back = Plan.model_validate_json(plan.model_dump_json())
+        assert back.items[0].worth_looking_at is False

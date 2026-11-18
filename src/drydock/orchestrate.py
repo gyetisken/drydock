@@ -136,7 +136,15 @@ def _judge(
                 model=model,
                 on_event=on_event,
             )
-        if run.direction and _changes_the_view(diff):
+        # The planner says whether this item is worth looking at; the diff
+        # decides only when it did not say. A critic sent to judge a
+        # placeholder page refuses it for being a placeholder, which is
+        # true and useless, and three attempts went on an item that had
+        # been finished the first time.
+        by_eye = item.worth_looking_at
+        if by_eye is None:
+            by_eye = _changes_the_view(diff)
+        if run.direction and by_eye:
             jobs["critic"] = pool.submit(_show_it, repo_path, run, item, on_event)
 
     refusals = []

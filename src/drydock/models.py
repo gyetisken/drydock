@@ -100,6 +100,19 @@ class Item(BaseModel):
     # still said. So a settled question is written onto the item, and
     # everyone downstream judges it as settled.
     settled: list[str] = Field(default_factory=list, exclude=False)
+    worth_looking_at: bool | None = Field(
+        default=None,
+        description=(
+            "Whether somebody should look at the rendered page to judge this "
+            "item. True for work whose whole point is what it looks like. "
+            "False for scaffolding, configuration, data, a test command, a "
+            "placeholder - anything whose success is a build passing rather "
+            "than a page being right. Getting this wrong in either direction "
+            "is expensive: a critic sent to judge a placeholder page refuses "
+            "it for being a placeholder, and three attempts go on an item "
+            "that was finished the first time."
+        ),
+    )
 
     def as_asked(self) -> str:
         """The item, including anything since decided about it."""
