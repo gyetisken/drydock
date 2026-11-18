@@ -10,6 +10,7 @@ a failing test does not converge on a fix; it converges on whatever makes the
 test stop complaining, and the second attempt is where that starts.
 """
 
+import os
 import re
 from concurrent.futures import Future, ThreadPoolExecutor
 from pathlib import Path
@@ -705,6 +706,13 @@ def _split_it(run, item, result, engine, model, on_event, on_gate) -> bool:
     saying it is one, and is never split again, so an item that genuinely
     cannot be done does not become six that cannot.
     """
+    # A way to say "if this item fails, stop - do not make more work".
+    # For a run somebody is watching to a fixed budget, an item that
+    # quietly becomes three is the opposite of what they asked for.
+    if os.environ.get("DRYDOCK_NO_SPLIT"):
+        if on_event:
+            on_event("planner", "splitting is off for this run")
+        return False
     if any("piece of a larger one" in said for said in item.settled):
         return False
 

@@ -406,3 +406,55 @@ class _AnyRepo:
 
     def head(self):
         return "abc1234"
+
+
+class TestTurningSplittingOff:
+    """A way to say "if this item fails, stop - do not make more work".
+    For a run somebody is watching to a fixed budget, an item that quietly
+    becomes three is the opposite of what was asked for."""
+
+    def test_nothing_is_split_when_it_is_off(self, a_run, monkeypatch):
+        from drydock import orchestrate
+
+        monkeypatch.setenv("DRYDOCK_NO_SPLIT", "1")
+        called = []
+        monkeypatch.setattr(
+            orchestrate, "split", lambda *a, **k: called.append(1) or ([], None)
+        )
+        item = a_run.plan.items[1]
+
+        assert not orchestrate._split_it(
+            a_run, item, _failed(item), "claude", "opus", None, None
+        )
+        assert called == [], "the planner was not even asked"
+
+    def test_it_says_so(self, a_run, monkeypatch):
+        from drydock import orchestrate
+
+        monkeypatch.setenv("DRYDOCK_NO_SPLIT", "1")
+        said = []
+        item = a_run.plan.items[1]
+        orchestrate._split_it(
+            a_run,
+            item,
+            _failed(item),
+            "claude",
+            "opus",
+            lambda kind, text: said.append(text),
+            None,
+        )
+        assert any("splitting is off" in text for text in said)
+
+    def test_it_is_on_unless_turned_off(self, a_run, monkeypatch):
+        """The switch is for one run, not a new default."""
+        from drydock import orchestrate
+
+        monkeypatch.delenv("DRYDOCK_NO_SPLIT", raising=False)
+        monkeypatch.setattr(
+            orchestrate, "split", lambda *a, **k: (_two_for(a_run, 2), None)
+        )
+        item = a_run.plan.items[1]
+
+        assert orchestrate._split_it(
+            a_run, item, _failed(item), "claude", "opus", None, None
+        )
