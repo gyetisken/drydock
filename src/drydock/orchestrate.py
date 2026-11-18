@@ -22,7 +22,7 @@ from .engineer import work
 from .fits import why_it_does_not_fit
 from .inspect import look
 from .models import ItemResult, Outcome
-from .planner import answer
+from .planner import answer, split
 from .policy import AT_THE_END, NEVER, Policy, of
 from .repo import Repo
 from .reviewer import review
@@ -640,6 +640,15 @@ def execute(
             if on_item:
                 on_item(item, result.outcome.value)
             if result.outcome in (Outcome.REVERTED, Outcome.BLOCKED):
+                # One chance to be two items instead of one. An item that
+                # used all its attempts is usually an item that was two or
+                # three pieces of work wearing one title, and the only
+                # intervention this program has evidence for is exactly
+                # this one: the same site went from one item of five
+                # landing to six of seven when its largest was split.
+                pieces = _split_it(run, item, result, engine, model, on_event, on_gate)
+                if pieces:
+                    continue
                 failed.add(item.id)
 
         # A failed item used to stop the run, on the reasoning that a later
@@ -672,6 +681,65 @@ def execute(
                 break
 
     return run
+
+
+def _split_it(run, item, result, engine, model, on_event, on_gate) -> bool:
+    """Ask the planner to break a failed item in two, and put the pieces in.
+
+    Returns whether it was split. One level only: a piece carries a note
+    saying it is one, and is never split again, so an item that genuinely
+    cannot be done does not become six that cannot.
+    """
+    if any("piece of a larger one" in said for said in item.settled):
+        return False
+
+    try:
+        pieces, spend = split(
+            Path(run.repo),
+            run.plan,
+            item,
+            result.note or "it did not land",
+            direction=run.direction,
+            next_id=max(i.id for i in run.plan.items) + 1,
+            engine=engine,
+            model=model,
+            on_event=on_event,
+        )
+    except Exception as exc:  # noqa: BLE001 - a failed split is not a failed run
+        if on_event:
+            on_event("planner", f"could not split item {item.id}: {exc}")
+        return False
+
+    run.spend(spend)
+    if not pieces:
+        return False
+
+    # Whatever was waiting for this item was waiting for the whole of it,
+    # which is now the last piece.
+    where = run.plan.items.index(item)
+    run.plan.items[where : where + 1] = pieces
+    for other in run.plan.items:
+        if other in pieces:
+            continue
+        if item.id in other.needs:
+            other.needs = sorted({*other.needs, pieces[-1].id} - {item.id})
+
+    # The attempt that failed stays in the record - it happened, and the
+    # pull request says what did not land - but the item it belonged to no
+    # longer exists, so it must not be counted as a result against one of
+    # the pieces.
+    run.results = [r for r in run.results if r.item.id != item.id]
+    run.save()
+
+    if on_gate:
+        on_gate(
+            item,
+            "split",
+            True,
+            f"tried {result.attempts} times and did not land, so it is now "
+            + ", ".join(f"{p.id}. {p.plain or p.title}" for p in pieces),
+        )
+    return True
 
 
 def judged(run) -> set[int]:

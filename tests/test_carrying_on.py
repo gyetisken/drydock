@@ -54,6 +54,11 @@ class Crew:
         monkeypatch.setattr(orchestrate, "look", lambda *a, **k: _Clean())
         monkeypatch.setattr(orchestrate, "_judge", lambda *a, **k: "")
         monkeypatch.setattr(orchestrate, "_work_a_wave", self._wave)
+        # Splitting a failed item asks the planner, which is a model call.
+        # These tests are about what happens to the rest of the plan, so
+        # the planner says the item is one thing and the run carries on as
+        # it did before splitting existed.
+        monkeypatch.setattr(orchestrate, "split", lambda *a, **k: ([], None))
 
     def _wave(self, repo, repo_path, run, items, *a, **k):
         out = {}

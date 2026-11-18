@@ -13,7 +13,7 @@ from pathlib import Path
 
 from .agent import API_MODEL, JUDGEMENT, Agent, Tool
 from .engines import ClaudeCodeEngine
-from .models import Baseline, Inventory, Plan
+from .models import Baseline, Inventory, Item, Plan
 from .skills import Skill, briefing
 from .tools import read_only
 
@@ -447,3 +447,159 @@ def answer(
         on_event=on_event,
     )
     return agent.run(prompt), agent.usage
+
+
+SPLIT_SYSTEM = """You wrote this plan, and one of its items has been tried
+as many times as it is allowed and has not landed.
+
+Look at what it was asked to do and at what happened, and decide whether it
+was one item. Usually it was not: an item that runs out of its time while
+still working, or that comes back refused for a different reason each time,
+is an item that was two or three pieces of work wearing one title.
+
+Split it, or say plainly that it cannot be split.
+
+Rules for the pieces:
+
+Two or three, no more. Splitting something into five is how the plan got
+too long in the first place.
+
+Each piece is a working state, not a file. The first one leaves something
+that runs - a stylesheet nobody imports is not a working state. Each later
+one adds to something that already works, so that a piece failing costs
+that piece rather than everything after it.
+
+Each piece says what it needs from the pieces before it, by position: the
+first needs nothing new, the second may need the first.
+
+Say it cannot be split when that is true. A single function that has to be
+right, one migration, one file that is genuinely one thing - saying so is a
+better answer than three pieces that each do a third of it and none of
+which works. The item stays as it was and is reported as not done."""
+
+SPLIT_PROMPT = """The plan, in summary: {summary}
+
+The item that did not land:
+
+    {id}. {title}
+
+    Why it exists: {rationale}
+    Files it named: {files}
+
+What happened to it:
+
+{what_happened}
+
+The other items, so the pieces do not take work that belongs elsewhere:
+
+{others}
+{direction}
+Split it, or say it cannot be split."""
+
+
+def split(
+    repo: Path,
+    run_plan,
+    item,
+    what_happened: str,
+    direction: str = "",
+    next_id: int = 0,
+    engine: str = "api",
+    model: str = "opus",
+    on_event=None,
+) -> tuple[list[Item], object]:
+    """Break one item that did not land into pieces that might.
+
+    Returns the pieces and the spend, or an empty list when the planner
+    says it is one thing. The pieces get fresh ids from `next_id`; it is
+    the caller's job to point whatever needed the original at the last of
+    them, because what those items were waiting for is the whole of it.
+
+    This is the one intervention that is known to work on the evidence
+    this program has: the same site went from one item of five landing to
+    six of seven when its largest item was split by hand.
+    """
+    others = "\n".join(
+        f"    {i.id}. {i.plain or i.title}" for i in run_plan.items if i.id != item.id
+    )
+    prompt = SPLIT_PROMPT.format(
+        summary=run_plan.summary,
+        id=item.id,
+        title=item.title,
+        rationale=item.rationale,
+        files=", ".join(item.files) or "none named",
+        what_happened=what_happened[:2000],
+        others=others or "    (this is the only item)",
+        direction=f"\n{direction}\n" if direction else "",
+    )
+    shape = (
+        '{"can_be_split": true, "why": "...", "pieces": [{"title": "...", '
+        '"plain": "...", "rationale": "...", "files": ["..."], '
+        '"verify_with": "build|tests", "needs_the_piece_before": false, '
+        '"worth_looking_at": true}]}'
+    )
+
+    if engine == "claude":
+        found, dollars, turns = ClaudeCodeEngine(model=model, max_turns=4).structured(
+            repo,
+            SPLIT_SYSTEM,
+            prompt,
+            shape,
+            on_event=on_event,
+            tools="",
+            without="Bash Read Glob Grep Edit NotebookEdit WebFetch WebSearch Task",
+        )
+        return _pieces(found, item, next_id), _Spend(dollars, turns)
+
+    agent = Agent(
+        name="Planner",
+        model=API_MODEL.get(model, JUDGEMENT),
+        system=SPLIT_SYSTEM,
+        tools=[],
+        max_turns=1,
+        on_event=on_event,
+    )
+    return _pieces(agent.run(prompt), item, next_id), agent.usage
+
+
+def _pieces(found, item, next_id: int) -> list[Item]:
+    """Turn what the planner said into items, or nothing.
+
+    Deliberately strict. A malformed answer means the item stays as it was
+    and is reported as not done, which is the behaviour this had before -
+    not an item invented out of a half-read reply.
+    """
+    if not isinstance(found, dict) or not found.get("can_be_split"):
+        return []
+    said = found.get("pieces")
+    if not isinstance(said, list) or not 2 <= len(said) <= 3:
+        return []
+
+    pieces: list[Item] = []
+    for n, piece in enumerate(said):
+        if not isinstance(piece, dict) or not piece.get("title"):
+            return []
+        here = next_id + n
+        needs = list(item.needs)
+        if n and piece.get("needs_the_piece_before", True):
+            needs = [*needs, pieces[-1].id]
+        pieces.append(
+            Item(
+                id=here,
+                title=str(piece["title"])[:300],
+                plain=str(piece.get("plain") or "")[:300],
+                rationale=str(piece.get("rationale") or item.rationale)[:4000],
+                files=[str(f) for f in piece.get("files") or item.files],
+                verify_with=(
+                    piece.get("verify_with")
+                    if piece.get("verify_with") in ("build", "tests")
+                    else item.verify_with
+                ),
+                needs=needs,
+                worth_looking_at=piece.get("worth_looking_at"),
+                # A piece is not split again. One level, so that an item
+                # which cannot be done does not become six that cannot.
+                settled=[*item.settled, "This item is a piece of a larger one."],
+            )
+        )
+    return pieces
