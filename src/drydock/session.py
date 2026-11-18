@@ -34,6 +34,7 @@ from .run import Run
 from .settings import Settings
 from .skills import Skill, discover
 from .skills import load as load_skill
+from .stack import already_decided
 
 
 def _skills_named(names: list[str]) -> list:
@@ -265,7 +266,14 @@ class Session:
             # decides what it looks like. Neither answer depends on the
             # other, and the designer is the single slowest station in the
             # line - five minutes of the planner sitting idle, for nothing.
-            wants_shape = empty
+            # An empty repository needs somebody to decide what it is made
+            # of - unless the person asking already did. A task that names
+            # a toolchain and says it is settled has decided it, and the
+            # Architect then spends a station restating it: forty-one
+            # seconds on one measured run, a third of everything that run
+            # spent working.
+            settled = already_decided(self.task)
+            wants_shape = empty and not settled
             # Already decided for this project. Deciding it again costs five
             # minutes and produces a different answer, and a project whose
             # palette changes between jobs does not have a palette.
@@ -280,6 +288,20 @@ class Session:
                     agent="Architect",
                     state="working",
                     note="deciding what this is made of",
+                )
+            elif settled:
+                # What the task said, handed on in the Architect's place so
+                # the planner is not left to work it out mid-plan.
+                shape = (
+                    "\n\nThe stack was decided by whoever asked for this, "
+                    f"not here: {settled.why}. Take it as given and do not "
+                    "reopen it.\n"
+                )
+                self.feed.emit(
+                    "agent.state",
+                    agent="Architect",
+                    state="skipped",
+                    note=f"the task already decided this - {settled.why}",
                 )
             else:
                 self.feed.emit(
