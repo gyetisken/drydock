@@ -14,10 +14,13 @@ the page cannot read the status of what it just loaded.
 import http.server
 import json
 import threading
+from pathlib import Path
+from types import SimpleNamespace
 from typing import ClassVar
 
 import pytest
 
+from drydock.critic import Verdict as Seen
 from drydock.preview import Served, what_it_serves
 
 
@@ -195,3 +198,89 @@ class TestTheWindowSaysWhatWasObserved:
 
         said = Path("src/drydock/web.py").read_text()
         assert "preview.what_it_serves(live.url)" in said
+
+
+class TestWhatTheCriticIsAllowedToJudge:
+    """The same confusion, one floor down, and far more expensive there.
+
+    A static page was written into a project whose `package.json` starts a
+    JSON API. The preview ran that API, because it is what the project says
+    starts it, and the critic was handed a browser's raw-JSON view of it.
+    The critic said, correctly, that there is no page - and the item was
+    rolled back for it. Four attempts, two reverts, a split and thirty-three
+    minutes, and the thing being photographed was never the thing that had
+    just been written.
+
+    `_show_it` already says what should happen here: a project that will not
+    start is "a check that did not happen, reported as such, rather than an
+    item rolled back for a failure that belongs to this program". A project
+    that starts and serves something other than a page is the same case.
+    """
+
+    def a_run(self, monkeypatch, url, command="npm run start"):
+        """`_show_it`, with only the preview it is handed replaced. No
+        browser, no model, no repository. `_show_it` imports `preview`
+        inside itself, so the module is what has to be patched."""
+        from drydock import orchestrate, preview
+
+        live = SimpleNamespace(url=url, command=command)
+        monkeypatch.setattr(preview, "running", lambda repo: live)
+        said = []
+        return orchestrate, said
+
+    def show(self, orchestrate, said):
+        return orchestrate._show_it(
+            Path("/nowhere"),
+            SimpleNamespace(direction="", model="opus"),
+            SimpleNamespace(plain="a page", title="a page", as_asked=lambda: ""),
+            lambda who, text: said.append((who, text)),
+        )
+
+    def test_a_json_api_is_not_judged_as_a_page(self, project, monkeypatch):
+        url = project({"/health": (b'{"ok":true}', "application/json", 200)})
+        orchestrate, said = self.a_run(monkeypatch, url)
+
+        seen, cost = self.show(orchestrate, said)
+
+        assert seen is None, "a critic that did not look must not return a verdict"
+        assert cost == 0.0
+        ((_, text),) = [s for s in said if s[0] == "critic"]
+        assert text.startswith("did not look")
+        assert "not a page" in text
+        assert "npm run start" in text, "say what served it, or this is unfixable"
+
+    def test_a_page_is_still_judged(self, project, monkeypatch):
+        """The check must not become a way of never judging anything."""
+        url = project({"/": (b"<h1>hello</h1>", "text/html", 200)})
+        orchestrate, said = self.a_run(monkeypatch, url)
+        reached = []
+        monkeypatch.setattr(
+            orchestrate,
+            "why_it_does_not_fit",
+            lambda url, on_event=None: reached.append(url) or "",
+        )
+        monkeypatch.setattr(
+            orchestrate,
+            "look_at_it",
+            lambda *a, **k: (
+                Seen(looked=True, approved=True, reason="ok", noticed=[]),
+                0.0,
+            ),
+        )
+
+        seen, _ = self.show(orchestrate, said)
+
+        assert reached == [url], "a real page must reach the measurement"
+        assert seen is not None and seen.approved
+
+    def test_a_server_that_stopped_answering_is_not_a_refusal(
+        self, project, monkeypatch
+    ):
+        """It answered when the preview started and does not now. That is
+        this program's problem, not the item's."""
+        orchestrate, said = self.a_run(monkeypatch, "http://127.0.0.1:1")
+
+        seen, _ = self.show(orchestrate, said)
+
+        assert seen is None
+        assert "did not look" in said[-1][1]
