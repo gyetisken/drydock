@@ -43,7 +43,23 @@ other single choice.
 restaurant's site are outside it deciding whether to go in. Design that
 first; the desktop version is the easy one.
 
-**No photographs.** Nothing in this process can take one, buy one or
+**Photographs: not made, but used.** Nothing here can take a photograph or
+generate one, and a hand-written file named `.jpg` is a lie that passes a
+build. A photograph somebody else took, licensed for this and referenced by
+URL, is neither - and it is what carries most of the pages worth sitting
+beside.
+
+Use real ones, from a real source, with the URL in the markup: Unsplash
+serves them directly. Give every one an aspect ratio in the CSS so nothing
+jumps when it arrives, `loading="lazy"` below the fold, a real `alt`, and a
+ground colour underneath in case it never comes. What is never allowed is an
+image file written by the thing building the page.
+
+An image with no art direction is a stock photograph of a handshake. If the
+direction does not say what is in the picture and what it is doing, the page
+is better with type, colour and space instead.
+
+** Nothing in this process can take one, buy one or
 generate one. A layout that needs a hero image is a layout nobody here can
 build, and what arrives instead is a few hundred bytes of flat colour named
 .jpg. Design with type, colour, space and drawn marks. Where an image really

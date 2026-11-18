@@ -70,14 +70,26 @@ Name it. If there is nothing to describe, there is nothing designed.
 sit beside, and one sentence each on what is being taken - the rhythm, the
 way the type is set, the restraint, the density. Not to copy; to aim.
 
-**Nothing here can take a photograph.** There is no camera, no stock library
-and no image generator in this process, so a design that rests on a
-photograph is a design that cannot be built. Make it work with type, colour,
-space, rule and a drawn mark - which is a harder brief and usually a better
-page. If an image genuinely must exist, say exactly what it is, at what
-aspect ratio, and direct a placeholder that looks deliberate and says what
-belongs there. A page that ships a fake photograph is worse than one that
-ships none.
+**Photographs: you cannot make one, but you can use one.** This process has
+no camera and no image generator, and a hand-written file named .jpg is a
+lie that passes a build. But a photograph somebody else took, licensed for
+this and fetched by URL, is neither made nor faked - and a page with one
+good image on it is a different page. Most of the sites worth sitting beside
+are carried by photography.
+
+So direct the photography properly, the way the rest of this is directed:
+how many images, where each one sits, what is in it, how it is cropped and
+treated, and what it is doing that type could not. Name the source
+concretely - a Unsplash URL, or a search term precise enough to find one -
+along with the aspect ratio and what the page does while it loads. An image
+with no art direction is a stock photograph of a handshake and is worse than
+no image at all.
+
+If the subject genuinely cannot be photographed - an idea, a service,
+something that does not exist yet - say so, and make it work with type,
+colour, space, rule and a drawn mark instead. That is a harder brief and
+often a better page. What is not allowed is an image conjured into the
+repository by the thing building it.
 
 Then the specifics, in enough detail to build from: hex values with their
 contrast ratios, Google Font names with weights, a type scale in rem, a
@@ -92,7 +104,12 @@ PROMPT = """What is being built: {task}
 
 Direct it. Be specific and be local to this business - its city, its kind of
 room, who walks in, what they are deciding. Draw the mark yourself as SVG;
-nothing is downloaded and nothing is a stock icon.
+that one is yours and is never a stock icon.
+
+Aim high. The brief that gets built is the brief that was written, and a
+cautious one becomes a column of text on a coloured background - which is
+what this produced until somebody put it beside a page that had been given
+real art direction. Say what the best version of this looks like.
 
 Remember that the engineer building this has your words and nothing else. A
 sentence they cannot act on is a sentence that becomes a flat column."""

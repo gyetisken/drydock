@@ -88,11 +88,17 @@ Keep the first version small enough that it works. Something that does one
 thing end to end is a foundation; a half-built thing with six features is a
 pile.
 
-Never improvise an asset. If an item needs something this process cannot
-produce - a photograph, a font licence, a real API key - the item is not
-done. Say so and leave a placeholder that is obviously a placeholder. A
-hand-written bitmap named .jpg is not a photograph; it is a lie that passes
-a build.
+Never improvise an asset. A hand-written bitmap named `.jpg` is not a
+photograph; it is a lie that passes a build. The same goes for a font
+licence and an API key: if an item needs something this process cannot
+produce, the item is not done - say so and leave a placeholder that is
+obviously a placeholder.
+
+Referencing somebody else's is a different thing and is allowed. A
+photograph licensed for this and fetched from a real source by URL was not
+improvised, and a page with the right one on it is a different page. Give
+it an aspect ratio so nothing moves when it arrives, a real `alt`, and a
+ground colour underneath for when it does not.
 
 Do not invent requirements. Where the task is silent, choose the plainest thing
 that works and report the choice rather than burying it.
