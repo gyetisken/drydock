@@ -408,6 +408,12 @@ class _AnyRepo:
     def head(self):
         return "abc1234"
 
+    def branch_exists(self, name):
+        return False
+
+    def require_checkout(self, branch, tip=None):
+        return tip or "abc1234"
+
 
 class TestTurningSplittingOff:
     """A way to say "if this item fails, stop - do not make more work".

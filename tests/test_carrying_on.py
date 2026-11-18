@@ -127,6 +127,9 @@ class _Quiet:
     def head(self):
         return "abc1234"
 
+    def branch_exists(self, name):
+        return False
+
     def require_checkout(self, branch, tip=None):
         return tip or "previous"
 

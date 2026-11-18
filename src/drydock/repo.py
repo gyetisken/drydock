@@ -53,8 +53,21 @@ class Repo:
         return not self._git("status --porcelain")[1].strip()
 
     def branch(self, name: str) -> None:
-        self._checked(f"checkout -B {_quote(name)}")
+        # -b, not -B: a branch that already exists is refused rather than
+        # moved. The caller that is allowed to pick up an existing branch
+        # is resume, not this one - see branch_exists.
+        self._checked(f"checkout -b {_quote(name)}")
         self.require_checkout(name)
+
+    def branch_exists(self, name: str) -> bool:
+        """A read-only check, so it is safe to call before deciding
+        whether this run is new or picking up an old branch by surprise."""
+        code, out = self._git(f"show-ref --verify --quiet refs/heads/{_quote(name)}")
+        if code == 0:
+            return True
+        if code == 1:
+            return False
+        raise GitError(f"git show-ref failed (exit {code}): {out.strip()[-600:]}")
 
     def _checked(self, args: str) -> str:
         code, out = self._git(args)
