@@ -52,6 +52,36 @@ class Repo:
     def is_clean(self) -> bool:
         return not self._git("status --porcelain")[1].strip()
 
+    def has_history(self) -> bool:
+        """Whether anything has ever been committed here.
+
+        `git init` and nothing else leaves a real repository with no HEAD at
+        all, which is not the same as an empty one: every check here reads
+        HEAD, and the first thing a run does with a repository is ask where
+        its branch is.
+        """
+        return self._git("rev-parse --verify --quiet HEAD")[0] == 0
+
+    def start_history(self) -> None:
+        """Give a repository with no commits a first one, or do nothing.
+
+        An item that fails is undone by throwing away its commit, so a run
+        needs a commit to go back to. With no HEAD there is nothing to roll
+        back to and nothing to compare a branch against.
+
+        This commits whatever is already in the folder, which is the one
+        case where writing a commit without asking is the careful thing to
+        do: nothing is overwritten or moved, and the alternative is refusing
+        to work and telling somebody to go and run two git commands. A
+        repository that does have history is left exactly alone - there the
+        refusal stands, because an uncommitted change in a tree with history
+        is work somebody did and may not want folded into a baseline.
+        """
+        if self.has_history():
+            return
+        self._checked("add -A")
+        self._checked('commit -q --allow-empty -m "before drydock"')
+
     def branch(self, name: str) -> None:
         # -b, not -B: a branch that already exists is refused rather than
         # moved. The caller that is allowed to pick up an existing branch
@@ -79,6 +109,15 @@ class Repo:
         """Check ownership and cleanliness before running checks or restoring."""
         _, current = self._git("symbolic-ref --quiet --short HEAD")
         current = current.strip() or "(detached)"
+        if not self.has_history():
+            # Said plainly, because the raw version of this - "git rev-parse
+            # --verify HEAD failed (exit 128)" - ended a run in a way nobody
+            # could act on.
+            raise GitError(
+                f"{self.path} is a git repository with no commits yet, so "
+                f"there is no state to verify {branch} against or to undo a "
+                "failed item back to"
+            )
         head = self._checked("rev-parse --verify HEAD")
         status = self._checked("status --porcelain")
         if current != branch or (tip and head != tip) or status:
