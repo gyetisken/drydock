@@ -178,6 +178,68 @@ def _announced(log: Path) -> int | None:
     return int(found[-1]) if found else None
 
 
+@dataclass(frozen=True)
+class Served:
+    """What came back from asking the running project for a page.
+
+    The port answering and the page being there are two different facts,
+    and the window had one green dot for both. A service with a /health
+    endpoint and no root is working exactly as asked; rendering its 404
+    beside "1 of 1 items landed" says the opposite.
+
+    This is done here rather than in the browser because the frame is
+    cross-origin - a different port is a different origin - so the page
+    cannot read the status of what it just loaded. It can only show
+    whatever the server painted.
+    """
+
+    status: int = 0
+    content_type: str = ""
+    error: str = ""
+
+    @property
+    def is_a_page(self) -> bool:
+        """Whether this is something worth putting in a frame."""
+        return 200 <= self.status < 300 and "html" in self.content_type.lower()
+
+    @property
+    def said(self) -> str:
+        if self.error:
+            return self.error
+        kind = self.content_type.split(";")[0].strip() or "no content type"
+        return f"HTTP {self.status}, {kind}"
+
+
+def what_it_serves(url: str, path: str = "/", timeout: float = 3.0) -> Served:
+    """Ask the running project for one page and report what came back.
+
+    One request, short timeout, nothing followed and nothing retried. It
+    reports what it observed - including a 404, which is a fact about the
+    project and not a failure of this program.
+    """
+    import urllib.error
+    import urllib.request
+
+    target = url.rstrip("/") + "/" + path.lstrip("/")
+    try:
+        with urllib.request.urlopen(target, timeout=timeout) as answer:
+            return Served(
+                status=answer.status,
+                content_type=answer.headers.get("Content-Type", ""),
+            )
+    except urllib.error.HTTPError as refused:
+        # A status this program did not want is still a status, and the
+        # honest thing is to report it rather than to call it an error.
+        return Served(
+            status=refused.code,
+            content_type=refused.headers.get("Content-Type", ""),
+        )
+    except urllib.error.URLError as exc:
+        return Served(error=f"it did not answer: {exc.reason}")
+    except (TimeoutError, OSError) as exc:
+        return Served(error=f"it did not answer: {exc}")
+
+
 def _answers(port: int) -> bool:
     """Whether anything is listening, on either address family.
 

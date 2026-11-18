@@ -724,6 +724,9 @@ document.querySelectorAll("#views button").forEach(b =>
 const Pv = {
   open: false,
   url: "",
+  // What the server last observed at this url, or null when nothing has
+  // been observed yet. Never assumed.
+  seen: null,
 
   async show() {
     Pv.open = true;
@@ -747,6 +750,47 @@ const Pv = {
     $("pv-dot").className = "dot" + (bad ? " bad" : "");
   },
 
+  // Three facts, not one. The code landing, the server answering, and the
+  // page being there are separate, and the window used to have a single
+  // green dot standing for all three - so a service with a /health
+  // endpoint and no root showed its own 404 under "1 of 1 items landed",
+  // which reads as the whole thing having failed. It had not.
+  standing(body) {
+    const rows = [
+      ["the server", true, body.command ? `started with ${body.command}` : "running"],
+      ["this page", body.is_a_page, body.served || "not checked"],
+    ];
+    $("pv-state").innerHTML = rows
+      .map(([what, good, said]) =>
+        `<span class="pv-fact ${good ? "ok" : "flat"}">
+           <b>${esc(what)}</b> ${esc(said)}
+         </span>`)
+      .join("");
+    $("pv-dot").className = "dot " + (body.is_a_page ? "ok" : "flat");
+  },
+
+  // What to show when the root is not a page. Not an error - a service
+  // with one JSON endpoint is working exactly as it was asked to. What is
+  // not known is which endpoint, and this does not guess: drydock keeps no
+  // route metadata, and reading a path out of the task prose would be
+  // inventing one.
+  nothingToRender(body) {
+    $("pv-body").innerHTML = `<div class="empty">
+      <p>Nothing to show at the root of this project.</p>
+      <p class="why">
+        <code>${esc(body.url)}</code> answered <b>${esc(body.served)}</b>.
+        That is a fact about the project, not a failure: a service with one
+        endpoint and no home page looks exactly like this. drydock does not
+        know which paths this project serves, so it is not going to guess at
+        one.
+      </p>
+      <p class="why">The work that landed is in the thread and in the diff.</p>
+      <button class="btn small" id="pv-external">Open it in a tab</button>
+    </div>`;
+    const go = $("pv-external");
+    if (go) go.onclick = () => window.open(body.url, "_blank", "noopener");
+  },
+
   async start() {
     Pv.say("starting it…");
     const res = await fetch("/api/preview", {
@@ -754,10 +798,12 @@ const Pv = {
       body: JSON.stringify({ project: S.project }),
     });
     const body = await res.json();
-    if (!body.ok) { Pv.url = ""; Pv.say(body.reason, true); return; }
+    if (!body.ok) { Pv.url = ""; Pv.seen = null; Pv.say(body.reason, true); return; }
     Pv.url = body.url;
+    Pv.seen = body;
     $("pv-url").value = body.url;
-    $("pv-dot").className = "dot ok";
+    Pv.standing(body);
+    if (!body.is_a_page) { Pv.nothingToRender(body); return; }
     Pv.load();
   },
 
@@ -780,7 +826,9 @@ const Pv = {
 
 $("toggle-preview").onclick = () => (Pv.open ? Pv.hide() : Pv.show());
 $("pv-close").onclick = () => Pv.hide();
-$("pv-reload").onclick = () => Pv.load();
+// Re-ask rather than re-frame: what is at the url may have changed, and
+// the only way to know is to look again.
+$("pv-reload").onclick = () => Pv.start();
 $("pv-open").onclick = () => Pv.url && window.open(Pv.url, "_blank", "noopener");
 
 /* ---------- is it running ---------- */
