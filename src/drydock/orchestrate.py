@@ -23,6 +23,7 @@ from .fits import why_it_does_not_fit
 from .inspect import look
 from .models import ItemResult, Outcome
 from .planner import answer
+from .policy import AT_THE_END, NEVER, Policy
 from .repo import Repo
 from .reviewer import review
 from .run import Run
@@ -110,7 +111,7 @@ def _judge(
     item,
     diff: str,
     report: dict,
-    reviewing: bool,
+    policy: Policy,
     engine: str,
     model: str,
     on_event,
@@ -125,7 +126,7 @@ def _judge(
     """
     jobs: dict[str, Future] = {}
     with ThreadPoolExecutor(max_workers=2) as pool:
-        if reviewing:
+        if policy.read_the_diff:
             jobs["reviewer"] = pool.submit(
                 review,
                 repo_path,
@@ -144,6 +145,12 @@ def _judge(
         by_eye = item.worth_looking_at
         if by_eye is None:
             by_eye = _changes_the_view(diff)
+        # A profile that looks once, at the end, does not look here. The
+        # looking still happens - it is the last thing a run does - but an
+        # item on the way to a finished page is not judged as though it
+        # were one.
+        if policy.look_at_it == NEVER or policy.look_at_it == AT_THE_END:
+            by_eye = False
         if run.direction and by_eye:
             jobs["critic"] = pool.submit(_show_it, repo_path, run, item, on_event)
 
@@ -235,7 +242,7 @@ def _one_item(
     item,
     engine: str,
     model: str,
-    reviewing: bool,
+    policy: Policy,
     per_item: float,
     on_event,
     on_gate,
@@ -267,7 +274,7 @@ def _one_item(
     # a machine problem and looping on it burns the run instead of
     # reporting it - but not one, because this has happened three times on
     # one item in an afternoon and each time the item itself was fine.
-    revived, REVIVALS = 0, 2
+    revived, REVIVALS = 0, policy.revivals
     # One question per item. A loop in which the engineer and the planner
     # talk until they agree has no bound on it, and the thing being settled
     # is usually one sentence.
@@ -277,7 +284,7 @@ def _one_item(
         chain = detect(where)
         return {"build": chain.build_command, "tests": chain.test_command}
 
-    while attempt <= 2:
+    while attempt <= policy.attempts:
         try:
             report, usage = work(
                 where,
@@ -291,6 +298,7 @@ def _one_item(
                 engine=engine,
                 model=model,
                 direction=run.direction,
+                policy=policy,
             )
         except BudgetExceeded as stop:
             here.discard()
@@ -393,7 +401,7 @@ def _one_item(
                     item,
                     diff,
                     report,
-                    reviewing,
+                    policy,
                     engine,
                     model,
                     on_event,
@@ -443,7 +451,7 @@ def _work_a_wave(
     items: list,
     engine: str,
     model: str,
-    reviewing: bool,
+    policy: Policy,
     per_item: float,
     on_event,
     on_gate,
@@ -469,7 +477,7 @@ def _work_a_wave(
             items[0],
             engine,
             model,
-            reviewing,
+            policy,
             per_item,
             on_event,
             on_gate,
@@ -493,7 +501,7 @@ def _work_a_wave(
                     item,
                     engine,
                     model,
-                    reviewing,
+                    policy,
                     per_item,
                     on_event,
                     on_gate,
@@ -551,8 +559,11 @@ def execute(
     on_item=None,
     should_stop=None,
     on_gate=None,
-    reviewing: bool = True,
+    policy: Policy | None = None,
 ) -> Run:
+    # No policy named means the one this program has always used. A
+    # default that changes under somebody is not a default.
+    policy = policy or of(None)
     repo_path = Path(run.repo)
     repo = Repo(repo_path)
 
@@ -609,7 +620,7 @@ def execute(
             wave.items,
             engine,
             model,
-            reviewing,
+            policy,
             per_item,
             on_event,
             on_gate,

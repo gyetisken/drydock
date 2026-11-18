@@ -148,6 +148,7 @@ def work(
     engine: str = "api",
     model: str = "opus",
     direction: str = "",
+    policy=None,
 ) -> tuple[dict, object]:
     prompt = PROMPT.format(
         repo=repo.name,
@@ -180,6 +181,12 @@ def work(
             "while any of them still stands, however small."
         )
 
+    # What one engineer gets for one item, from the policy this run was
+    # given rather than from a constant in this file.
+    from .policy import of
+
+    policy = policy or of(None)
+
     if engine == "claude":
         # The worker is whatever Claude Code is signed in as. Everything that
         # decides whether its work survives still happens here.
@@ -190,13 +197,14 @@ def work(
         # minutes of the same mistake costs far more than the difference.
         result = ClaudeCodeEngine(
             model=model if retry_of else for_work(model),
+            max_turns=policy.turns,
             # A retry has more to do than the attempt before it: the item,
             # plus everything it was sent back for, read and dealt with one
             # by one. Twelve minutes is the bound on an ordinary attempt and
             # it was being applied to the hardest one. A worker that has
             # genuinely stopped working is caught by the silence limit long
             # before either number matters.
-            minutes=18.0 if retry_of else 12.0,
+            minutes=policy.retry_minutes if retry_of else policy.minutes,
         ).work(
             repo,
             SYSTEM + briefing(skills or [], "engineer") + direction,

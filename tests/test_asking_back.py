@@ -97,7 +97,7 @@ class Fake:
             run.plan.items[0],
             "claude",
             "opus",
-            True,
+            reading(),
             0.0,
             None,
             lambda item, who, ok, note: self.gates.append((who, note)),
@@ -434,3 +434,18 @@ class TestAnAnswerBecomesPartOfTheItem:
 
         back = Plan.model_validate_json(run.plan.model_dump_json())
         assert back.items[0].settled == ["Asked: x\n  Settled: drop it"]
+
+
+def no_diff_review():
+    """The default policy with the reviewer off, which is what these tests
+    stood on before policies existed."""
+    from drydock.policy import as_told, of
+
+    return as_told(of(None), read_the_diff=False)
+
+
+def reading():
+    """The default policy, unchanged."""
+    from drydock.policy import of
+
+    return of(None)

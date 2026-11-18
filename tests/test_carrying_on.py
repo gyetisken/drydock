@@ -65,7 +65,7 @@ class Crew:
                 item,
                 "claude",
                 "opus",
-                False,
+                no_diff_review(),
                 0.0,
                 None,
                 None,
@@ -146,7 +146,7 @@ class TestWhatStillGetsDone:
     def test_an_independent_item_is_still_attempted(self, here, monkeypatch):
         crew = Crew(monkeypatch, fails={1})
         run = a_run(here, an_item(1), an_item(2, needs=[1]), an_item(3))
-        orchestrate.execute(run, engine="claude", model="opus", reviewing=False)
+        orchestrate.execute(run, engine="claude", model="opus", policy=no_diff_review())
 
         assert 3 in crew.attempted
         assert outcomes(run)[3] == "done"
@@ -156,7 +156,7 @@ class TestWhatStillGetsDone:
         engineer and produces a failure that means nothing."""
         crew = Crew(monkeypatch, fails={1})
         run = a_run(here, an_item(1), an_item(2, needs=[1]), an_item(3))
-        orchestrate.execute(run, engine="claude", model="opus", reviewing=False)
+        orchestrate.execute(run, engine="claude", model="opus", policy=no_diff_review())
 
         assert 2 not in crew.attempted
         assert outcomes(run)[2] == "blocked"
@@ -164,7 +164,7 @@ class TestWhatStillGetsDone:
     def test_it_says_what_the_stranded_item_was_waiting_on(self, here, monkeypatch):
         Crew(monkeypatch, fails={1})
         run = a_run(here, an_item(1), an_item(2, needs=[1]))
-        orchestrate.execute(run, engine="claude", model="opus", reviewing=False)
+        orchestrate.execute(run, engine="claude", model="opus", policy=no_diff_review())
 
         note = next(r.note for r in run.results if r.item.id == 2)
         assert "needs item 1" in note
@@ -177,7 +177,7 @@ class TestWhatStillGetsDone:
         run = a_run(
             here, an_item(1), an_item(2), an_item(3, needs=[2]), an_item(4, needs=[1])
         )
-        orchestrate.execute(run, engine="claude", model="opus", reviewing=False)
+        orchestrate.execute(run, engine="claude", model="opus", policy=no_diff_review())
 
         assert set(outcomes(run)) == {1, 2, 3, 4}
         assert outcomes(run)[4] == "done"
@@ -185,7 +185,7 @@ class TestWhatStillGetsDone:
     def test_nothing_failing_changes_nothing(self, here, monkeypatch):
         crew = Crew(monkeypatch, fails=set())
         run = a_run(here, an_item(1), an_item(2, needs=[1]), an_item(3))
-        orchestrate.execute(run, engine="claude", model="opus", reviewing=False)
+        orchestrate.execute(run, engine="claude", model="opus", policy=no_diff_review())
 
         assert sorted(crew.attempted) == [1, 2, 3]
         assert set(outcomes(run).values()) == {"done"}
@@ -203,7 +203,7 @@ class TestTheBarMovesUpWithTheWork:
         monkeypatch.setattr(orchestrate, "verify", lambda *a, **k: _Passed(11))
         run = a_run(here, an_item(1))
         run.baseline.tests_run = 3
-        orchestrate.execute(run, engine="claude", model="opus", reviewing=False)
+        orchestrate.execute(run, engine="claude", model="opus", policy=no_diff_review())
 
         assert run.baseline.tests_run == 11
         assert crew.attempted == [1]
@@ -216,7 +216,7 @@ class TestTheBarMovesUpWithTheWork:
         run = a_run(here, an_item(1), an_item(2))
         run.baseline.tests_run = 3
 
-        orchestrate.execute(run, engine="claude", model="opus", reviewing=False)
+        orchestrate.execute(run, engine="claude", model="opus", policy=no_diff_review())
         # The second item was measured against eleven, not three. What the
         # verifier does with that is its own test; what matters here is
         # that the number it was given had moved.
@@ -231,7 +231,7 @@ class TestTheBarMovesUpWithTheWork:
         run = a_run(here, an_item(1), an_item(2))
         run.baseline.tests_run = 3
 
-        orchestrate.execute(run, engine="claude", model="opus", reviewing=False)
+        orchestrate.execute(run, engine="claude", model="opus", policy=no_diff_review())
         assert run.baseline.tests_run == 11
 
 
@@ -285,3 +285,18 @@ class TestWhichItemsAreLookedAt:
         )
         back = Plan.model_validate_json(plan.model_dump_json())
         assert back.items[0].worth_looking_at is False
+
+
+def no_diff_review():
+    """The default policy with the reviewer off, which is what these tests
+    stood on before policies existed."""
+    from drydock.policy import as_told, of
+
+    return as_told(of(None), read_the_diff=False)
+
+
+def reading():
+    """The default policy, unchanged."""
+    from drydock.policy import of
+
+    return of(None)
