@@ -14,6 +14,7 @@ the page cannot read the status of what it just loaded.
 import http.server
 import json
 import threading
+import time
 from pathlib import Path
 from types import SimpleNamespace
 from typing import ClassVar
@@ -327,5 +328,13 @@ class TestAPlainPageCanBeLookedAt:
         live = preview.start(tmp_path)
 
         preview.stop(tmp_path)
+
+        # Polled, not asserted on the instant. `stop` signals the process;
+        # the kernel reaps it when it does, and "it stops" is the claim
+        # worth making rather than "it has already stopped". Asserting the
+        # instant passed on one machine and failed on CI.
+        deadline = time.time() + 5
+        while time.time() < deadline and what_it_serves(live.url).is_a_page:
+            time.sleep(0.1)
 
         assert not what_it_serves(live.url).is_a_page
