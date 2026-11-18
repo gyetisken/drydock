@@ -680,3 +680,78 @@ class _Deaf:
 
     def poll(self):
         return 0 if (self.leaves and self.asked) else None
+
+
+class TestAWorkerStillWorkingWhenItsTimeRunsOut:
+    """It has not failed; it has run out of budget. An item was stopped at
+    twelve minutes having got through thirty-nine turns, and every file it
+    had written was thrown away - which is not a defect in the work, it is
+    a number chosen in another file.
+
+    One extension, once, and only for a worker that is visibly working.
+    """
+
+    def test_a_working_worker_is_given_more_time(self, monkeypatch):
+        from drydock import engines
+
+        monkeypatch.setattr(engines, "QUIET_EVERY", 0.02)
+        monkeypatch.setattr(engines, "SILENT_LIMIT", 1000)
+        monkeypatch.setattr(engines, "STILL_GOING", 1000)
+
+        said: list[tuple[str, str]] = []
+        # A clock that expires while the worker is plainly still working,
+        # and a worker that finishes inside the extension but not inside
+        # the original budget.
+        worker = _Dribbles(_showing(12), gap=0.02)  # about 0.24s of output
+        _, _, stopped = engines.ClaudeCodeEngine(minutes=0.00333)._read(
+            worker, lambda kind, text: said.append((kind, text))
+        )  # 0.2s, extended once by 0.1s
+
+        assert any("still working" in text for _, text in said), "it was offered"
+        assert stopped == "", "and it finished inside the extension"
+
+    def test_a_quiet_worker_is_stopped_as_before(self, monkeypatch):
+        """Only a worker that is visibly working earns the extension. A
+        stalled one must not be given more time to be stalled in."""
+        from drydock import engines
+
+        monkeypatch.setattr(engines, "QUIET_EVERY", 0.02)
+        monkeypatch.setattr(engines, "SILENT_LIMIT", 1000)
+        monkeypatch.setattr(engines, "STILL_GOING", 0)
+
+        worker = _Silent(for_seconds=0.6)
+        _, _, stopped = engines.ClaudeCodeEngine(minutes=0.002)._read(worker, None)
+
+        assert stopped == "clock"
+
+    def test_it_is_extended_once_and_only_once(self, monkeypatch):
+        """Otherwise a worker that keeps talking never stops at all."""
+        from drydock import engines
+
+        monkeypatch.setattr(engines, "QUIET_EVERY", 0.02)
+        monkeypatch.setattr(engines, "SILENT_LIMIT", 1000)
+        monkeypatch.setattr(engines, "STILL_GOING", 1000)
+
+        said: list[tuple[str, str]] = []
+        worker = _Dribbles(_showing(200), gap=0.01)
+        engines.ClaudeCodeEngine(minutes=0.001)._read(
+            worker, lambda kind, text: said.append((kind, text))
+        )
+
+        offers = [t for _, t in said if "still working" in t and "more, once" in t]
+        assert len(offers) <= 1, offers
+
+
+def _showing(count: int) -> list[str]:
+    """Lines a watching person would see something from."""
+    import json
+
+    return [
+        json.dumps(
+            {
+                "type": "assistant",
+                "message": {"content": [{"type": "tool_use", "name": "Write"}]},
+            }
+        )
+        for _ in range(count)
+    ]

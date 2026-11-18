@@ -118,6 +118,11 @@ QUIET_AFTER = 90
 # nothing at all is the second.
 SILENT_LIMIT = 120
 
+# How recently a worker must have shown something for its clock to be
+# extended rather than enforced. Shorter than the silence limit on purpose:
+# anything quieter than this is already on its way to being stopped.
+STILL_GOING = 60
+
 _WORKERS: set[subprocess.Popen] = set()
 _WORKERS_LOCK = threading.Lock()
 
@@ -154,11 +159,14 @@ def _asked_to_stop(process, why: str) -> None:
         return
 
     def insist() -> None:
-        if process.poll() is not None:
-            return
+        # Everything here runs on a daemon thread, where an exception is
+        # printed to nobody and the worker is never killed. Guarded rather
+        # than trusted.
         try:
+            if process.poll() is not None:
+                return
             process.kill()
-        except OSError:
+        except (OSError, AttributeError):
             pass
 
     alarm = threading.Timer(GRACE, insist)
@@ -549,14 +557,44 @@ class ClaudeCodeEngine:
         worker that has gone quiet is exactly the case this has to catch, and
         a quiet pipe gives nothing to check a deadline against.
         """
+        # When anything last appeared that a person watching would have
+        # seen. Not when a line last arrived: a worker whose connection has
+        # stalled still has keepalives coming down the pipe, so by that
+        # measure it is talking. Declared here rather than beside the other
+        # clocks because the alarm below reads it, and a short clock in a
+        # test would otherwise fire before it existed.
+        showed_at = [time.monotonic()]
+
         overran = threading.Event()
+        extended = [False]
 
         def ran_out() -> None:
-            if process.poll() is None:
-                overran.set()
-                _asked_to_stop(
-                    process, f"it ran out of its {self.seconds / 60:.0f} minutes"
-                )
+            if process.poll() is not None:
+                return
+            # A worker that is still producing when its time runs out has
+            # not failed; it has run out of budget. An item was stopped at
+            # twelve minutes having got through thirty-nine turns, and
+            # every file it had written was thrown away. One extension,
+            # once, and only for a worker that is visibly working - a
+            # stalled one is caught two minutes in by the silence limit and
+            # must not be given more time to be stalled in.
+            working = time.monotonic() - showed_at[0] < STILL_GOING
+            if working and not extended[0]:
+                extended[0] = True
+                if on_event:
+                    on_event(
+                        "engine",
+                        f"{self.seconds / 60:.0f} minutes gone and still "
+                        f"working - {self.seconds / 120:.0f} more, once",
+                    )
+                later = threading.Timer(self.seconds / 2, ran_out)
+                later.daemon = True
+                later.start()
+                return
+            overran.set()
+            _asked_to_stop(
+                process, f"it ran out of its {self.seconds / 60:.0f} minutes"
+            )
 
         alarm = threading.Timer(self.seconds, ran_out)
         alarm.daemon = True
@@ -579,7 +617,6 @@ class ClaudeCodeEngine:
         # nothing-shown would stop a worker halfway through writing a
         # stylesheet.
         working_at = [time.monotonic()]
-        showed_at = [time.monotonic()]
         quiet = threading.Event()
         silent = threading.Event()
 
