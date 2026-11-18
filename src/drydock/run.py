@@ -36,6 +36,7 @@ class Run(BaseModel):
     inventory: Inventory | None = None
     plan: Plan | None = None
     results: list[ItemResult] = Field(default_factory=list)
+    integration_error: str = ""
     # Why each unfinished item was refused last time it was tried. Kept
     # because a resumed run used to throw this away: the results for items
     # that did not land are dropped so they can be attempted again, and the
@@ -64,6 +65,23 @@ class Run(BaseModel):
     @property
     def path(self) -> Path:
         return Path("runs") / f"{self.id}.json"
+
+    @property
+    def branch(self) -> str:
+        return f"drydock/{self.id}"
+
+    @property
+    def verification_baseline(self) -> Baseline:
+        base = self.baseline or Baseline(builds=False)
+        tests_run = max(
+            [base.tests_run]
+            + [
+                r.tests_run
+                for r in self.results
+                if r.outcome.value == "done" and r.verified_commit
+            ]
+        )
+        return base.model_copy(update={"tests_run": tests_run})
 
     def save(self) -> None:
         self.path.parent.mkdir(exist_ok=True)

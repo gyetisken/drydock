@@ -46,6 +46,7 @@ class Crew:
     def __init__(self, monkeypatch, fails: set[int]):
         self.fails = fails
         self.attempted: list[int] = []
+        self._serial_wave = orchestrate._work_a_wave
 
         monkeypatch.setattr(orchestrate, "work", self._work)
         monkeypatch.setattr(orchestrate, "Repo", _Quiet)
@@ -63,19 +64,7 @@ class Crew:
     def _wave(self, repo, repo_path, run, items, *a, **k):
         out = {}
         for item in items:
-            result, _ = orchestrate._one_item(
-                Path(run.repo),
-                repo,
-                run,
-                item,
-                "claude",
-                "opus",
-                no_diff_review(),
-                0.0,
-                None,
-                None,
-            )
-            out[item.id] = result
+            out.update(self._serial_wave(repo, repo_path, run, [item], *a, **k))
         return out
 
     def _work(self, repo, task, item, build, failure="", *a, **k):
@@ -91,6 +80,7 @@ class Crew:
 class _Chain:
     build_command = "npm run build"
     test_command = "npm test"
+    has_tests = True
 
 
 class _Passed:
@@ -104,6 +94,7 @@ class _Passed:
 
     def __init__(self, tests_run: int = 2):
         self.tests_run = tests_run
+        self.checks = [self.check]
 
 
 class _Clean:
@@ -135,6 +126,12 @@ class _Quiet:
 
     def head(self):
         return "abc1234"
+
+    def require_checkout(self, branch, tip=None):
+        return tip or "previous"
+
+    def require_parent(self, candidate, previous):
+        pass
 
 
 @pytest.fixture
@@ -210,34 +207,42 @@ class TestTheBarMovesUpWithTheWork:
         run.baseline.tests_run = 3
         orchestrate.execute(run, engine="claude", model="opus", policy=no_diff_review())
 
-        assert run.baseline.tests_run == 11
+        assert run.baseline.tests_run == 3
+        assert run.verification_baseline.tests_run == 11
         assert crew.attempted == [1]
 
     def test_a_later_item_is_measured_against_it(self, here, monkeypatch):
         """Item two deleting item one's tests is the case this exists for."""
-        counts = iter([_Passed(11), _Passed(3)])
+        counts = iter([11, 11, 3, 3])
+        required = []
+
+        def report(_path, _mode, base, _commands):
+            required.append(base.tests_run)
+            return _Passed(next(counts))
+
         Crew(monkeypatch, fails=set())
-        monkeypatch.setattr(orchestrate, "verify", lambda *a, **k: next(counts))
-        run = a_run(here, an_item(1), an_item(2))
+        monkeypatch.setattr(orchestrate, "verify", report)
+        run = a_run(here, an_item(1), an_item(2, needs=[1]))
         run.baseline.tests_run = 3
 
         orchestrate.execute(run, engine="claude", model="opus", policy=no_diff_review())
         # The second item was measured against eleven, not three. What the
         # verifier does with that is its own test; what matters here is
         # that the number it was given had moved.
-        assert run.baseline.tests_run == 11
+        assert required == [3, 3, 11, 11]
+        assert run.verification_baseline.tests_run == 11
 
     def test_a_smaller_count_never_lowers_the_bar(self, here, monkeypatch):
         """An item verified by its build reports no tests at all. That is
         not a reason to let the next one lose some."""
-        counts = iter([_Passed(11), _Passed(0)])
+        counts = iter([_Passed(11), _Passed(11), _Passed(0), _Passed(0)])
         Crew(monkeypatch, fails=set())
         monkeypatch.setattr(orchestrate, "verify", lambda *a, **k: next(counts))
-        run = a_run(here, an_item(1), an_item(2))
+        run = a_run(here, an_item(1), an_item(2, needs=[1]))
         run.baseline.tests_run = 3
 
         orchestrate.execute(run, engine="claude", model="opus", policy=no_diff_review())
-        assert run.baseline.tests_run == 11
+        assert run.verification_baseline.tests_run == 11
 
 
 class TestWhichItemsAreLookedAt:

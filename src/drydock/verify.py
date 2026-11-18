@@ -23,26 +23,49 @@ class Verdict:
     check: Check
     tests_run: int = 0
     tests_failed: int = 0
+    build_check: Check | None = None
+
+    @property
+    def checks(self) -> list[Check]:
+        return [self.build_check, self.check] if self.build_check else [self.check]
+
+
+def verify_build(repo: Path, command: str) -> Verdict:
+    """Run a separate build, or leave the test-only check to integration."""
+    if not command:
+        return Verdict(
+            passed=True,
+            reason="no separate build command",
+            check=Check(name="build", command="", passed=True, seconds=0.0),
+        )
+    result = check("build", command, repo)
+    return Verdict(
+        passed=result.passed,
+        reason="compiles" if result.passed else "does not compile",
+        check=result,
+    )
 
 
 def verify(repo: Path, item_verify: str, base: Baseline, commands: dict) -> Verdict:
-    if not commands.get("tests"):
+    needs_suite = base.has_tests or base.tests_run > 0
+    if not commands.get("tests") or (
+        needs_suite and not commands.get("has_tests", True)
+    ):
         # Nothing to run yet. On a greenfield job this is true until the item
         # that creates the project lands, and calling that a pass would be
         # agreeing that an empty repository is working software.
         return Verdict(
             passed=False,
-            reason="there is still no way to run anything in this repository",
+            reason=(
+                "the existing test suite no longer has a test command"
+                if needs_suite
+                else "there is still no way to run anything in this repository"
+            ),
             check=Check(name="tests", command="", passed=False, seconds=0.0),
         )
 
-    if item_verify == "build":
-        result = check("build", commands["build"], repo)
-        return Verdict(
-            passed=result.passed,
-            reason="compiles" if result.passed else "does not compile",
-            check=result,
-        )
+    if item_verify == "build" and not needs_suite and commands.get("build"):
+        return verify_build(repo, commands["build"])
 
     # An item verified by its tests must still leave something that builds.
     # Without this, a change that breaks the build is invisible until some
@@ -50,6 +73,7 @@ def verify(repo: Path, item_verify: str, base: Baseline, commands: dict) -> Verd
     # back and belongs to nobody. It cost exactly that here: a test file put
     # inside a routes directory, found at item seven.
     build = commands.get("build", "")
+    compiled = None
     if build and build != commands["tests"]:
         compiled = check("build", build, repo)
         if not compiled.passed:
@@ -62,11 +86,14 @@ def verify(repo: Path, item_verify: str, base: Baseline, commands: dict) -> Verd
     result = check("tests", commands["tests"], repo)
     run, failed, _ = read_test_counts(result.detail)
 
-    if not result.passed:
-        return Verdict(False, f"{failed} tests failing", result, run, failed)
+    if not result.passed or failed:
+        result.passed = False
+        reason = f"{failed} tests failing" if failed else "the test command failed"
+        return Verdict(False, reason, result, run, failed, compiled)
 
     # The suite is green. Ask the question a green suite cannot answer.
-    if base.tests_run and run == 0:
+    if needs_suite and run == 0:
+        result.passed = False
         return Verdict(
             False,
             f"the suite reported success but ran 0 tests, against a baseline of "
@@ -74,8 +101,10 @@ def verify(repo: Path, item_verify: str, base: Baseline, commands: dict) -> Verd
             result,
             run,
             failed,
+            compiled,
         )
     if base.tests_run and run < base.tests_run:
+        result.passed = False
         return Verdict(
             False,
             f"{run} tests ran, down from {base.tests_run}. "
@@ -84,10 +113,11 @@ def verify(repo: Path, item_verify: str, base: Baseline, commands: dict) -> Verd
             result,
             run,
             failed,
+            compiled,
         )
 
     gained = run - base.tests_run
     note = f"{run} tests pass"
     if gained > 0:
         note += f" ({gained} more than the baseline)"
-    return Verdict(True, note, result, run, failed)
+    return Verdict(True, note, result, run, failed, compiled)

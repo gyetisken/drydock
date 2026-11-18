@@ -11,6 +11,7 @@ reviewer actually wants and the thing nobody else publishes.
 """
 
 import json
+import shlex
 import shutil
 import subprocess
 from dataclasses import dataclass, field
@@ -196,12 +197,21 @@ def open_pull_request(
     if not has_remote(repo):
         return False, "this repository has no remote to push to"
 
-    git = Repo(repo)
-    branch = git._git("rev-parse --abbrev-ref HEAD")[1].strip()
-    if not branch or branch == "HEAD":
-        return False, "not on a branch"
+    if run.integration_error:
+        return False, run.integration_error
+    last = next((r for r in reversed(run.results) if r.outcome.value == "done"), None)
+    if not last or not last.verified_commit or last.verified_commit != last.commit:
+        return False, "the run has no integrated verification for its latest commit"
 
-    code, out = git._git(f"push -u origin {branch}")
+    git = Repo(repo)
+    branch = run.branch
+    ref = f"refs/heads/{branch}"
+    code, tip = git._git(f"show-ref --verify --hash {shlex.quote(ref)}")
+    if code or tip.strip() != last.verified_commit:
+        return False, f"{branch} no longer points to the verified commit"
+    # Push the checked object, even if the local ref changes after show-ref.
+    push = f"push origin {shlex.quote(f'{last.verified_commit}:{ref}')}"
+    code, out = git._git(push)
     if code and _no_such_repository(out):
         # The remote names a repository nobody ever created. That is the
         # ordinary state of a project built from nothing: the remote is set
@@ -225,14 +235,24 @@ def open_pull_request(
         failed, why = git._git(f"push -u origin {base}")
         if failed:
             return False, f"could not push {base}:\n{why[-400:]}"
-        code, out = git._git(f"push -u origin {branch}")
+        code, out = git._git(push)
     if code:
         return False, f"could not push the branch:\n{out[-600:]}"
 
     title = run.task.splitlines()[0][:72]
     with_body = body(run, evidence, url)
 
-    command = [binary, "pr", "create", "--title", title, "--body", with_body]
+    command = [
+        binary,
+        "pr",
+        "create",
+        "--head",
+        branch,
+        "--title",
+        title,
+        "--body",
+        with_body,
+    ]
     if draft:
         command.append("--draft")
 
