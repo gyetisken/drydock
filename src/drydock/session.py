@@ -232,6 +232,7 @@ class Session:
             empty = not any(p.name != ".git" for p in self.repo.iterdir())
             commit = Repo(self.repo).head()
 
+            surveyed = False
             if empty:
                 self.feed.emit(
                     "agent.state",
@@ -251,9 +252,10 @@ class Session:
                 )
                 self.run.save()
             elif self._already_read(commit):
-                pass
+                surveyed = False
             else:
                 self._survey(b, chain, commit)
+                surveyed = True
 
             if self.stop_after == "analyst":
                 self._finish_early()
@@ -387,6 +389,7 @@ class Session:
                 model=self.model,
                 shape=shape + look,
                 policy=self.policy,
+                surveyed=surveyed,
             )
             self._spent(usage, "Planner")
             self._after_plan(auto_run)
@@ -541,12 +544,16 @@ class Session:
 
         chain = detect(self.repo)
         findings = read_before or [
-            f"This repository has been worked on here before. It is "
-            f"{self.memory.toolchain}; the build is "
-            f"`{self.memory.build_command}` and the suite is "
-            f"`{self.memory.test_command}`.",
-            "It was not read again for this job, so nothing here is newer "
-            "than the last time it was.",
+            (
+                f"This repository has been worked on here before. It is "
+                f"{self.memory.toolchain}; the build is "
+                f"`{self.memory.build_command}` and the suite is "
+                f"`{self.memory.test_command}`."
+            ),
+            (
+                "It was not read again for this job, so nothing here is "
+                "newer than the last time it was."
+            ),
         ]
         self.run.inventory = Inventory(
             build_tool=chain.build_tool,

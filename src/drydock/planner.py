@@ -121,6 +121,17 @@ nobody outside the work can read is a plan that gets approved without being
 read, and the approval is the one thing standing between a suggestion and
 somebody's repository.
 
+**The rationale is as long as the item is large, and no longer.** Two
+sentences for a single function; as much as it takes for the composition
+of a page. Three thousand characters about a function that returns a
+number is three thousand characters the engineer has to read before it can
+start, and most of them say things it already knows - how its own language
+works, what a test is for, why a name should be clear.
+
+Write what somebody would not work out on their own: the decision that was
+taken, the thing next to it that must not change, the case that is easy to
+miss. Leave out the rest.
+
 **Say which items are worth looking at.** Some items are judged by looking
 at the page they produce; the rest are judged by the build passing. A
 stylesheet nobody imports, a test command, a content module, a config file,
@@ -153,8 +164,25 @@ And these risks:
 
 {risks}
 
-You may read the repository to settle a detail, but the survey is already done
-and the facts above are reliable. Produce the plan."""
+{may_read}Produce the plan."""
+
+# What the planner is told about going and looking. It is given the
+# survey; reading the repository again is the Analyst's work done twice,
+# and it was measured doing exactly that - three `cat` calls over files
+# the survey had just reported on. But when the survey was skipped and
+# the facts came from memory, they are thinner, and then looking is the
+# right thing to do.
+MAY_READ = """You may read the repository to settle a detail the facts above
+do not cover. They came from memory rather than from a reading of this
+commit, so they are the shape of the project rather than its current state.
+
+"""
+WAS_READ = """The survey above was made for this commit, by somebody whose
+whole job was to read it. Do not read the repository yourself: everything
+it would tell you is already above, and going to look is that work done
+twice.
+
+"""
 
 
 def _plan_tool() -> Tool:
@@ -272,10 +300,12 @@ def plan(
     model: str = "opus",
     shape: str = "",
     policy=None,
+    surveyed: bool = True,
 ) -> tuple[Plan, object]:
     chosen = skills or []
     filled = (
         PROMPT.format(
+            may_read=WAS_READ if surveyed else MAY_READ,
             repo=repo.name,
             build_tool=inventory.build_tool,
             language=inventory.language,
@@ -290,6 +320,21 @@ def plan(
     )
 
     if engine == "claude":
+        # Nothing to look at when the survey was made for this commit:
+        # everything the repository would say is already in the prompt,
+        # and going to look is the Analyst's work done twice. Measured
+        # doing exactly that - three `cat` calls over files the survey had
+        # just reported on.
+        shut = (
+            {
+                "tools": "",
+                "without": (
+                    "Bash Read Glob Grep Edit NotebookEdit WebFetch WebSearch Task"
+                ),
+            }
+            if surveyed
+            else {}
+        )
         result, dollars, turns = ClaudeCodeEngine(model=model).structured(
             repo,
             _system(engine, policy)
@@ -301,6 +346,7 @@ def plan(
             '"verify_with": "build|tests", "needs": [], '
             '"worth_looking_at": true, "removes_tests": false}]}',
             on_event=on_event,
+            **shut,
         )
         return Plan.model_validate(result), _Spend(dollars, turns)
 
