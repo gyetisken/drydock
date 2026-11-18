@@ -10,15 +10,24 @@ hands back a URL. It is deliberately small: one process at a time per
 project, stopped when asked or when the application exits, and nothing is
 guessed - if the project does not say how to run itself, this says so rather
 than inventing a command.
+
+The one exception is a folder with an `index.html` in it and no manifest.
+That is not a project keeping quiet about how it runs; it is a project
+saying it is a page, and a static server is not a guess about it - it is
+the only thing it could mean. Without this a plain HTML site could not be
+previewed at all, and the critic, which is handed a URL or nothing, never
+got to look at the one kind of work it exists for.
 """
 
 import contextlib
 import json
 import os
 import re
+import shlex
 import signal
 import socket
 import subprocess
+import sys
 import threading
 import time
 from dataclasses import dataclass
@@ -178,6 +187,68 @@ def _announced(log: Path) -> int | None:
     return int(found[-1]) if found else None
 
 
+@dataclass(frozen=True)
+class Served:
+    """What came back from asking the running project for a page.
+
+    The port answering and the page being there are two different facts,
+    and the window had one green dot for both. A service with a /health
+    endpoint and no root is working exactly as asked; rendering its 404
+    beside "1 of 1 items landed" says the opposite.
+
+    This is done here rather than in the browser because the frame is
+    cross-origin - a different port is a different origin - so the page
+    cannot read the status of what it just loaded. It can only show
+    whatever the server painted.
+    """
+
+    status: int = 0
+    content_type: str = ""
+    error: str = ""
+
+    @property
+    def is_a_page(self) -> bool:
+        """Whether this is something worth putting in a frame."""
+        return 200 <= self.status < 300 and "html" in self.content_type.lower()
+
+    @property
+    def said(self) -> str:
+        if self.error:
+            return self.error
+        kind = self.content_type.split(";")[0].strip() or "no content type"
+        return f"HTTP {self.status}, {kind}"
+
+
+def what_it_serves(url: str, path: str = "/", timeout: float = 3.0) -> Served:
+    """Ask the running project for one page and report what came back.
+
+    One request, short timeout, nothing followed and nothing retried. It
+    reports what it observed - including a 404, which is a fact about the
+    project and not a failure of this program.
+    """
+    import urllib.error
+    import urllib.request
+
+    target = url.rstrip("/") + "/" + path.lstrip("/")
+    try:
+        with urllib.request.urlopen(target, timeout=timeout) as answer:
+            return Served(
+                status=answer.status,
+                content_type=answer.headers.get("Content-Type", ""),
+            )
+    except urllib.error.HTTPError as refused:
+        # A status this program did not want is still a status, and the
+        # honest thing is to report it rather than to call it an error.
+        return Served(
+            status=refused.code,
+            content_type=refused.headers.get("Content-Type", ""),
+        )
+    except urllib.error.URLError as exc:
+        return Served(error=f"it did not answer: {exc.reason}")
+    except (TimeoutError, OSError) as exc:
+        return Served(error=f"it did not answer: {exc}")
+
+
 def _answers(port: int) -> bool:
     """Whether anything is listening, on either address family.
 
@@ -220,6 +291,17 @@ def how_to_run(repo: Path) -> tuple[str, str]:
     ):
         if (repo / name).exists():
             return command, f"{name} is in the project root"
+
+    # Last, so anything that states a server of its own wins. A page and a
+    # server in the same folder means the server renders the page.
+    if (repo / "index.html").exists():
+        # This interpreter, not whatever `python3` resolves to on the path:
+        # the machine running drydock has one for certain, and a system
+        # python that is missing or is 2.7 would fail here for a reason
+        # that has nothing to do with the project.
+        serve = f'{shlex.quote(sys.executable)} -m http.server "$PORT" --bind 127.0.0.1'
+        why = "index.html is in the project root and nothing else says how to start it"
+        return serve, why
 
     return "", "this project does not say how to start itself"
 
@@ -327,10 +409,32 @@ def stop(repo: Path | None = None) -> int:
     for preview in targets:
         _strike_off(preview.project)
         if preview.ours and preview.process.poll() is None:
-            preview.process.terminate()
+            # The whole group, not the one process. These are started with
+            # `shell=True`, so the pid belongs to the shell, and whether
+            # that shell execs the real server or forks it is a difference
+            # between one machine's /bin/sh and another's. Signalling only
+            # the pid left a static server answering on a port after it had
+            # been stopped - on Linux, not here, which is the worst way to
+            # find out. `start_new_session=True` exists for exactly this:
+            # every preview is its own group leader.
+            _signal_group(preview.process, signal.SIGTERM)
             try:
                 preview.process.wait(timeout=5)
             except subprocess.TimeoutExpired:
-                preview.process.kill()
+                _signal_group(preview.process, signal.SIGKILL)
             stopped += 1
     return stopped
+
+
+def _signal_group(process, sign: int) -> None:
+    """Signal a preview's whole process group, or it alone if it has none."""
+    pid = getattr(process, "pid", 0)
+    if pid:
+        try:
+            os.killpg(os.getpgid(pid), sign)
+            return
+        except (OSError, AttributeError):
+            # No group, or gone already. Fall through to the one process.
+            pass
+    with contextlib.suppress(OSError):
+        process.kill() if sign == signal.SIGKILL else process.terminate()

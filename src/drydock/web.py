@@ -159,6 +159,9 @@ PAGE = """<!doctype html><html lang="en"><head><meta charset="utf-8">
       <button class="btn small ghost" id="pv-open" title="open in a tab">&#8599;</button>
       <button class="btn small ghost" id="pv-close" title="close">&times;</button>
     </div>
+    <!-- What was actually observed, said separately. The server answering
+         and the page being there are two facts and used to share one dot. -->
+    <div class="pv-state" id="pv-state"></div>
     <div class="pv-body" id="pv-body">
       <p class="empty" id="pv-said">Nothing is running yet. This starts the
       project the way its own manifest says it starts, and reloads it each time
@@ -705,8 +708,22 @@ def open_preview(body: Preview) -> JSONResponse:
         return JSONResponse({"ok": False, "reason": str(exc)}, status_code=400)
     except (RuntimeError, TimeoutError) as exc:
         return JSONResponse({"ok": False, "reason": str(exc)}, status_code=400)
+    # Whether the port answers and whether the project has a page there are
+    # two different questions, and the window had one green dot for both.
+    # Asked here rather than in the browser: the frame is cross-origin, so
+    # the page cannot read the status of what it just loaded.
+    served = preview.what_it_serves(live.url)
     return JSONResponse(
-        {"ok": True, "url": live.url, "command": live.command, "already": bool(running)}
+        {
+            "ok": True,
+            "url": live.url,
+            "command": live.command,
+            "already": bool(running),
+            "status": served.status,
+            "content_type": served.content_type,
+            "is_a_page": served.is_a_page,
+            "served": served.said,
+        }
     )
 
 

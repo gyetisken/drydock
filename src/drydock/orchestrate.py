@@ -75,6 +75,31 @@ def _show_it(repo_path: Path, run, item, on_event):
             on_event("critic", f"could not start the project to look at it: {exc}")
         return None, 0.0
 
+    # Whether there is a page here at all, before anybody is asked what
+    # they think of it. A project whose own start command serves something
+    # other than a page - an API with a /health route and no root, say -
+    # hands the critic a browser's raw-JSON view, and the critic correctly
+    # reports that there is no page. The item is then rolled back for it.
+    #
+    # Watched happen: a static page written into a project whose
+    # package.json starts a JSON API. Four attempts, two reverts, a split
+    # and thirty-three minutes, and the thing being photographed was never
+    # the thing that had just been written.
+    #
+    # This is the case the top of this function already names: a check that
+    # did not happen, reported as such, rather than an item rolled back for
+    # a failure that belongs to this program.
+    served = preview.what_it_serves(live.url)
+    if not served.is_a_page:
+        if on_event:
+            on_event(
+                "critic",
+                f"did not look: {live.url} answered {served.said}, which is "
+                f"not a page. `{live.command}` is what this project says "
+                "starts it.",
+            )
+        return None, 0.0
+
     # Arithmetic before judgement. A page wider than the screen it is on is
     # the one visual defect that does not need an opinion, and it is the one
     # that has cost this crew the most: seven items refused for it in an

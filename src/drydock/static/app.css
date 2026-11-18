@@ -689,3 +689,17 @@ body.split .composer .cwrap { max-width:none }
 .msg.dim { opacity: .74 }
 .msg.dim:hover { opacity: 1 }
 .msg.dim .from { color: var(--faint) }
+
+/* what the preview actually observed, said as separate facts */
+.pv-state { display:flex; flex-wrap:wrap; gap:7px 14px; padding:7px 12px;
+  border-bottom:1px solid var(--line); font-size:10.5px; color:var(--muted) }
+.pv-state:empty { display:none }
+.pv-fact { display:inline-flex; align-items:baseline; gap:6px }
+.pv-fact b { font-weight:500; color:var(--faint); letter-spacing:.02em }
+.pv-fact.ok b { color:var(--ok) }
+.pv-fact.flat b { color:var(--muted) }
+.dot.flat { background:var(--muted) }
+.pv-body .empty .why { margin-top:9px; font-size:11.5px; line-height:1.6;
+  max-width:52ch }
+.pv-body .empty code { font-size:11px; color:var(--ink) }
+.pv-body .empty .btn { margin-top:14px }
