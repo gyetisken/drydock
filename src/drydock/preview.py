@@ -409,10 +409,32 @@ def stop(repo: Path | None = None) -> int:
     for preview in targets:
         _strike_off(preview.project)
         if preview.ours and preview.process.poll() is None:
-            preview.process.terminate()
+            # The whole group, not the one process. These are started with
+            # `shell=True`, so the pid belongs to the shell, and whether
+            # that shell execs the real server or forks it is a difference
+            # between one machine's /bin/sh and another's. Signalling only
+            # the pid left a static server answering on a port after it had
+            # been stopped - on Linux, not here, which is the worst way to
+            # find out. `start_new_session=True` exists for exactly this:
+            # every preview is its own group leader.
+            _signal_group(preview.process, signal.SIGTERM)
             try:
                 preview.process.wait(timeout=5)
             except subprocess.TimeoutExpired:
-                preview.process.kill()
+                _signal_group(preview.process, signal.SIGKILL)
             stopped += 1
     return stopped
+
+
+def _signal_group(process, sign: int) -> None:
+    """Signal a preview's whole process group, or it alone if it has none."""
+    pid = getattr(process, "pid", 0)
+    if pid:
+        try:
+            os.killpg(os.getpgid(pid), sign)
+            return
+        except (OSError, AttributeError):
+            # No group, or gone already. Fall through to the one process.
+            pass
+    with contextlib.suppress(OSError):
+        process.kill() if sign == signal.SIGKILL else process.terminate()
