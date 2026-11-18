@@ -188,3 +188,125 @@ class TestItNeverRefusesToReport:
         )
         assert pace.items[0].checking == 0
         assert pace.items[0].seconds == 60
+
+
+class TestWhatSomebodyWaitingFeels:
+    """Two numbers matter to the person watching and neither was measured:
+    how long before anything was written, and how long before anything
+    landed. An afternoon went on fixing what turned out not to be the
+    bottleneck, because the bottleneck was never measured."""
+
+    def test_time_to_the_first_file_written(self):
+        pace = read(
+            a_run(
+                event("item.start", "10:00:10", id=1),
+                event("agent.tool", "10:00:20", detail="Read file_path=/x/y.js"),
+                event("agent.tool", "10:02:00", detail="Write file_path=/x/y.js"),
+                event("item.done", "10:04:00", id=1, outcome="done"),
+            )
+        )
+        assert pace.to_first_change == 120
+
+    def test_reading_is_not_writing(self):
+        """Half a run can go on looking at files."""
+        pace = read(
+            a_run(
+                event("item.start", "10:00:00", id=1),
+                event("agent.tool", "10:00:30", detail="Grep pattern=x"),
+                event("agent.tool", "10:00:40", detail="Bash command=ls"),
+            )
+        )
+        assert pace.to_first_change == 0
+
+    def test_time_to_the_first_item_that_landed(self):
+        pace = read(
+            a_run(
+                event("item.start", "10:00:00", id=1),
+                event("item.done", "10:03:00", id=1, outcome="blocked"),
+                event("item.start", "10:03:00", id=2),
+                event("item.done", "10:07:00", id=2, outcome="done"),
+            )
+        )
+        assert pace.to_first_landed == 420
+
+
+class TestWaiting:
+    """Items in a round finish at different times and the round ends with
+    the slowest. That wait is this program's own cost, not the work's, and
+    it was invisible."""
+
+    def test_an_item_finished_early_is_counted_as_waiting(self):
+        pace = read(
+            [
+                event("run.started", "10:00:00"),
+                event("plan.ready", "10:00:00"),
+                event("item.start", "10:00:00", id=1),
+                event("item.start", "10:00:00", id=2),
+                event("item.done", "10:01:00", id=1, outcome="done"),
+                event("item.done", "10:10:00", id=2, outcome="done"),
+            ]
+        )
+        assert pace.busy == 600
+        assert pace.waiting == 0
+
+    def test_a_gap_between_rounds_is_waiting(self):
+        pace = read(
+            [
+                event("run.started", "10:00:00"),
+                event("plan.ready", "10:00:00"),
+                event("item.start", "10:00:00", id=1),
+                event("item.done", "10:02:00", id=1, outcome="done"),
+                event("item.start", "10:05:00", id=2),
+                event("item.done", "10:07:00", id=2, outcome="done"),
+            ]
+        )
+        assert pace.busy == 240
+        assert pace.waiting == 180
+
+    def test_overlapping_items_are_not_counted_twice(self):
+        """Four items at once for ten minutes is ten minutes of work, not
+        forty, and reporting forty would make parallelism look expensive."""
+        pace = read(
+            [
+                event("run.started", "10:00:00"),
+                event("plan.ready", "10:00:00"),
+                *[event("item.start", "10:00:00", id=n) for n in (1, 2, 3, 4)],
+                *[
+                    event("item.done", "10:10:00", id=n, outcome="done")
+                    for n in (1, 2, 3, 4)
+                ],
+            ]
+        )
+        assert pace.busy == 600
+
+
+class TestWhatTheRunCost:
+    def test_tool_calls_are_counted(self):
+        pace = read(
+            a_run(*[event("agent.tool", "10:00:01", detail="Read x") for _ in range(7)])
+        )
+        assert pace.tool_calls == 7
+
+    def test_stations_are_counted_when_they_start_working(self):
+        pace = read(
+            a_run(
+                event("agent.state", "10:00:01", agent="Analyst", state="working"),
+                event("agent.state", "10:00:02", agent="Planner", state="working"),
+                event("agent.state", "10:00:03", agent="Designer", state="skipped"),
+            )
+        )
+        assert pace.stations == 2
+
+    def test_retries_and_restarts_are_told_apart(self):
+        """An item tried twice is the work failing. A worker restarted is
+        the machine failing, and the two call for opposite responses."""
+        pace = read(
+            a_run(
+                event("item.start", "10:00:00", id=1),
+                event("gate", "10:01:00", id=1, who="restarted"),
+                event("item.done", "10:05:00", id=1, outcome="done", attempts=2),
+            )
+        )
+        assert pace.retries == 1
+        assert pace.restarts == 1
+        assert pace.items[0].restarts == 1

@@ -18,7 +18,9 @@ from pathlib import Path
 # The order the gates speak in. Two of them are code and take no noticeable
 # time; the other two are a model reading a diff and a model looking at a
 # page, which is where a surprising share of a run goes.
-GATES = ("inspector", "reviewer", "critic", "asked", "answered")
+# Everything that reports against an item. "restarted" is not a gate -
+# nothing was judged - but it arrives the same way and is worth counting.
+GATES = ("inspector", "reviewer", "critic", "asked", "answered", "restarted")
 
 
 @dataclass
@@ -32,6 +34,11 @@ class Spell:
     checking: float = 0.0
     outcome: str = ""
     attempts: int = 1
+    restarts: int = 0
+    # Seconds from the start of the run, so overlapping items in a wave
+    # can be laid against each other.
+    began: float = 0.0
+    ended: float = 0.0
 
     @property
     def share(self) -> str:
@@ -42,10 +49,28 @@ class Spell:
 
 @dataclass
 class Pace:
-    """A whole run, measured."""
+    """A whole run, measured.
+
+    Every number here is read off the events a run already writes. The
+    point of having them is that nothing about speed gets claimed without
+    one: an afternoon went on fixing things that turned out not to be the
+    bottleneck, and the bottleneck was never measured until afterwards.
+    """
 
     seconds: float = 0.0
     before_the_plan: float = 0.0
+    # When the first file was written, and when something was first
+    # committed - the two numbers somebody waiting actually feels.
+    to_first_change: float = 0.0
+    to_first_landed: float = 0.0
+    # Model calls and tool calls, which is what the cost is made of.
+    stations: int = 0
+    tool_calls: int = 0
+    # Times an item had to be tried again, and times a worker had to be
+    # restarted because it was taken away rather than because it failed.
+    retries: int = 0
+    restarts: int = 0
+    dollars: float = 0.0
     items: list[Spell] = field(default_factory=list)
 
     @property
@@ -55,6 +80,34 @@ class Pace:
     @property
     def checking(self) -> float:
         return sum(s.checking for s in self.items)
+
+    @property
+    def waiting(self) -> float:
+        """Time nobody was working on anything.
+
+        Items in a wave finish at different times and the wave does not
+        end until the slowest one does, so an item can be finished and
+        still be inside its own elapsed time. Reported separately because
+        it is the one kind of slowness that is this program's own fault
+        rather than the work's.
+        """
+        return max(0.0, self.seconds - self.before_the_plan - self.busy)
+
+    @property
+    def busy(self) -> float:
+        """Wall clock during which at least one item was being worked on."""
+        # `ended` alone decides: an item that started in the first second
+        # of a run has began == 0, which is a real time and a false value.
+        spans = sorted((s.began, s.ended) for s in self.items if s.ended)
+        total, edge = 0.0, None
+        for start, end in spans:
+            if edge is None or start > edge:
+                total += end - start
+                edge = end
+            elif end > edge:
+                total += end - edge
+                edge = end
+        return total
 
     def __str__(self) -> str:
         return "\n".join(self.lines())
@@ -81,7 +134,32 @@ class Pace:
                 line += f", over {spell.attempts} attempts"
             if spell.outcome == "working":
                 line += ", still going"
+            if spell.restarts:
+                line += f", {spell.restarts} restart(s)"
             out.append(line + ".")
+
+        if self.to_first_change:
+            out.append(
+                f"{_said(self.to_first_change)} before the first file changed"
+                + (
+                    f", {_said(self.to_first_landed)} before anything landed."
+                    if self.to_first_landed
+                    else "."
+                )
+            )
+        if self.waiting > 30:
+            out.append(
+                f"{_said(self.waiting)} of it was waiting - items in a round "
+                "finish at different times and the round ends with the "
+                "slowest."
+            )
+        if self.tool_calls:
+            out.append(
+                f"{self.stations} stations, {self.tool_calls} tool calls"
+                + (f", {self.retries} retried" if self.retries else "")
+                + (f", {self.restarts} restarted" if self.restarts else "")
+                + "."
+            )
         return out
 
 
@@ -124,6 +202,9 @@ def read(events: list[dict]) -> Pace:
     """
     first = last = None
     plan_at = None
+    to_first_change = to_first_landed = 0.0
+    stations = tool_calls = restarts = 0
+    dollars = 0.0
     spells: dict[int, Spell] = {}
     started: dict[int, datetime] = {}
     checking_from: dict[int, datetime] = {}
@@ -134,6 +215,20 @@ def read(events: list[dict]) -> Pace:
             continue
         kind = event.get("kind")
 
+        if first is not None:
+            at_second = _gap(first, at)
+            if kind == "agent.tool":
+                tool_calls += 1
+                if not to_first_change and _is_a_write(event):
+                    to_first_change = at_second
+            elif kind == "agent.state" and event.get("state") == "working":
+                stations += 1
+            elif kind == "spend":
+                try:
+                    dollars = max(dollars, float(event.get("total") or dollars))
+                except (TypeError, ValueError):
+                    pass
+
         if kind == "run.started":
             # One log holds a run and every time it was picked back up. A
             # resumed run is the one somebody is looking at, and adding the
@@ -141,6 +236,9 @@ def read(events: list[dict]) -> Pace:
             first = last = at
             plan_at = None
             spells, started, checking_from = {}, {}, {}
+            to_first_change = to_first_landed = 0.0
+            stations = tool_calls = restarts = 0
+            dollars = 0.0
             continue
 
         first = first or at
@@ -154,12 +252,17 @@ def read(events: list[dict]) -> Pace:
                 continue
             started[number] = at
             checking_from.pop(number, None)
-            spells.setdefault(number, Spell(item=number))
+            spell = spells.setdefault(number, Spell(item=number))
+            spell.began = _gap(first, at)
         elif kind == "gate":
             number = event.get("id")
             if number is None or event.get("who") not in GATES:
                 continue
             spell = spells.setdefault(number, Spell(item=number))
+            if event.get("who") == "restarted":
+                spell.restarts += 1
+                restarts += 1
+                continue
             # The first gate to speak marks the end of the writing. Anything
             # after it is the harness, not the engineer.
             if number not in checking_from:
@@ -175,6 +278,9 @@ def read(events: list[dict]) -> Pace:
             spell = spells.setdefault(number, Spell(item=number))
             spell.outcome = event.get("outcome", "")
             spell.attempts = max(1, int(event.get("attempts") or 1))
+            spell.ended = _gap(first, at)
+            if spell.outcome == "done" and not to_first_landed:
+                to_first_landed = spell.ended
             spell.seconds = _gap(started.get(number), at)
             if number in checking_from:
                 spell.checking = _gap(checking_from[number], at)
@@ -201,8 +307,25 @@ def read(events: list[dict]) -> Pace:
     return Pace(
         seconds=_gap(first, last),
         before_the_plan=_gap(first, plan_at),
+        to_first_change=to_first_change,
+        to_first_landed=to_first_landed,
+        stations=stations,
+        tool_calls=tool_calls,
+        retries=sum(max(0, s.attempts - 1) for s in spells.values()),
+        restarts=restarts,
+        dollars=dollars,
         items=[spells[k] for k in sorted(spells)],
     )
+
+
+# Tool calls that changed a file, as opposed to looking at one. The first
+# of these is the moment the waiting stops being planning.
+WRITES = ("write", "edit", "notebookedit", "multiedit")
+
+
+def _is_a_write(event: dict) -> bool:
+    said = str(event.get("detail") or "").strip().lower()
+    return any(said.startswith(name) for name in WRITES)
 
 
 def from_log(path: Path) -> Pace:
