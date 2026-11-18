@@ -209,6 +209,24 @@ def _plan_tool() -> Tool:
                                     "each other; two that do not, do not."
                                 ),
                             },
+                            "worth_looking_at": {
+                                "type": "boolean",
+                                "description": (
+                                    "Whether somebody should look at the "
+                                    "rendered page to judge this item. True "
+                                    "when the whole point of the item is "
+                                    "what it looks like. False for "
+                                    "scaffolding, configuration, data, a "
+                                    "test command, a stylesheet nobody "
+                                    "imports, a placeholder - anything "
+                                    "whose success is a build passing "
+                                    "rather than a page being right. A "
+                                    "critic sent to judge a placeholder "
+                                    "refuses it for being a placeholder, "
+                                    "which is true and useless and costs "
+                                    "the item three attempts."
+                                ),
+                            },
                             "removes_tests": {
                                 "type": "boolean",
                                 "description": (
@@ -227,6 +245,7 @@ def _plan_tool() -> Tool:
                             "files",
                             "verify_with",
                             "needs",
+                            "worth_looking_at",
                             "removes_tests",
                         ],
                         "additionalProperties": False,
@@ -280,7 +299,7 @@ def plan(
             '{"summary": "...", "items": [{"id": 1, "title": "...", '
             '"plain": "...", "rationale": "...", "files": ["..."], '
             '"verify_with": "build|tests", "needs": [], '
-            '"removes_tests": false}]}',
+            '"worth_looking_at": true, "removes_tests": false}]}',
             on_event=on_event,
         )
         return Plan.model_validate(result), _Spend(dollars, turns)

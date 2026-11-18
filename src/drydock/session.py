@@ -384,6 +384,7 @@ class Session:
                 engine=self.engine,
                 model=self.model,
                 shape=shape + look,
+                policy=self.policy,
             )
             self._spent(usage, "Planner")
             self._after_plan(auto_run)
@@ -694,6 +695,7 @@ class Session:
             on_event=self._agent_event("Engineer"),
             on_item=on_item,
             should_stop=lambda: self.stopping,
+            policy=self.policy,
         )
         self.feed.emit(
             "agent.state", agent="Engineer", state="done", note="plan finished"

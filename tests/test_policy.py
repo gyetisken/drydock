@@ -319,3 +319,44 @@ def _planner_rules() -> str:
     from drydock.planner import _system
 
     return _system("claude", of(BALANCED))
+
+
+class TestThePolicyActuallyArrives:
+    """Three fixes were written and two of them were inert: the policy
+    reached the orchestrator but not the planner, so a profile asking for
+    two items got seven, and the field telling the critic which items to
+    look at was in the model but never in the schema the planner answers.
+
+    Both were found by reading a plan, not by a test. These are the tests.
+    """
+
+    def test_the_planner_is_given_the_policy(self):
+        import inspect
+
+        from drydock import session
+
+        source = inspect.getsource(session.Session)
+        assert source.count("policy=self.policy") >= 2, (
+            "the planner and the orchestrator both need it"
+        )
+
+    def test_the_planner_is_asked_for_worth_looking_at(self):
+        """A field in the model that is not in the schema is a field the
+        planner is never asked about, and it came back None every time."""
+        import inspect
+
+        from drydock import planner
+
+        source = inspect.getsource(planner)
+        asked = source.index('"worth_looking_at": {')
+        required = source.index('"worth_looking_at",')
+        assert asked > 0 and required > 0
+
+    def test_the_shape_it_is_shown_includes_the_field(self):
+        """The planner copies the shape it is shown. One missing key there
+        and the answer is missing it too."""
+        import inspect
+
+        from drydock import planner
+
+        assert '"worth_looking_at": true' in inspect.getsource(planner)
