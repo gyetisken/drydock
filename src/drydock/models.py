@@ -34,6 +34,7 @@ class Baseline(BaseModel):
     tests_failed: int = 0
     tests_skipped: int = 0
     checks: list[Check] = Field(default_factory=list)
+    has_tests: bool = False
 
     @property
     def green(self) -> bool:
@@ -146,3 +147,5 @@ class ItemResult(BaseModel):
     checks: list[Check] = Field(default_factory=list)
     note: str = ""
     commit: str | None = None
+    verified_commit: str | None = None
+    tests_run: int = 0

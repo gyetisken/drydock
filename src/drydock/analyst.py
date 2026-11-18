@@ -56,6 +56,8 @@ def baseline(repo: Path, chain: Toolchain) -> Baseline:
         return Baseline(builds=True, tests_run=0, tests_failed=0, tests_skipped=0)
 
     build = check("build", chain.build_command, repo)
+    if not chain.has_tests:
+        return Baseline(builds=build.passed, checks=[build])
     tests = check("tests", chain.test_command, repo)
     run, failed, skipped = read_test_counts(tests.detail)
     return Baseline(
@@ -64,6 +66,9 @@ def baseline(repo: Path, chain: Toolchain) -> Baseline:
         tests_failed=failed,
         tests_skipped=skipped,
         checks=[build, tests],
+        has_tests=bool(
+            run or chain.build_tool == "npm" or count(repo, chain.test_glob)
+        ),
     )
 
 

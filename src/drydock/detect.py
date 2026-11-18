@@ -17,6 +17,7 @@ class Toolchain:
     test_command: str
     source_glob: str
     test_glob: str
+    has_tests: bool = True
 
 
 TOOLCHAINS = [
@@ -77,6 +78,7 @@ NOTHING = Toolchain(
     test_command="",
     source_glob="**/*",
     test_glob="**/*test*",
+    has_tests=False,
 )
 
 
@@ -123,6 +125,7 @@ def _refine(repo: Path, chain: Toolchain) -> Toolchain:
         # and verify already refuses to pass an item it cannot check.
         build_command=build or test,
         test_command=test or build,
+        has_tests=bool(test),
     )
 
 

@@ -35,6 +35,10 @@ def _lend_dependencies(repo: Path, where: Path) -> None:
             pass
 
 
+class GitError(RuntimeError):
+    """Git could not establish the state needed to continue safely."""
+
+
 class Repo:
     def __init__(self, path: Path) -> None:
         self.path = path
@@ -49,7 +53,41 @@ class Repo:
         return not self._git("status --porcelain")[1].strip()
 
     def branch(self, name: str) -> None:
-        self._git(f"checkout -B {name}")
+        self._checked(f"checkout -B {_quote(name)}")
+        self.require_checkout(name)
+
+    def _checked(self, args: str) -> str:
+        code, out = self._git(args)
+        if code:
+            raise GitError(f"git {args} failed (exit {code}): {out.strip()[-600:]}")
+        return out.strip()
+
+    def require_checkout(self, branch: str, tip: str | None = None) -> str:
+        """Check ownership and cleanliness before running checks or restoring."""
+        _, current = self._git("symbolic-ref --quiet --short HEAD")
+        current = current.strip() or "(detached)"
+        head = self._checked("rev-parse --verify HEAD")
+        status = self._checked("status --porcelain")
+        if current != branch or (tip and head != tip) or status:
+            raise GitError(
+                f"expected clean {branch} at {tip or 'its tip'}, "
+                f"observed {current} at {head}"
+                + (f" with changes: {status}" if status else "")
+            )
+        return head
+
+    def restore_tip(self, branch: str, candidate: str, previous: str) -> None:
+        self.require_checkout(branch, candidate)
+        # --keep refuses to overwrite local modifications made after the check.
+        self._checked(f"reset --keep {_quote(previous)}")
+        self.require_checkout(branch, previous)
+
+    def require_parent(self, candidate: str, previous: str) -> None:
+        observed = self._checked(f"show -s --format=%P {_quote(candidate)}")
+        if observed != previous:
+            raise GitError(
+                f"expected parent {previous}, observed {observed or '(none)'}"
+            )
 
     def changed_files(self) -> list[str]:
         _, out = self._git("status --porcelain")
@@ -59,9 +97,9 @@ class Repo:
         """Commit whatever changed. Returns the hash, or None if nothing did."""
         if not self.changed_files():
             return None
-        self._git("add -A")
-        self._git(f"commit -q -m {_quote(message)}")
-        return self.head()
+        self._checked("add -A")
+        self._checked(f"commit -q -m {_quote(message)}")
+        return self._checked("rev-parse --verify HEAD")
 
     # Files this application writes into somebody's repository. They are
     # written there because a worker has to put its answer somewhere the
@@ -144,7 +182,7 @@ class Repo:
         if code:
             self._git("cherry-pick --abort")
             return False, out[-500:]
-        return True, self._git("rev-parse --short HEAD")[1].strip()
+        return True, self._checked("rev-parse --verify HEAD")
 
     def pending_for_review(self) -> str:
         """The uncommitted change, without the parts nobody wrote by hand."""

@@ -105,6 +105,7 @@ class Fake:
 
 
 class _Chain:
+    has_tests = True
     build_command = "npm run build"
     test_command = "npm test"
 

@@ -17,7 +17,7 @@ from pydantic import BaseModel
 from . import crew, intent, preview, publish
 from .commands import available, match
 from .engines import stop_workers
-from .repo import Repo
+from .repo import GitError, Repo
 from .run import Run
 from .session import Session
 from .settings import Settings
@@ -934,7 +934,10 @@ def resume(run_id: str) -> JSONResponse:
             status_code=409,
         )
 
-    session = Session.resume(run, engine=run.engine, model=run.model)
+    try:
+        session = Session.resume(run, engine=run.engine, model=run.model)
+    except GitError as exc:
+        return JSONResponse({"ok": False, "reason": str(exc)}, status_code=409)
     workspace.sessions[key] = session
     return JSONResponse({"ok": True, "key": key, "left": len(left)})
 

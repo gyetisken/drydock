@@ -25,7 +25,7 @@ from .inspect import look
 from .models import ItemResult, Outcome
 from .planner import answer, split
 from .policy import AT_THE_END, NEVER, Policy, of
-from .repo import Repo
+from .repo import GitError, Repo
 from .reviewer import review
 from .run import Run
 from .verify import verify
@@ -241,6 +241,15 @@ def _with_the_usual_cause(refusal: str) -> str:
     return refusal
 
 
+def _verification_commands(where: Path) -> dict:
+    chain = detect(where)
+    return {
+        "build": chain.build_command,
+        "tests": chain.test_command,
+        "has_tests": chain.has_tests,
+    }
+
+
 def _one_item(
     where: Path,
     main: Repo,
@@ -286,17 +295,13 @@ def _one_item(
     # is usually one sentence.
     settled = ""
 
-    def commands_now() -> dict:
-        chain = detect(where)
-        return {"build": chain.build_command, "tests": chain.test_command}
-
     while attempt <= policy.attempts:
         try:
             report, usage = work(
                 where,
                 run.task,
                 item,
-                commands_now()["build"],
+                detect(where).build_command,
                 failure,
                 run.skills_loaded,
                 on_event,
@@ -389,7 +394,12 @@ def _one_item(
                 note=report.get("summary", "the engineer could not do this item"),
             ), None
 
-        verdict = verify(where, item.verify_with, run.baseline, commands_now())
+        verdict = verify(
+            where,
+            item.verify_with,
+            run.verification_baseline,
+            _verification_commands(where),
+        )
 
         refusal = ""
         if verdict.passed:
@@ -415,21 +425,14 @@ def _one_item(
                 )
 
         if verdict.passed and not refusal:
-            # The bar moves up with the work. It was the count from before
-            # the run started and never shifted, so an item could delete
-            # every test an earlier item had added and still clear it as
-            # long as it stayed at the number the repository began with -
-            # while the pull request said every item left the suite at
-            # least as large as it found it. It does now.
-            run.baseline.tests_run = max(run.baseline.tests_run, verdict.tests_run)
             commit = here.commit(f"{item.id}. {item.title}\n\n{report['summary']}")
             return ItemResult(
                 item=item,
-                outcome=Outcome.DONE,
+                outcome=Outcome.DONE if commit else Outcome.BLOCKED,
                 attempts=attempt,
                 files_changed=report.get("files_changed", []),
                 checks=[verdict.check],
-                note=verdict.reason,
+                note=verdict.reason if commit else "the worker made no changes",
                 commit=commit,
             ), commit
 
@@ -448,6 +451,56 @@ def _one_item(
         attempt += 1
 
     return result, None
+
+
+def _accept_candidate(repo, run, result, previous, base, *, cherry_pick=False):
+    """Verify one provisional commit on the run branch before accepting it."""
+    candidate = result.commit
+    verdict = None
+    try:
+        if not candidate:
+            repo.require_checkout(run.branch, previous)
+            return result
+
+        if cherry_pick:
+            repo.require_checkout(run.branch, previous)
+            ok, picked = repo.take(candidate)
+            if not ok:
+                repo.require_checkout(run.branch, previous)
+                result.outcome = Outcome.REVERTED
+                result.commit = None
+                result.note = f"the change could not be integrated:\n{picked}"
+                return result
+            candidate = picked
+
+        repo.require_checkout(run.branch, candidate)
+        repo.require_parent(candidate, previous)
+        verdict = verify(
+            repo.path, result.item.verify_with, base, _verification_commands(repo.path)
+        )
+        repo.require_checkout(run.branch, candidate)
+        if verdict.passed:
+            result.commit = result.verified_commit = candidate
+            result.tests_run = verdict.tests_run
+            result.note = verdict.reason
+        else:
+            repo.restore_tip(run.branch, candidate, previous)
+            result.outcome = Outcome.REVERTED
+            result.commit = None
+            result.note = (
+                f"integrated verification of {candidate} failed: {verdict.reason}"
+            )
+    except (GitError, OSError) as exc:
+        run.integration_error = (
+            f"integration stopped: expected {run.branch} restored to {previous}, "
+            f"observed candidate {candidate or '(unavailable)'}; {exc}"
+        )
+        result.outcome = Outcome.BLOCKED
+        result.commit = None
+        result.note = run.integration_error
+    if verdict is not None:
+        result.checks = verdict.checks
+    return result
 
 
 def _work_a_wave(
@@ -475,6 +528,8 @@ def _work_a_wave(
     item is reported as reverted rather than resolved blind, because
     resolving a conflict nobody saw is how an agent silently loses work.
     """
+    at = repo.require_checkout(run.branch)
+    base = run.verification_baseline
     if len(items) == 1:
         result, _commit = _one_item(
             repo_path,
@@ -488,10 +543,9 @@ def _work_a_wave(
             on_event,
             on_gate,
         )
-        return {items[0].id: result}
+        return {items[0].id: _accept_candidate(repo, run, result, at, base)}
 
     trees: dict[int, Path] = {}
-    at = repo.head()
     try:
         for item in items:
             trees[item.id] = repo.worktree(f"item{item.id}", at)
@@ -529,25 +583,14 @@ def _work_a_wave(
 
         out: dict[int, ItemResult] = {}
         for item in items:
-            result, commit = done[item.id]
-            if result.outcome is not Outcome.DONE or not commit:
-                out[item.id] = result
-                continue
-            ok, said = repo.take(commit)
-            if not ok:
-                out[item.id] = ItemResult(
-                    item=item,
-                    outcome=Outcome.REVERTED,
-                    attempts=result.attempts,
-                    note=(
-                        "this landed on its own but will not sit beside the "
-                        "other work in this round; two items touched the same "
-                        f"lines.\n\n{said}"
-                    ),
-                )
-                continue
-            result.commit = said
+            result, _ = done[item.id]
+            result = _accept_candidate(repo, run, result, at, base, cherry_pick=True)
             out[item.id] = result
+            if run.integration_error:
+                break
+            if result.verified_commit:
+                at = result.verified_commit
+                base.tests_run = max(base.tests_run, result.tests_run)
         return out
     finally:
         for where in trees.values():
@@ -573,11 +616,8 @@ def execute(
     repo_path = Path(run.repo)
     repo = Repo(repo_path)
 
-    def commands_now() -> dict:
-        """Read the toolchain again, because an item may have created it."""
-        chain = detect(repo_path)
-        return {"build": chain.build_command, "tests": chain.test_command}
-
+    if run.integration_error:
+        raise GitError(run.integration_error)
     repo.sweep()
     if not repo.is_clean():
         raise DirtyTree(
@@ -585,8 +625,7 @@ def execute(
             "that reverting an item removes exactly what the item did."
         )
 
-    branch = f"drydock/{run.id}"
-    repo.branch(branch)
+    repo.branch(run.branch)
     run.skills_loaded = skills
     landed = {r.item.id for r in run.results if r.outcome.value == "done"}
 
@@ -634,18 +673,23 @@ def execute(
             if on_item:
                 on_item(item, "start")
 
-        results = _work_a_wave(
-            repo,
-            repo_path,
-            run,
-            wave.items,
-            engine,
-            model,
-            policy,
-            per_item,
-            on_event,
-            on_gate,
-        )
+        try:
+            results = _work_a_wave(
+                repo,
+                repo_path,
+                run,
+                wave.items,
+                engine,
+                model,
+                policy,
+                per_item,
+                on_event,
+                on_gate,
+            )
+        except GitError as exc:
+            run.integration_error = str(exc)
+            run.save()
+            raise
 
         for item in wave.items:
             result = results.get(item.id)
@@ -655,7 +699,10 @@ def execute(
             run.save()
             if on_item:
                 on_item(item, result.outcome.value)
-            if result.outcome in (Outcome.REVERTED, Outcome.BLOCKED):
+            if not run.integration_error and result.outcome in (
+                Outcome.REVERTED,
+                Outcome.BLOCKED,
+            ):
                 # One chance to be two items instead of one. An item that
                 # used all its attempts is usually an item that was two or
                 # three pieces of work wearing one title, and the only
@@ -666,6 +713,9 @@ def execute(
                 if pieces:
                     continue
                 failed.add(item.id)
+
+        if run.integration_error:
+            raise GitError(run.integration_error)
 
         # A failed item used to stop the run, on the reasoning that a later
         # item usually assumes an earlier one landed. Usually is not always,

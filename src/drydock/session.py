@@ -29,7 +29,7 @@ from .orchestrate import execute
 from .pace import from_log
 from .planner import plan
 from .policy import AT_THE_END, Policy, of
-from .repo import Repo
+from .repo import GitError, Repo
 from .run import Run
 from .settings import Settings
 from .skills import Skill, discover
@@ -934,6 +934,9 @@ class Session:
         question is which item is next. `execute` already skips items that
         have results, so resuming is the same loop started again.
         """
+        if run.integration_error:
+            raise GitError(run.integration_error)
+
         # A cap saved with the run was a cap in dollars, and a run on a Claude
         # plan does not spend dollars per run. Carrying it forward would stop
         # the same job at the same item every time it was resumed.
