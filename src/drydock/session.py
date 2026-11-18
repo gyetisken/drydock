@@ -28,6 +28,7 @@ from .models import Inventory, Item, Plan
 from .orchestrate import execute
 from .pace import from_log
 from .planner import plan
+from .policy import AT_THE_END, Policy, of
 from .repo import Repo
 from .run import Run
 from .settings import Settings
@@ -55,6 +56,7 @@ class Session:
         model: str = "opus",
         stop_after: str = "planner",
         standing: str = "",
+        policy: Policy | None = None,
     ) -> None:
         self.feed = Feed()
         self.feed.also(self._write_log)
@@ -68,6 +70,9 @@ class Session:
         # run, so nothing downstream is ever asked to speak about a repository
         # nobody has read.
         self.stop_after = stop_after
+        # How much ceremony this job gets. Decided once, here, and carried
+        # rather than re-derived anywhere downstream.
+        self.policy = policy or of(None)
         # Whatever this person always wants true of work in this repository.
         # Appended to the task rather than mixed into the system prompt, so
         # it is visible in the run record as part of what was asked for.
@@ -704,6 +709,14 @@ class Session:
                 link = preview.start(self.repo).url
             except (LookupError, RuntimeError, TimeoutError) as exc:
                 self.feed.emit("preview.failed", detail=str(exc)[:600])
+        # A profile that looks once looks here. The per-item critic was
+        # skipped on purpose - judging a half-built page refuses it for
+        # being half built - but skipping it everywhere would mean nobody
+        # ever looked, which is how this program produced a page with no
+        # times in its hours table and called it done.
+        if link and self.policy.look_at_it == AT_THE_END:
+            self._look_at_the_finished_thing(link)
+
         self.memory.record(
             self.run.task, landed, len(self.run.plan.items), self.run.cost
         )
@@ -720,6 +733,52 @@ class Session:
         self._say_where_the_time_went()
         self._publish(landed, link)
         self.feed.close()
+
+    def _look_at_the_finished_thing(self, url: str) -> None:
+        """Have somebody look at the whole page, once, at the end.
+
+        Not a gate: nothing is reverted on the strength of it, because
+        there is no single item to revert and the work has already been
+        verified piece by piece. It is a verdict on the finished thing,
+        said out loud and put in the record, so that "it builds and the
+        tests pass" is never the last word on something somebody has to
+        look at.
+        """
+        import tempfile
+
+        from .critic import look as look_at_it
+        from .fits import why_it_does_not_fit
+
+        if not self.run:
+            return
+        does_not_fit = why_it_does_not_fit(url, on_event=self._agent_event("Critic"))
+        if does_not_fit:
+            self.feed.emit("looked", approved=False, reason=does_not_fit)
+            return
+
+        try:
+            with tempfile.TemporaryDirectory(prefix="drydock-done-") as scratch:
+                seen, spend = look_at_it(
+                    url,
+                    self.run.direction,
+                    f"The whole of it: {self.run.task.splitlines()[0]}",
+                    Path(scratch),
+                    model=self.model,
+                    on_event=self._agent_event("Critic"),
+                )
+        except Exception as exc:  # noqa: BLE001 - a failed look is not a failed run
+            self.feed.emit("looked", approved=False, reason=f"could not look: {exc}")
+            return
+
+        if seen is None:
+            return
+        self.run.dollars += spend
+        self.feed.emit(
+            "looked",
+            approved=seen.approved,
+            reason=seen.reason,
+            noticed=getattr(seen, "noticed", []),
+        )
 
     def _say_where_the_time_went(self) -> None:
         """How long that took, and which part of it was the work.

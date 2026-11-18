@@ -598,6 +598,9 @@ class StartJob(BaseModel):
     budget: float = 4.0
     engine: str = "claude"
     model: str = "opus"
+    # How much ceremony this job gets: fast, balanced or deep. Empty means
+    # whatever this person has set, which starts as balanced.
+    profile: str = ""
 
 
 class Reading(BaseModel):
@@ -676,6 +679,7 @@ def start(body: StartJob) -> JSONResponse:
         body.model,
         command.stop_after,
         standing,
+        body.profile,
     )
     key = next(k for k, v in workspace.sessions.items() if v is session)
     return JSONResponse({"ok": True, "key": key})

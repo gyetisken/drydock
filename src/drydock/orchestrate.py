@@ -23,7 +23,7 @@ from .fits import why_it_does_not_fit
 from .inspect import look
 from .models import ItemResult, Outcome
 from .planner import answer
-from .policy import AT_THE_END, NEVER, Policy
+from .policy import AT_THE_END, NEVER, Policy, of
 from .repo import Repo
 from .reviewer import review
 from .run import Run
@@ -203,23 +203,28 @@ USUAL_CAUSE = (
             "off the screen",
             "wider than the viewport",
         ),
-        "The page is wider than the screen it is on. There are three usual "
-        "causes and it is nearly always the first: a full-bleed band built "
-        "with `width: 100vw` and `left: 50%; transform: translateX(-50%)`, "
-        "where 100vw includes the scrollbar and the 50% resolves against the "
-        "padded content column rather than the viewport - use a grid with a "
-        "full-width track instead and take `grid-column: full`. Then display "
-        "type at a fixed `rem` size, which does not fit a 390px phone - use "
-        "`clamp()`. Then a grid whose columns never collapse. Find which one "
-        "it is by width, not by reading: the element whose box is wider than "
-        "the viewport is the one at fault, and everything inside it inherits "
-        "the problem.",
+        (
+            "The page is wider than the screen it is on. There are three "
+            "usual causes and it is nearly always the first: a full-bleed "
+            "band built with `width: 100vw` and `left: 50%; transform: "
+            "translateX(-50%)`, where 100vw includes the scrollbar and the "
+            "50% resolves against the padded content column rather than the "
+            "viewport - use a grid with a full-width track instead and take "
+            "`grid-column: full`. Then display type at a fixed `rem` size, "
+            "which does not fit a 390px phone - use `clamp()`. Then a grid "
+            "whose columns never collapse. Find which one it is by width, "
+            "not by reading: the element whose box is wider than the "
+            "viewport is the one at fault, and everything inside it "
+            "inherits the problem."
+        ),
     ),
     (
         ("contrast", "unreadable", "invisible", "same colour as", "on black"),
-        "Text with no colour of its own takes the page's, and the page's is "
-        "for the other ground. A section that inverts has to set `color` on "
-        "itself, not on the few elements somebody remembered.",
+        (
+            "Text with no colour of its own takes the page's, and the page's "
+            "is for the other ground. A section that inverts has to set "
+            "`color` on itself, not on the few elements somebody remembered."
+        ),
     ),
 )
 

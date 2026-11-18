@@ -233,3 +233,89 @@ class TestNothingMovedWhenThePolicyArrived:
         source = inspect.getsource(orchestrate.execute)
         assert "policy or of(None)" in source
         assert of(None).profile == BALANCED
+
+
+class TestChoosingAProfile:
+    def test_what_was_asked_for_wins(self, tmp_path, monkeypatch):
+        from drydock import workspace
+
+        monkeypatch.setenv("DRYDOCK_HOME", str(tmp_path))
+        seen = {}
+
+        class Fake:
+            def __init__(self, *a, **k):
+                seen["policy"] = k.get("policy")
+
+            def start(self, auto_run=False):
+                pass
+
+            run = None
+
+        monkeypatch.setattr(workspace, "Session", Fake)
+        space = workspace.Workspace()
+        space.start(tmp_path, "t", [], 0.0, profile="fast")
+        assert seen["policy"].profile == FAST
+
+    def test_what_this_person_set_is_used_when_nothing_was_asked(
+        self, tmp_path, monkeypatch
+    ):
+        from drydock import workspace
+        from drydock.settings import Settings
+
+        monkeypatch.setenv("DRYDOCK_HOME", str(tmp_path))
+        Settings(profile=DEEP).save()
+        seen = {}
+
+        class Fake:
+            def __init__(self, *a, **k):
+                seen["policy"] = k.get("policy")
+
+            def start(self, auto_run=False):
+                pass
+
+            run = None
+
+        monkeypatch.setattr(workspace, "Session", Fake)
+        workspace.Workspace().start(tmp_path, "t", [], 0.0)
+        assert seen["policy"].profile == DEEP
+
+    def test_the_setting_starts_as_the_old_behaviour(self, tmp_path, monkeypatch):
+        from drydock.settings import Settings
+
+        monkeypatch.setenv("DRYDOCK_HOME", str(tmp_path / "never-written"))
+        assert Settings.load().profile == BALANCED
+
+    def test_the_setting_survives_being_closed(self, tmp_path, monkeypatch):
+        from drydock.settings import Settings
+
+        monkeypatch.setenv("DRYDOCK_HOME", str(tmp_path))
+        Settings(profile=FAST).save()
+        assert Settings.load().profile == FAST
+
+
+class TestThePlannerIsToldHowManyItems:
+    def test_each_profile_asks_for_its_own_range(self):
+        from drydock.planner import _system
+
+        for name in (FAST, BALANCED, DEEP):
+            said = _system("claude", of(name))
+            want = f"{of(name).fewest_items} to {of(name).most_items} items"
+            assert want in said, name
+
+    def test_the_ceiling_is_said_to_be_a_ceiling(self):
+        """A range reads as a target to fill unless it says otherwise, and
+        a plan that comes in under it is the better plan."""
+        said = _planner_rules()
+        assert "ceiling" in said
+
+    def test_the_first_item_has_to_leave_something_running(self):
+        """An item three that fails then costs item three, instead of
+        leaving nothing at all."""
+        said = _planner_rules()
+        assert "first item leaves something that runs" in said
+
+
+def _planner_rules() -> str:
+    from drydock.planner import _system
+
+    return _system("claude", of(BALANCED))

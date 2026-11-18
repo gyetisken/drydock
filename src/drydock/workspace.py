@@ -209,7 +209,12 @@ class Workspace:
         model: str = "opus",
         stop_after: str = "planner",
         standing: str = "",
+        profile: str = "",
     ) -> Session:
+        # What was asked for, or what this person has set, or the default.
+        from .policy import of
+        from .settings import Settings
+
         session = Session(
             repo,
             task,
@@ -219,6 +224,7 @@ class Workspace:
             model=model,
             stop_after=stop_after,
             standing=standing,
+            policy=of(profile or Settings.load().profile),
         )
         session.start(auto_run=False)
         # The session has an id only once its run exists, so it is keyed by the

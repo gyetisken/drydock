@@ -28,6 +28,15 @@ class Settings:
     # either way.
     publish_when_done: bool = True
 
+    # How much ceremony a job gets unless it says otherwise.
+    #
+    # `balanced` is what this program did before there were profiles, and
+    # it stays the default: somebody who has not chosen gets what they
+    # already had. `fast` is for small, low-risk work somebody is waiting
+    # on; `deep` for work where being wrong is expensive. No profile can
+    # switch off the inspector, the confinement or the revert.
+    profile: str = "balanced"
+
     @classmethod
     def load(cls) -> "Settings":
         path = _home() / "settings.json"

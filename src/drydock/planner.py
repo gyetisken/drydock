@@ -44,10 +44,19 @@ The test for a seam: if two pieces would always be written in the same
 sitting, and a failure in one would be diagnosed by looking at the other,
 they are one item.
 
-A plan for a small site is four items, five if something in it is genuinely
-hard. If you have written seven, go back and find the three that were only
-split because they could be. If you have written ten, you have planned a
-list of files rather than a sequence of working states.
+**{fewest} to {most} items for this job.** That is not a suggestion and it
+is not a target to fill: {most} is a ceiling, and a plan that comes in
+under it is a better plan, not a lazy one. If you have written more than
+{most}, go back and find the ones that were only split because they could
+be. A plan with an item per file is a list of files, not a sequence of
+working states.
+
+**The first item leaves something that runs.** Not a config file, not a
+stylesheet nobody imports: something somebody could start and look at,
+however little it does. Every later item adds to a thing that already
+works. An item three that fails then costs item three, instead of leaving
+nothing at all - which is what happened the last time the first item was
+scaffolding and the second one failed.
 
 There is an upper bound too, and it is harder than it sounds. One engineer
 works one item in one pass: {turns} turns and {minutes:.0f} minutes, no
@@ -243,6 +252,7 @@ def plan(
     engine: str = "api",
     model: str = "opus",
     shape: str = "",
+    policy=None,
 ) -> tuple[Plan, object]:
     chosen = skills or []
     filled = (
@@ -263,7 +273,9 @@ def plan(
     if engine == "claude":
         result, dollars, turns = ClaudeCodeEngine(model=model).structured(
             repo,
-            _system(engine) + briefing(chosen, "plan") + briefing(chosen, "verify"),
+            _system(engine, policy)
+            + briefing(chosen, "plan")
+            + briefing(chosen, "verify"),
             filled,
             '{"summary": "...", "items": [{"id": 1, "title": "...", '
             '"plain": "...", "rationale": "...", "files": ["..."], '
@@ -279,7 +291,9 @@ def plan(
         # The planner is given both its own guidance and what the skill says
         # counts as proof, because acceptance belongs in the item rather than
         # being remembered later by whoever reads the diff.
-        system=_system(engine) + briefing(chosen, "plan") + briefing(chosen, "verify"),
+        system=_system(engine, policy)
+        + briefing(chosen, "plan")
+        + briefing(chosen, "verify"),
         tools=read_only(repo),
         max_turns=10,
         budget=budget,
@@ -296,17 +310,30 @@ class _Spend:
         self.dollars = dollars
 
 
-def _system(engine: str) -> str:
+def _system(engine: str, policy=None) -> str:
     """The rules, with the engineer's real limits in them.
 
     The bound on how large an item can be is the bound on what one worker
     finishes in one pass, so it is read off the worker rather than written
     down twice and left to drift.
     """
+    from .policy import of
+
+    policy = policy or of(None)
     if engine == "claude":
-        worker = ClaudeCodeEngine()
-        return SYSTEM.format(turns=worker.max_turns, minutes=worker.seconds / 60)
-    return SYSTEM.format(turns=30, minutes=12)
+        worker = ClaudeCodeEngine(max_turns=policy.turns, minutes=policy.minutes)
+        return SYSTEM.format(
+            turns=worker.max_turns,
+            minutes=worker.seconds / 60,
+            fewest=policy.fewest_items,
+            most=policy.most_items,
+        )
+    return SYSTEM.format(
+        turns=30,
+        minutes=policy.minutes,
+        fewest=policy.fewest_items,
+        most=policy.most_items,
+    )
 
 
 ANSWER_SYSTEM = """You wrote this plan, and the engineer doing one of its
