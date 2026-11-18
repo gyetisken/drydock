@@ -210,13 +210,17 @@ class TestAnAssertionSwappedForAWeakerOne:
         [
             (
                 "javascript",
-                "-  expect(total(cart)).toBe(42);\n"
-                "+  expect(total(cart)).toBeDefined();\n",
+                (
+                    "-  expect(total(cart)).toBe(42);\n"
+                    "+  expect(total(cart)).toBeDefined();\n"
+                ),
             ),
             (
                 "java",
-                "-    assertEquals(42, total(cart));\n"
-                "+    assertNotNull(total(cart));\n",
+                (
+                    "-    assertEquals(42, total(cart));\n"
+                    "+    assertNotNull(total(cart));\n"
+                ),
             ),
             (
                 "python",
@@ -228,13 +232,17 @@ class TestAnAssertionSwappedForAWeakerOne:
             ),
             (
                 "rust",
-                "-    assert_eq!(total(&cart), 42);\n"
-                "+    assert!(total(&cart).is_some());\n",
+                (
+                    "-    assert_eq!(total(&cart), 42);\n"
+                    "+    assert!(total(&cart).is_some());\n"
+                ),
             ),
             (
                 "c#",
-                "-    Assert.AreEqual(42, Total(cart));\n"
-                "+    Assert.IsNotNull(Total(cart));\n",
+                (
+                    "-    Assert.AreEqual(42, Total(cart));\n"
+                    "+    Assert.IsNotNull(Total(cart));\n"
+                ),
             ),
         ],
     )

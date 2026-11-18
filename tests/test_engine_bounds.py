@@ -472,17 +472,9 @@ def _built(monkeypatch, retry_of: str):
             seen["minutes"] = minutes
 
         def work(self, *a, **k):
-            class Result:
-                done = True
-                summary = ""
-                files_changed: list = []
-                noticed: list = []
-                question = ""
-                died = False
-                dollars = 0.0
-                turns = 1
-
-            return Result()
+            return engineer.EngineResult(
+                done=True, summary="", files_changed=[], noticed=[], turns=1
+            )
 
     monkeypatch.setattr(engineer, "ClaudeCodeEngine", Fake)
     monkeypatch.setattr(engineer, "briefing", lambda skills, role: "")
