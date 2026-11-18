@@ -16,6 +16,7 @@ that was already a repository skipped the first commit entirely. The CLI
 never went through that path at all.
 """
 
+import os
 import subprocess
 from pathlib import Path
 
@@ -101,6 +102,77 @@ class TestGivingItAFirstCommit:
         repo.start_history()
         repo.start_history()
         assert log(repo) == ["before", "drydock"]
+
+
+class TestAMachineWithNoGitIdentity:
+    """The same machine, usually. Somebody who has never run `git config
+    user.email` is somebody on a new laptop, in a container, or on CI -
+    which is exactly where a folder gets `git init`-ed and left. Found by
+    CI: every one of these raised "Author identity unknown"."""
+
+    def test_the_baseline_commit_is_still_made(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("GIT_CONFIG_GLOBAL", os.devnull)
+        monkeypatch.setenv("GIT_CONFIG_SYSTEM", os.devnull)
+        repo = Repo(tmp_path)
+        subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+        (tmp_path / "server.js").write_text("console.log(1)\n")
+
+        repo.start_history()
+
+        assert repo.has_history()
+        assert repo.is_clean()
+
+    def test_it_is_signed_as_this_program_and_not_as_a_person(
+        self, tmp_path, monkeypatch
+    ):
+        monkeypatch.setenv("GIT_CONFIG_GLOBAL", os.devnull)
+        monkeypatch.setenv("GIT_CONFIG_SYSTEM", os.devnull)
+        subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+
+        Repo(tmp_path).start_history()
+
+        who = subprocess.run(
+            ["git", "log", "-1", "--format=%an <%ae>"],
+            cwd=tmp_path,
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout.strip()
+        assert who == "drydock <drydock@localhost>"
+
+    def test_an_identity_that_exists_is_the_one_used(self, tmp_path):
+        """Only ever a fallback. The files in that commit are somebody
+        else's work, and signing them as this program when their own name
+        is right there would be wrong about who wrote them."""
+        repo = a_bare_init(tmp_path)
+
+        repo.start_history()
+
+        who = subprocess.run(
+            ["git", "log", "-1", "--format=%ae"],
+            cwd=tmp_path,
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout.strip()
+        assert who == "t@t"
+
+    def test_nothing_is_written_to_anybody_config(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("GIT_CONFIG_GLOBAL", os.devnull)
+        monkeypatch.setenv("GIT_CONFIG_SYSTEM", os.devnull)
+        subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+
+        Repo(tmp_path).start_history()
+
+        said = subprocess.run(
+            ["git", "config", "--local", "--get-regexp", "^user\\."],
+            cwd=tmp_path,
+            capture_output=True,
+            text=True,
+            # Exit 1 means it found nothing, which is the answer wanted.
+            check=False,
+        )
+        assert said.stdout.strip() == ""
 
 
 class TestWhatItSaysWhenItCannotCarryOn:

@@ -80,7 +80,25 @@ class Repo:
         if self.has_history():
             return
         self._checked("add -A")
-        self._checked('commit -q --allow-empty -m "before drydock"')
+        self._checked(
+            f'{self._as_whoever()}commit -q --allow-empty -m "before drydock"'
+        )
+
+    def _as_whoever(self) -> str:
+        """Who to sign the baseline commit as, when git has nobody.
+
+        A machine where `git config user.email` was never set cannot commit
+        at all, and that is the same machine as the one with a folder that
+        was `git init`-ed and left - a new laptop, a container, CI. Refusing
+        there means refusing to work for the person this was written for.
+
+        Only a fallback: where an identity exists it is used, because the
+        files being committed are theirs. And only on this one commit -
+        nothing is written to anybody's git config.
+        """
+        if self._git("config user.email")[0] == 0:
+            return ""
+        return "-c user.name=drydock -c user.email=drydock@localhost "
 
     def branch(self, name: str) -> None:
         # -b, not -B: a branch that already exists is refused rather than
