@@ -30,6 +30,22 @@ class Verdict:
         return [self.build_check, self.check] if self.build_check else [self.check]
 
 
+def verify_build(repo: Path, command: str) -> Verdict:
+    """Run a separate build, or leave the test-only check to integration."""
+    if not command:
+        return Verdict(
+            passed=True,
+            reason="no separate build command",
+            check=Check(name="build", command="", passed=True, seconds=0.0),
+        )
+    result = check("build", command, repo)
+    return Verdict(
+        passed=result.passed,
+        reason="compiles" if result.passed else "does not compile",
+        check=result,
+    )
+
+
 def verify(repo: Path, item_verify: str, base: Baseline, commands: dict) -> Verdict:
     needs_suite = base.has_tests or base.tests_run > 0
     if not commands.get("tests") or (
@@ -48,13 +64,8 @@ def verify(repo: Path, item_verify: str, base: Baseline, commands: dict) -> Verd
             check=Check(name="tests", command="", passed=False, seconds=0.0),
         )
 
-    if item_verify == "build" and not needs_suite:
-        result = check("build", commands["build"], repo)
-        return Verdict(
-            passed=result.passed,
-            reason="compiles" if result.passed else "does not compile",
-            check=result,
-        )
+    if item_verify == "build" and not needs_suite and commands.get("build"):
+        return verify_build(repo, commands["build"])
 
     # An item verified by its tests must still leave something that builds.
     # Without this, a change that breaks the build is invisible until some

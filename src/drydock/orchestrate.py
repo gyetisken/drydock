@@ -28,7 +28,7 @@ from .policy import AT_THE_END, NEVER, Policy, of
 from .repo import GitError, Repo
 from .reviewer import review
 from .run import Run
-from .verify import verify
+from .verify import verify, verify_build
 from .waves import Wave, plan_waves, stranded
 
 
@@ -394,12 +394,16 @@ def _one_item(
                 note=report.get("summary", "the engineer could not do this item"),
             ), None
 
-        verdict = verify(
-            where,
-            item.verify_with,
-            run.verification_baseline,
-            _verification_commands(where),
-        )
+        commands = _verification_commands(where)
+        build = commands["build"]
+        if item.verify_with == "build" and (build or commands["tests"]):
+            if commands["has_tests"] and build == commands["tests"]:
+                build = ""
+            verdict = verify_build(where, build)
+        else:
+            verdict = verify(
+                where, item.verify_with, run.verification_baseline, commands
+            )
 
         refusal = ""
         if verdict.passed:

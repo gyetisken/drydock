@@ -105,6 +105,55 @@ def test_serial_acceptance_records_the_checked_commit(project, monkeypatch):
     assert saved.results[0].checks[-1].passed
 
 
+@pytest.mark.parametrize("separate_build", [True, False], ids=["build", "test-alias"])
+def test_build_only_preflight_runs_suite_only_on_the_integrated_commit(
+    project, monkeypatch, separate_build
+):
+    from drydock import verify as verifier
+
+    repo, chain = project
+    if not separate_build:
+        chain.build_command = chain.test_command
+    before = git(repo, "rev-parse", "HEAD")
+    checks = []
+    actual_check = verifier.check
+
+    def record(name, command, where):
+        checks.append((name, git(where, "rev-parse", "HEAD")))
+        return actual_check(name, command, where)
+
+    monkeypatch.setattr(verifier, "check", record)
+    build_item = item(1, "left").model_copy(update={"verify_with": "build"})
+    run = run_for(repo, build_item)
+    orchestrate.execute(run, policy=of("fast"))
+
+    tip = git(repo, "rev-parse", "HEAD")
+    assert Run.load(run.id).results[0].verified_commit == tip
+    expected_builds = [("build", before), ("build", tip)] if separate_build else []
+    assert checks == [*expected_builds, ("tests", tip)]
+
+
+def test_worker_reporting_success_without_edits_is_blocked(project, monkeypatch):
+    repo, _ = project
+    before = git(repo, "rev-parse", "HEAD")
+    monkeypatch.setattr(
+        orchestrate,
+        "work",
+        lambda *a, **k: (
+            {"done": True, "summary": "No edits", "files_changed": []},
+            None,
+        ),
+    )
+    run = run_for(repo, item(1, "left"))
+    orchestrate.execute(run, policy=of("fast"))
+
+    result = Run.load(run.id).results[0]
+    assert result.outcome is Outcome.BLOCKED
+    assert result.commit is None and result.verified_commit is None
+    assert git(repo, "rev-parse", "HEAD") == before
+    assert git(repo, "status", "--porcelain") == ""
+
+
 @pytest.mark.parametrize(
     "test_script",
     ["raise SystemExit(1)", "print('summary unavailable')", "print('1 passed')", None],
