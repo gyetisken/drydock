@@ -21,8 +21,10 @@ class TestTasksThatSettleTheirOwnStack:
     @pytest.mark.parametrize(
         "task",
         [
-            "Create a tiny Node.js API. The stack is already decided: use "
-            "Node.js built-in modules and the built-in test runner.",
+            (
+                "Create a tiny Node.js API. The stack is already decided: use "
+                "Node.js built-in modules and the built-in test runner."
+            ),
             "Build a small Python service using FastAPI, no other dependencies.",
             "Create a Next.js app. Do not change the framework.",
             "A CLI written in Go, no external libraries.",
