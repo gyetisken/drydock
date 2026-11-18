@@ -10,15 +10,24 @@ hands back a URL. It is deliberately small: one process at a time per
 project, stopped when asked or when the application exits, and nothing is
 guessed - if the project does not say how to run itself, this says so rather
 than inventing a command.
+
+The one exception is a folder with an `index.html` in it and no manifest.
+That is not a project keeping quiet about how it runs; it is a project
+saying it is a page, and a static server is not a guess about it - it is
+the only thing it could mean. Without this a plain HTML site could not be
+previewed at all, and the critic, which is handed a URL or nothing, never
+got to look at the one kind of work it exists for.
 """
 
 import contextlib
 import json
 import os
 import re
+import shlex
 import signal
 import socket
 import subprocess
+import sys
 import threading
 import time
 from dataclasses import dataclass
@@ -282,6 +291,17 @@ def how_to_run(repo: Path) -> tuple[str, str]:
     ):
         if (repo / name).exists():
             return command, f"{name} is in the project root"
+
+    # Last, so anything that states a server of its own wins. A page and a
+    # server in the same folder means the server renders the page.
+    if (repo / "index.html").exists():
+        # This interpreter, not whatever `python3` resolves to on the path:
+        # the machine running drydock has one for certain, and a system
+        # python that is missing or is 2.7 would fail here for a reason
+        # that has nothing to do with the project.
+        serve = f'{shlex.quote(sys.executable)} -m http.server "$PORT" --bind 127.0.0.1'
+        why = "index.html is in the project root and nothing else says how to start it"
+        return serve, why
 
     return "", "this project does not say how to start itself"
 

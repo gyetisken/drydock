@@ -4,6 +4,7 @@ Two failures lived here, and both reported that nothing had started while
 the page loaded perfectly in a browser.
 """
 
+import json
 import socket
 import threading
 
@@ -70,6 +71,55 @@ class TestHowToRunIt:
             json.dumps({"scripts": {"dev": "vite", "start": "node ."}})
         )
         assert how_to_run(tmp_path)[0] == "npm run start"
+
+    def test_a_folder_with_a_page_in_it_is_served(self, tmp_path):
+        """Not a guess. A folder whose root is an index.html is not a
+        project keeping quiet about how it runs - it is a page, and a
+        static server is the only thing it could mean. Without this a
+        plain HTML site could not be previewed or looked at at all."""
+        (tmp_path / "index.html").write_text("<h1>hello</h1>")
+
+        command, why = how_to_run(tmp_path)
+
+        assert "http.server" in command
+        assert '"$PORT"' in command, "it has to take the port it was given"
+        assert "127.0.0.1" in command, "not on every interface of the machine"
+        assert "index.html" in why
+
+    def test_the_interpreter_is_this_one(self, tmp_path):
+        """Not whatever `python3` happens to be on the path. The machine
+        running drydock has this one for certain, and a system python that
+        is missing or is 2.7 would fail for a reason that has nothing to
+        do with the project."""
+        import sys
+
+        (tmp_path / "index.html").write_text("<h1>hello</h1>")
+        assert how_to_run(tmp_path)[0].startswith(sys.executable)
+
+    def test_anything_that_states_a_server_beats_the_page(self, tmp_path):
+        """A page and a server in the same folder means the server renders
+        the page."""
+        (tmp_path / "index.html").write_text("<h1>hello</h1>")
+        (tmp_path / "app.py").write_text("...")
+
+        assert how_to_run(tmp_path)[0] == "python app.py"
+
+    def test_a_manifest_still_wins(self, tmp_path):
+        (tmp_path / "index.html").write_text("<h1>hello</h1>")
+        (tmp_path / "package.json").write_text(
+            json.dumps({"scripts": {"start": "vite"}})
+        )
+
+        assert how_to_run(tmp_path)[0] == "npm run start"
+
+    def test_a_page_somewhere_else_is_not_looked_for(self, tmp_path):
+        """A build output under dist/ is a project with a manifest, and
+        hunting for pages in subdirectories is the guessing this module
+        exists not to do."""
+        (tmp_path / "dist").mkdir()
+        (tmp_path / "dist" / "index.html").write_text("<h1>hello</h1>")
+
+        assert how_to_run(tmp_path)[0] == ""
 
     def test_a_project_that_does_not_say_is_not_guessed_at(self, tmp_path):
         command, why = how_to_run(tmp_path)

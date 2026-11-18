@@ -284,3 +284,48 @@ class TestWhatTheCriticIsAllowedToJudge:
 
         assert seen is None
         assert "did not look" in said[-1][1]
+
+
+class TestAPlainPageCanBeLookedAt:
+    """The whole chain for the one kind of project that had none of it.
+
+    A folder of index.html and styles.css could not be previewed, because
+    nothing in it says how to start a server - so the panel had nothing to
+    show and the critic was never handed a URL. The one kind of work the
+    critic exists for was the one kind it could not see.
+
+    This starts a real server on a real port and asks it a real question.
+    No network leaves the machine and no model is called.
+    """
+
+    def test_it_is_started_served_and_seen_as_a_page(self, tmp_path):
+        from drydock import preview
+
+        (tmp_path / "index.html").write_text(
+            "<!doctype html><title>Roasters</title><h1>Gulf Coast</h1>"
+        )
+        (tmp_path / "styles.css").write_text("body{background:#f4ede1}")
+
+        live = preview.start(tmp_path)
+        try:
+            page = what_it_serves(live.url)
+            sheet = what_it_serves(live.url, "/styles.css")
+
+            assert page.is_a_page, page.said
+            assert page.status == 200
+            assert sheet.status == 200, "the page's own files have to serve too"
+        finally:
+            preview.stop(tmp_path)
+
+    def test_stopping_it_actually_stops_it(self, tmp_path):
+        """A static server left running holds a port and answers for a
+        project that has moved on - which is how the critic ends up
+        photographing something that is no longer the work."""
+        from drydock import preview
+
+        (tmp_path / "index.html").write_text("<h1>hello</h1>")
+        live = preview.start(tmp_path)
+
+        preview.stop(tmp_path)
+
+        assert not what_it_serves(live.url).is_a_page
