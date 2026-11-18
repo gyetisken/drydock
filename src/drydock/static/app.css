@@ -703,3 +703,27 @@ body.split .composer .cwrap { max-width:none }
   max-width:52ch }
 .pv-body .empty code { font-size:11px; color:var(--ink) }
 .pv-body .empty .btn { margin-top:14px }
+/* What a finished run left behind. One block per landed item: the plain
+   sentence, the commit it became, the checks that actually ran, and the
+   files. Deliberately flat - this is a record to read, not a dashboard,
+   and the only colour in it marks a check that passed or failed. */
+.landed { display:flex; flex-direction:column; gap:7px; margin:11px 0 4px }
+.landed-item { border-left:2px solid var(--line); padding:0 0 0 10px }
+.landed-head { display:flex; align-items:baseline; gap:8px; flex-wrap:wrap }
+.landed-plain { font-size:13px; color:var(--fg); line-height:1.5 }
+.landed-commit { font-size:11.5px; color:var(--faint); flex-shrink:0 }
+.landed-commit.flat { font-family:inherit }
+.landed-facts { display:flex; gap:6px; flex-wrap:wrap; margin-top:4px }
+.fact { font-size:11.5px; color:var(--muted); background:var(--raise);
+  border-radius:5px; padding:2px 7px; line-height:1.5 }
+.fact code { font-size:11px; color:inherit }
+.fact.ok { color:var(--ok) } .fact.bad { color:var(--bad) }
+.fact.flat { color:var(--faint); background:none; padding:2px 0 }
+.landed-files { display:flex; gap:7px; flex-wrap:wrap; margin-top:4px }
+.landed-files code { font-size:11px; color:var(--faint) }
+.landed-files.flat { font-size:11.5px; color:var(--faint) }
+/* Named, with the reason that was recorded. A run that omits these reads
+   as a run that did everything it set out to do. */
+.missed { margin:12px 0 4px; padding-top:9px; border-top:1px solid var(--line-soft) }
+.missed-item { margin:6px 0 0 }
+.missed-plain { font-size:13px; color:var(--fg); margin-right:7px }

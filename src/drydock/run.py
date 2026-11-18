@@ -105,6 +105,74 @@ class Run(BaseModel):
                 return r.verified_commit
         return self.anchor
 
+    def what_happened(self) -> dict:
+        """The record, said in the terms somebody reading it needs.
+
+        Built from what was written down while the work happened and from
+        nothing else. Where a thing was not recorded it says so: a check
+        that did not run is not a check that passed, and a field nobody
+        filled in is `None`, not a cheerful default.
+        """
+        landed, missed = [], []
+        for result in self.results:
+            item = result.item
+            said = {
+                "id": item.id,
+                "plain": item.plain or item.title,
+                "attempts": result.attempts,
+            }
+            if result.outcome.value == "done":
+                commit = result.verified_commit or result.commit
+                landed.append(
+                    said
+                    | {
+                        "commit": (commit or "")[:10] or None,
+                        "verified": bool(result.verified_commit),
+                        "files": list(result.files_changed),
+                        "checks": [
+                            {
+                                "name": check.name,
+                                "command": check.command,
+                                "passed": check.passed,
+                            }
+                            for check in result.checks
+                        ],
+                        "note": result.note,
+                    }
+                )
+            else:
+                missed.append(
+                    said | {"outcome": result.outcome.value, "note": result.note}
+                )
+
+        planned = {i.id for i in self.plan.items} if self.plan else set()
+        judged = {r.item.id for r in self.results}
+        for item in self.plan.items if self.plan else []:
+            if item.id not in judged:
+                missed.append(
+                    {
+                        "id": item.id,
+                        "plain": item.plain or item.title,
+                        "attempts": 0,
+                        "outcome": "never attempted",
+                        "note": "the run ended before this item was reached",
+                    }
+                )
+
+        return {
+            "branch": self.branch,
+            "landed": landed,
+            "missed": missed,
+            "planned": len(planned),
+            "integration_error": self.integration_error or None,
+            # What this cost, and what that number is worth. On a plan that
+            # bills nothing per run it is an observation, not a budget that
+            # was enforced, and saying "$2.24 of work" without that is a
+            # claim this program cannot stand behind.
+            "cost": round(self.dollars, 2),
+            "cost_is_enforced": bool(self.budget),
+        }
+
     def save(self) -> None:
         self.path.parent.mkdir(exist_ok=True)
         self.path.write_text(self.model_dump_json(indent=2))
