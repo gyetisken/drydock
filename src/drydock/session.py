@@ -937,6 +937,23 @@ class Session:
         if run.integration_error:
             raise GitError(run.integration_error)
 
+        # Checked before anything else touches disk. A dirty tree here is
+        # not necessarily the interrupted worker's own leftovers - it might
+        # be work somebody else is doing in the same checkout - and the old
+        # code hard-reset and cleaned it on that assumption. Nothing is
+        # saved, reset, cleaned, stashed, swept or checked out before this
+        # passes.
+        expected = run.expected_tip
+        if not expected:
+            raise GitError(
+                f"{run.repo} has no recorded commit on {run.branch} to resume "
+                "from. This looks like a run saved before resuming kept an "
+                "anchor commit, so there is nothing safe to compare the "
+                "branch against - it cannot be resumed."
+            )
+        repo = Repo(Path(run.repo))
+        repo.require_checkout(run.branch, expected)
+
         # A cap saved with the run was a cap in dollars, and a run on a Claude
         # plan does not spend dollars per run. Carrying it forward would stop
         # the same job at the same item every time it was resumed.
@@ -970,18 +987,12 @@ class Session:
                 run.refused[dropped.item.id] = dropped.note
         run.save()
 
-        # Whatever was being written when this stopped belongs to an item
-        # that never landed, and an item that never landed is one whose
-        # changes are thrown away. Leaving them would also mean the next
-        # item's commit quietly contains someone else's half-finished work.
-        # Anything still working in this repository is an orphan from the run
-        # that was interrupted, and it will happily write files back in
-        # behind the clean-up. Stop it first, then clean.
+        # The tree was already clean and on the expected commit, by the
+        # check above - there is nothing of the interrupted item's left to
+        # throw away. A worker from that run could still be alive, though,
+        # and it would happily write files back in once this one starts, so
+        # it is stopped before anything else runs.
         orphans = stop_workers(Path(run.repo))
-        repo = Repo(Path(run.repo))
-        dirty = not repo.is_clean()
-        if dirty:
-            repo.discard()
 
         session.feed.emit(
             "run.started",
@@ -992,18 +1003,14 @@ class Session:
             stages=STAGES,
             resumed=True,
         )
-        if dirty or orphans:
-            note = (
-                "A half-finished item was left on disk when this stopped. It "
-                "was thrown away, which is what happens to any item that does "
-                "not land. Everything already committed is untouched."
+        if orphans:
+            session.feed.emit(
+                "resumed",
+                note=(
+                    f"{orphans} worker(s) were still running in this "
+                    "repository and were stopped before this resumed."
+                ),
             )
-            if orphans:
-                note += (
-                    f" {orphans} worker(s) were still running in this "
-                    "repository and were stopped first."
-                )
-            session.feed.emit("resumed", note=note)
         if run.baseline:
             b = run.baseline
             session.feed.emit(

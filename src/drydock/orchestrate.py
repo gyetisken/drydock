@@ -622,14 +622,39 @@ def execute(
 
     if run.integration_error:
         raise GitError(run.integration_error)
-    repo.sweep()
-    if not repo.is_clean():
-        raise DirtyTree(
-            f"{repo_path} has uncommitted changes. The crew needs a clean tree so "
-            "that reverting an item removes exactly what the item did."
-        )
 
-    repo.branch(run.branch)
+    expected = run.expected_tip
+    if expected:
+        # Resuming: the branch has to be exactly where it was left, not
+        # wherever a checkout -B would happily put it. Sweeping and
+        # re-branching are for a run that has never touched this repository;
+        # a run picking up pending work must not run either.
+        repo.require_checkout(run.branch, expected)
+    else:
+        # No anchor recorded, but a run with results or a branch that
+        # already exists is not new - it is an older record missing the
+        # anchor this check relies on. Treating it as new would sweep and
+        # re-branch over an accepted branch, moving it off the commit it
+        # was last accepted at. Refused before any mutation, not just the
+        # checkout -B that used to make the move.
+        if run.results or repo.branch_exists(run.branch):
+            raise GitError(
+                f"{run.branch} already exists or {run.repo} has recorded "
+                "results for this run, but no anchor commit was found to "
+                "resume from. This looks like a run saved before resuming "
+                "kept an anchor commit - it cannot be resumed safely."
+            )
+        repo.sweep()
+        if not repo.is_clean():
+            raise DirtyTree(
+                f"{repo_path} has uncommitted changes. The crew needs a clean tree so "
+                "that reverting an item removes exactly what the item did."
+            )
+        repo.branch(run.branch)
+        # Before any worker can write to this branch, so a run resumed later
+        # has something real to compare the branch against.
+        run.anchor = repo.require_checkout(run.branch)
+        run.save()
     run.skills_loaded = skills
     landed = {r.item.id for r in run.results if r.outcome.value == "done"}
 

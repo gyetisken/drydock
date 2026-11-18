@@ -48,6 +48,12 @@ class Run(BaseModel):
     tokens_cached: int = 0
     dollars: float = 0.0
     budget: float = 0.0
+    # The commit on `branch` right after it was first checked out, before any
+    # worker could write to it. Older records saved before this existed read
+    # back as "", which `expected_tip` treats the same as having no anchor at
+    # all - the commit of the last accepted item is used instead, when there
+    # is one.
+    anchor: str = ""
 
     @classmethod
     def start(cls, repo: Path, task: str, skills: list[str] | None = None) -> "Run":
@@ -82,6 +88,22 @@ class Run(BaseModel):
             ]
         )
         return base.model_copy(update={"tests_run": tests_run})
+
+    @property
+    def expected_tip(self) -> str:
+        """Where `branch` must be for this run to be resumed safely.
+
+        The last item that was actually verified on the branch, if there is
+        one - its commit is the one real, checked state the branch has been
+        in since. Before any item has landed, the only honest answer is the
+        anchor taken right after the branch was first checked out. Empty
+        means neither exists: an older record with nothing safe to compare
+        against, which is refused rather than guessed at.
+        """
+        for r in reversed(self.results):
+            if r.outcome.value == "done" and r.verified_commit:
+                return r.verified_commit
+        return self.anchor
 
     def save(self) -> None:
         self.path.parent.mkdir(exist_ok=True)
