@@ -278,3 +278,131 @@ def _failed(item):
     return ItemResult(
         item=item, outcome=Outcome.BLOCKED, attempts=2, note="it ran out of its time"
     )
+
+
+class TestThePlanCanChangeUnderTheLoop:
+    """A split replaces one item with three. The waves were worked out
+    once, before that happened, so the next item went off to work on a
+    foundation that no longer existed - item two started while the three
+    pieces standing in for item one had not been written.
+
+    Watched happen on a live run. The waves are worked out again each time
+    round now.
+    """
+
+    def test_the_pieces_are_worked_before_what_waits_on_them(self, a_run, monkeypatch):
+        from drydock import orchestrate
+
+        order: list[int] = []
+
+        def one_wave(repo, repo_path, run, items, *a, **k):
+            from drydock.models import ItemResult, Outcome
+
+            out = {}
+            for item in items:
+                order.append(item.id)
+                out[item.id] = ItemResult(
+                    item=item, outcome=Outcome.DONE, note="2 tests pass"
+                )
+            return out
+
+        monkeypatch.setattr(orchestrate, "_work_a_wave", one_wave)
+        monkeypatch.setattr(orchestrate, "Repo", _AnyRepo)
+        monkeypatch.setattr(orchestrate, "detect", lambda path: _Chain())
+        monkeypatch.setattr(orchestrate, "split", lambda *a, **k: ([], None))
+
+        orchestrate.execute(a_run, engine="claude", model="opus")
+
+        # Nothing may be worked before everything it needs.
+        done: set[int] = set()
+        for item_id in order:
+            item = next(i for i in a_run.plan.items if i.id == item_id)
+            assert set(item.needs) <= done, f"item {item_id} needs {item.needs}"
+            done.add(item_id)
+
+    def test_every_item_is_worked_exactly_once(self, a_run, monkeypatch):
+        """A loop that recomputes is a loop that can repeat itself."""
+        from drydock import orchestrate
+
+        order: list[int] = []
+
+        def one_wave(repo, repo_path, run, items, *a, **k):
+            from drydock.models import ItemResult, Outcome
+
+            out = {}
+            for item in items:
+                order.append(item.id)
+                out[item.id] = ItemResult(
+                    item=item, outcome=Outcome.DONE, note="2 tests pass"
+                )
+            return out
+
+        monkeypatch.setattr(orchestrate, "_work_a_wave", one_wave)
+        monkeypatch.setattr(orchestrate, "Repo", _AnyRepo)
+        monkeypatch.setattr(orchestrate, "detect", lambda path: _Chain())
+        monkeypatch.setattr(orchestrate, "split", lambda *a, **k: ([], None))
+
+        orchestrate.execute(a_run, engine="claude", model="opus")
+
+        assert sorted(order) == [1, 2, 3]
+        assert len(order) == len(set(order))
+
+    def test_a_split_mid_run_does_not_strand_the_pieces(self, a_run, monkeypatch):
+        """The case that was broken: item one fails, is replaced by two
+        pieces, and the item that needed it must wait for the last piece
+        rather than starting immediately."""
+        from drydock import orchestrate
+        from drydock.models import ItemResult, Outcome
+
+        order: list[int] = []
+        split_once = []
+
+        def one_wave(repo, repo_path, run, items, *a, **k):
+            out = {}
+            for item in items:
+                order.append(item.id)
+                failing = item.id == 1 and not split_once
+                out[item.id] = ItemResult(
+                    item=item,
+                    outcome=Outcome.BLOCKED if failing else Outcome.DONE,
+                    attempts=2,
+                    note="it used all its turns" if failing else "2 tests pass",
+                )
+            return out
+
+        def split_it(repo, plan, item, *a, **k):
+            split_once.append(1)
+            return _pieces(two_pieces(), item, next_id=8), None
+
+        monkeypatch.setattr(orchestrate, "_work_a_wave", one_wave)
+        monkeypatch.setattr(orchestrate, "Repo", _AnyRepo)
+        monkeypatch.setattr(orchestrate, "detect", lambda path: _Chain())
+        monkeypatch.setattr(orchestrate, "split", split_it)
+
+        orchestrate.execute(a_run, engine="claude", model="opus")
+
+        assert 8 in order and 9 in order, "the pieces were worked"
+        assert order.index(8) < order.index(2), "before what waited on them"
+        assert order.index(9) < order.index(2)
+
+
+class _Chain:
+    build_command = "npm run build"
+    test_command = "npm test"
+
+
+class _AnyRepo:
+    def __init__(self, path):
+        self.path = path
+
+    def is_clean(self):
+        return True
+
+    def sweep(self):
+        pass
+
+    def branch(self, name):
+        pass
+
+    def head(self):
+        return "abc1234"

@@ -590,7 +590,22 @@ def execute(
     landed = {r.item.id for r in run.results if r.outcome.value == "done"}
 
     failed: set[int] = set()
-    for wave in plan_waves(run.plan.items, landed):
+    # Worked out again each time round, because the plan can change under
+    # this loop: an item that did not land is replaced by the pieces it
+    # was split into, and a list of waves computed before that happened
+    # sends the next item off to work on a foundation that no longer
+    # exists. Watched happen once - item two started while the three
+    # pieces standing in for item one had not been written.
+    while True:
+        landed = {r.item.id for r in run.results if r.outcome.value == "done"}
+        waves = [
+            w
+            for w in plan_waves(run.plan.items, landed)
+            if any(i.id not in judged(run) for i in w.items)
+        ]
+        if not waves:
+            break
+        wave = waves[0]
         # Everything in this wave that is already written off, skipped
         # rather than attempted against a foundation that is not there.
         wave = Wave(
