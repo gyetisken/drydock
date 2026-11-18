@@ -10,6 +10,8 @@ is cheaper in the ways that are allowed and in no others, and that the
 three things which make the output believable cannot be switched off.
 """
 
+from dataclasses import FrozenInstanceError
+
 import pytest
 
 from drydock.policy import (
@@ -135,7 +137,7 @@ class TestChangingOneThing:
     def test_a_policy_cannot_be_edited_in_place(self):
         """It is decided once and carried. Something that rewrites it
         mid-run would make the record of what was run untrue."""
-        with pytest.raises(Exception):
+        with pytest.raises(FrozenInstanceError):
             of(FAST).attempts = 9
 
 
@@ -177,17 +179,9 @@ class TestNothingMovedWhenThePolicyArrived:
                 seen.update(model=model, max_turns=max_turns, minutes=minutes)
 
             def work(self, *a, **k):
-                class Result:
-                    done = True
-                    summary = ""
-                    files_changed: list = []
-                    noticed: list = []
-                    question = ""
-                    died = False
-                    dollars = 0.0
-                    turns = 1
-
-                return Result()
+                return engineer.EngineResult(
+                    done=True, summary="", files_changed=[], noticed=[], turns=1
+                )
 
         monkeypatch.setattr(engineer, "ClaudeCodeEngine", Fake)
         monkeypatch.setattr(engineer, "briefing", lambda skills, role: "")
@@ -240,6 +234,7 @@ class TestChoosingAProfile:
         from drydock import workspace
 
         monkeypatch.setenv("DRYDOCK_HOME", str(tmp_path))
+        monkeypatch.setattr(workspace, "HOME", tmp_path)
         seen = {}
 
         class Fake:
@@ -263,6 +258,7 @@ class TestChoosingAProfile:
         from drydock.settings import Settings
 
         monkeypatch.setenv("DRYDOCK_HOME", str(tmp_path))
+        monkeypatch.setattr(workspace, "HOME", tmp_path)
         Settings(profile=DEEP).save()
         seen = {}
 

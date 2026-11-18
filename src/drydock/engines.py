@@ -34,6 +34,16 @@ class EngineUnavailable(RuntimeError):
     pass
 
 
+def _claude_binary() -> str:
+    binary = shutil.which("claude")
+    if not binary:
+        raise EngineUnavailable(
+            "the `claude` command is not on PATH. Install Claude Code and "
+            "sign in, or use the API engine with a key."
+        )
+    return binary
+
+
 @dataclass
 class EngineResult:
     done: bool
@@ -371,12 +381,6 @@ class ClaudeCodeEngine:
     def __init__(
         self, model: str = "opus", max_turns: int = 60, minutes: float = 12.0
     ) -> None:
-        self.binary = shutil.which("claude")
-        if not self.binary:
-            raise EngineUnavailable(
-                "the `claude` command is not on PATH. Install Claude Code and "
-                "sign in, or use the API engine with a key."
-            )
         self.model = model
         self.max_turns = max_turns
         # A wall clock as well as a turn count. Turns bound how much a worker
@@ -394,6 +398,7 @@ class ClaudeCodeEngine:
         build_command: str,
         on_event=None,
     ) -> EngineResult:
+        binary = _claude_binary()
         report_file = repo / ".drydock-report.json"
         report_file.unlink(missing_ok=True)
 
@@ -424,7 +429,7 @@ class ClaudeCodeEngine:
         )
 
         command = [
-            self.binary,
+            binary,
             "-p",
             "--output-format",
             "stream-json",
@@ -710,6 +715,7 @@ class ClaudeCodeEngine:
         pipeline starts producing confident nonsense. Having it write a JSON
         file instead means the answer either validates or visibly does not.
         """
+        binary = _claude_binary()
         out = repo / ".drydock-out.json"
         out.unlink(missing_ok=True)
 
@@ -729,7 +735,7 @@ class ClaudeCodeEngine:
             else ("Read Glob Grep" + ("" if read_only else " Edit Write"))
         )
         command = [
-            self.binary,
+            binary,
             "-p",
             "--output-format",
             "stream-json",
