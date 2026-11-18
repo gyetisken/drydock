@@ -28,7 +28,8 @@ function youSaid(text) {
 
 /* ---------- live run ---------- */
 
-const live = { items: new Map(), baseline: null, tests: null, reverted: 0, el: {} };
+const live = { items: new Map(), baseline: null, tests: null, reverted: 0,
+               el: {}, crew: {} };
 
 function elapsed(item) {
   if (!item.began) return "";
@@ -374,6 +375,11 @@ const on = {
     renderStats();
   },
   "agent.tool": (e) => {
+    const was = remember(e.agent);
+    was.tool_calls += 1;
+    was.tools.push({ what: e.what, detail: e.detail, at: e.at });
+    if (was.tools.length > 40) was.tools.shift();
+    if (Office.picked() === e.agent) drawDetail();
     toolLine(e.agent, e.detail);
     // While an item is running, what the engineer is doing right now belongs
     // on that item. The drawer at the top of the thread holds everything;
@@ -391,6 +397,10 @@ const on = {
   // about money belongs. It is not what anyone watching a job wants to know.
   "spend": () => {},
   "agent.state": (e) => {
+    const was = remember(e.agent);
+    was.visits.push({ state: e.state, note: e.note, at: e.at });
+    if (e.state === "working") was.began = was.began || e.at;
+    else was.ended = e.at;
     station(e.agent, e.state, e.note);
     if (e.state === "working") running(true, `${e.agent}: ${e.note}`);
   },
@@ -485,17 +495,31 @@ const on = {
         }</div>`, "dim");
       return;
     }
-    const who = { inspector: "Inspector", reviewer: "Reviewer",
-                  critic: "Critic" }[e.who] || "Reviewer";
+    // Which desk this belongs to is decided by the server. What used to be
+    // here was `[e.who] || "Reviewer"`, so a restart and a split - neither
+    // of which is a verdict - were both shown as the Reviewer passing the
+    // item, on an item the Reviewer had not read.
+    const who = e.station;
+    const item = live.items.get(e.id);
+    if (!who) {
+      if (item) {
+        item.gates = (item.gates || "") +
+          `<span class="gate flat">${esc(e.note || e.who)}</span>`;
+        renderPlan();
+      }
+      return;
+    }
     // Each gate reports itself on the item it judged, so the plan shows how
     // far through the three checks a change actually got.
-    const item = live.items.get(e.id);
     if (item) {
       item.gates = (item.gates || "") +
         `<span class="gate ${e.passed ? "ok" : "no"}">${esc(who)} ${
           e.passed ? "passed it" : "sent it back"}</span>`;
       renderPlan();
     }
+    const was = remember(who);
+    was.gates.push({ item: e.id, passed: e.passed, note: e.note, at: e.at });
+    if (Office.picked() === who) drawDetail();
     if (e.passed) { Office.send(who); Office.at(who, "done", e.note); drawOffice(); return; }
     Office.bounce(who);
     Office.at(who, "failed", e.note);
@@ -703,7 +727,8 @@ function watch(key, { already = false } = {}) {
   // was approved twenty minutes ago - and pressing it starts nothing, which
   // is worse than it looking wrong.
   S.alreadyApproved = already;
-  live.items.clear(); live.tests = null; live.baseline = null;
+  live.items.clear(); live.tests = null; live.baseline = null; live.crew = {};
+  S.crew = null;
   live.reverted = 0; live.el = {};
   Office.reset();
   const src = new EventSource("/api/stream/" + key);
@@ -725,27 +750,136 @@ const WORDS = {
   done: "done",
   skipped: "not needed for this job",
   failed: "sent it back",
+  // Two states only a finished run can be in. Both exist because "idle"
+  // was being shown for them, and "waiting for the station before it" is
+  // a lie about a run that stopped an hour ago.
+  cut: "the run ended before this reported",
+  never: "never ran in this job",
 };
+
+// What each station did, kept as it arrives so the detail pane has
+// something to show. The states themselves live in office.js; this is the
+// history behind them, and nothing in it is computed - every line is one
+// event that was received.
+function remember(id) {
+  if (!live.crew[id]) {
+    live.crew[id] = { visits: [], tools: [], tool_calls: 0, gates: [],
+                      began: null, ended: null };
+  }
+  return live.crew[id];
+}
+
+function crewOf(id) {
+  // A finished run read back from disk, or the one happening now. The
+  // record from the server wins: it was built from the whole log, and the
+  // browser only ever sees what arrived after it connected.
+  return (S.crew && S.crew[id]) || live.crew[id] || null;
+}
 
 function station(id, state, note) {
   Office.at(id, state, note);
   drawLegend();
+  drawDetail();
 }
 
+const MARK_STATE = { done: "\u2713", working: "\u25b8", skipped: "\u2013",
+                     failed: "\u2717", idle: "\u00b7", cut: "\u2014",
+                     never: "\u00b7" };
+
 function drawLegend() {
-  const mark = { done: "✓", working: "▸", skipped: "–", failed: "✗", idle: "·" };
+  const picked = Office.picked();
+  // Buttons rather than divs. The room is a canvas, so clicking a desk can
+  // never be the only way in: this list is the half that works with a
+  // keyboard and with a screen reader.
   $("who-list").innerHTML = Office.states().map(s => `
-    <div class="who-row ${s.state}">
-      <span class="mk">${mark[s.state]}</span>
+    <button type="button" class="who-row ${s.state}${s.id === picked ? " on" : ""}"
+      data-who="${esc(s.id)}" aria-pressed="${s.id === picked}">
+      <span class="mk">${MARK_STATE[s.state] || "\u00b7"}</span>
       <b>${esc(s.id)}</b>
-      <span class="st">${esc(s.note || WORDS[s.state])}</span>
+      <span class="st">${esc(
+        // For a station that was cut off or never ran, the last thing it
+        // said is the wrong line to show: "running the build and the
+        // suite" under a desk that stopped reads as a desk still running.
+        s.state === "cut" || s.state === "never"
+          ? WORDS[s.state] : s.note || WORDS[s.state] || s.state)}</span>
       ${s.code ? '<span class="tag">no model, just code</span>' : ""}
-    </div>`).join("");
+    </button>`).join("");
+  $("who-list").querySelectorAll("[data-who]").forEach(b =>
+    (b.onclick = () => Office.pick(b.dataset.who)));
 
   $("shelf").innerHTML = (S.skillsOn || []).length
     ? S.skillsOn.map(n => `<code>${esc(n)}</code>`).join("")
     : `<i>none for this job - the crew is working from the repository alone</i>`;
 }
+
+// One station, in as much detail as was actually recorded. Everything here
+// is read off events: a field nobody wrote says so rather than being filled
+// in with something plausible.
+function drawDetail() {
+  const box = $("who-detail");
+  if (!box) return;
+  const id = Office.picked();
+  if (!id) {
+    box.innerHTML = `<p class="hint">Pick a desk to see what that station
+      did.</p>`;
+    return;
+  }
+  const now = Office.states().find(s => s.id === id) || {};
+  const was = crewOf(id) || {};
+  const span = was.seconds === null || was.seconds === undefined
+    ? "" : `<span class="fact flat">${was.seconds}s working</span>`;
+  const visits = (was.visits || []).length;
+
+  box.innerHTML = `
+    <div class="wd-head">
+      <b>${esc(id)}</b>
+      <span class="fact ${now.state === "done" ? "ok"
+        : now.state === "failed" ? "bad" : "flat"}">${
+        esc(WORDS[now.state] || now.state || "not recorded")}</span>
+      ${now.code ? '<span class="fact flat">no model, just code</span>' : ""}
+    </div>
+    <p class="why">${esc(now.role || "")}</p>
+    <p class="why last">${esc(now.note || "nothing reported yet")}</p>
+    <div class="wd-facts">
+      <span class="fact flat">${was.began
+        ? `started ${esc(was.began)}` : "start not recorded"}</span>
+      <span class="fact flat">${was.ended
+        ? `last reported ${esc(was.ended)}` : "end not recorded"}</span>
+      ${span}
+      ${visits > 1 ? `<span class="fact flat">${visits} turns at the desk</span>` : ""}
+    </div>
+    ${(was.gates || []).length ? `<div class="wd-list">
+      <h5>What it decided</h5>
+      ${was.gates.map(g => `<div class="wd-row">
+        <span class="fact ${g.passed ? "ok" : "bad"}">item ${g.item} ${
+          g.passed ? "passed" : "sent back"}</span>
+        <span class="why">${esc(g.note || "nothing said")}</span>
+      </div>`).join("")}</div>` : ""}
+    ${id === "Engineer" && (was.tools || []).length ? `<p class="hint">
+      Everything a worker does inside an item is recorded against this desk,
+      including the gates that judge that item. Per-station attribution is
+      not recorded yet.</p>` : ""}
+    ${(was.tools || []).length ? `<div class="wd-list">
+      <h5>What it did${was.tool_calls > (was.tools || []).length
+        ? ` <span class="why">(last ${was.tools.length} of ${was.tool_calls})</span>`
+        : ""}</h5>
+      ${was.tools.slice().reverse().map(t => `<div class="wd-row">
+        <span class="mono dim">${esc(t.at || "")}</span>
+        <span class="why">${esc(t.detail || t.what || "")}</span>
+      </div>`).join("")}</div>`
+      : `<p class="hint">No tool calls recorded for this station.</p>`}`;
+}
+
+// Said once, not per draw: the list beside the room can be used before the
+// room has ever been mounted.
+Office.onPick(() => {
+  drawLegend();
+  drawDetail();
+  // The list and the room are above it, so on a short window the pane
+  // opens out of sight - which looks exactly like nothing happening.
+  const box = $("who-detail");
+  if (box) box.scrollIntoView({ block: "nearest", behavior: "smooth" });
+});
 
 function drawOffice() {
   Office.mount($("room"));
@@ -759,6 +893,7 @@ function drawOffice() {
     Office.suite(null, 0, false);
   }
   drawLegend();
+  drawDetail();
 }
 
 function view(which) {
@@ -1090,7 +1225,8 @@ function openProject(path) {
   const p = S.projects.find(x => x.path === path);
   if (!p) return;
   Office.reset();
-  live.items.clear(); live.tests = null; live.baseline = null;
+  live.items.clear(); live.tests = null; live.baseline = null; live.crew = {};
+  S.crew = null;
   live.reverted = 0; live.el = {};
 
   $("thread-inner").innerHTML = "";
@@ -1137,6 +1273,29 @@ async function replay(id) {
   const r = await (await fetch("/api/run/" + id)).json();
   if (!r.ok) { fail(r.reason); return; }
   S.key = id;
+  // The room, for a run that is over. Without this it kept whatever the
+  // last reset left - nine idle desks - which says "waiting for the station
+  // before it" about a job that finished two days ago.
+  Office.reset();
+  S.crew = {};
+  (r.crew || []).forEach(c => {
+    S.crew[c.name] = c;
+    Office.at(c.name, c.state, c.note);
+  });
+  // The board as it was left. Read back from the record for the same
+  // reason as the desks: "nothing pinned up yet" is not what a finished
+  // plan of four items looks like.
+  const outcome = Object.fromEntries(r.results.map(x => [x.id, x.outcome]));
+  Office.board(r.items.map(i => ({ status: outcome[i.id] || "waiting" })),
+               r.results.filter(x => x.outcome === "done").length);
+  // The last count anything actually recorded, or nothing. A run whose
+  // items never ran a suite says so rather than borrowing the baseline.
+  const ran = r.results.map(x => x.tests_run).filter(n => n > 0);
+  const before = r.baseline ? r.baseline.tests_run : 0;
+  Office.suite(ran.length ? ran[ran.length - 1] : (before || null), before,
+               !!before);
+  drawLegend();
+  drawDetail();
   $("thread-inner").innerHTML = "";
   youSaid(r.task);
   say("crew", `<div class="body"><p>${esc(r.started)} · ${esc(r.repo)}${

@@ -63,6 +63,10 @@ const Office = (() => {
   const art = {};
   const tinted = new Map();
   let canvas = null, ctx = null, raf = null, started = 0;
+  // Who the viewer is looking at, and whom to tell when that changes. Only
+  // ever set from a click or from pick(), never from a run event: what the
+  // crew is doing must not move somebody's cursor.
+  let chosen = null, tellPicked = () => {};
   let board = { items: [], landed: 0 };
   let suite = { now: null, before: 0, started: false };
 
@@ -228,6 +232,15 @@ const Office = (() => {
       const s = state.get(c.id);
       const dim = s.state === "skipped";
       ctx.globalAlpha = dim ? 0.35 : 1;
+      if (c.id === chosen) {
+        // The only thing drawn here that is about the viewer rather than
+        // the run. Kept to one hairline so it reads as a cursor and not as
+        // another state the station might be in.
+        ctx.strokeStyle = css("--accent");
+        ctx.lineWidth = 1;
+        ctx.strokeRect(c.x * TILE + 0.5, (c.y - 1) * TILE + 0.5,
+                       3 * TILE - 1, 5 * TILE - 1);
+      }
       tile(art.desk, c.x, c.y, 3, 2);
       const screen = s.state === "working"
         ? art["pc_on" + (1 + (Math.floor(started / 180) % 3))]
@@ -399,6 +412,19 @@ const Office = (() => {
     }
   }
 
+  // Who sits at a given point on the canvas, or null. The desk, the monitor
+  // above it and the chair below are one target: asking somebody to hit a
+  // 16-pixel chair is asking them to miss it.
+  function whoIsAt(px, py) {
+    const col = px / TILE, row = py / TILE;
+    for (const c of CREW) {
+      if (col >= c.x && col < c.x + 3 && row >= c.y - 1 && row < c.y + 4) {
+        return c.id;
+      }
+    }
+    return null;
+  }
+
   let last = 0;
   function frame(t) {
     const dt = Math.min(48, t - last || 16);
@@ -432,8 +458,24 @@ const Office = (() => {
       host.innerHTML = "";
       host.appendChild(canvas);
       ctx = canvas.getContext("2d");
+      canvas.onclick = (ev) => {
+        const box = canvas.getBoundingClientRect();
+        // The canvas is drawn at a whole-number scale, so the ratio back to
+        // its own pixels is exact.
+        const id = whoIsAt(
+          (ev.clientX - box.left) * (canvas.width / box.width),
+          (ev.clientY - box.top) * (canvas.height / box.height),
+        );
+        if (id) { chosen = id; tellPicked(id); }
+      };
       load(() => { retarget(); raf = requestAnimationFrame(frame); });
     },
+
+    // Selecting from the list beside the room, which is the half of this
+    // that works without a mouse.
+    pick(id) { if (state.has(id)) { chosen = id; tellPicked(id); } },
+    picked() { return chosen; },
+    onPick(fn) { tellPicked = fn; },
 
     pause() { if (raf) { cancelAnimationFrame(raf); raf = null; } },
 
@@ -450,6 +492,7 @@ const Office = (() => {
         s.state = "idle"; s.note = "";
       });
       paper.on = false;
+      chosen = null;
       retarget();
     },
 
