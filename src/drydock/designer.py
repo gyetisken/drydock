@@ -80,8 +80,10 @@ are carried by photography.
 So direct the photography properly, the way the rest of this is directed:
 how many images, where each one sits, what is in it, how it is cropped and
 treated, and what it is doing that type could not. Name the source
-concretely - a Unsplash URL, or a search term precise enough to find one -
-along with the aspect ratio and what the page does while it loads. An image
+concretely - give the Unsplash URL itself, in full - along with the aspect
+ratio and what the page does while it loads. Give the URL rather than a
+search term, because the engineer has no network and cannot go looking:
+asked to find one, it spends the entire item trying and finishes nothing. An image
 with no art direction is a stock photograph of a handshake and is worse than
 no image at all.
 

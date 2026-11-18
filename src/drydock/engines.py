@@ -129,15 +129,41 @@ _WORKERS_LOCK = threading.Lock()
 _SIGNALLED: dict[int, str] = {}
 
 
+# How long a worker gets to honour a polite stop before it is killed.
+# Asking first is right: a worker given a moment closes its own files. But
+# asking was all this did, and a worker that does not honour the signal
+# simply carried on - two items ran for a hundred and fifty-four minutes
+# against a twelve-minute clock, because the clock fired, asked once, and
+# then waited for a process that was busy retrying a network call.
+GRACE = 10
+
+
 def _asked_to_stop(process, why: str) -> None:
-    """Send a worker a signal, and remember that it was us."""
+    """Stop a worker, and remember that it was us who asked.
+
+    Asked, then told. The telling runs on its own thread because the
+    thread that notices is often the one reading the worker's output, and
+    that read is exactly what will not return.
+    """
     pid = getattr(process, "pid", None)
     if pid is not None:
         _SIGNALLED[pid] = why
     try:
         process.terminate()
     except OSError:
-        pass
+        return
+
+    def insist() -> None:
+        if process.poll() is not None:
+            return
+        try:
+            process.kill()
+        except OSError:
+            pass
+
+    alarm = threading.Timer(GRACE, insist)
+    alarm.daemon = True
+    alarm.start()
 
 
 def _roster() -> Path:

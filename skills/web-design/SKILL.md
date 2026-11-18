@@ -55,6 +55,14 @@ jumps when it arrives, `loading="lazy"` below the fold, a real `alt`, and a
 ground colour underneath in case it never comes. What is never allowed is an
 image file written by the thing building the page.
 
+**Do not try to check an image URL.** This process has no network. A worker
+that goes looking for one spends the whole item on it: two of them spent a
+hundred and fifty minutes between them running `curl`, turning the sandbox
+off, and reaching for a web search, to prove a photograph existed. Write
+the URL the direction gives you and move on. Whether the picture is the
+right picture is settled by somebody looking at the page, which is a
+station that already exists.
+
 An image with no art direction is a stock photograph of a handshake. If the
 direction does not say what is in the picture and what it is doing, the page
 is better with type, colour and space instead.

@@ -612,3 +612,71 @@ class TestBusyAgainstStuck:
 
         source = inspect.getsource(engines)
         assert source.count("--include-partial-messages") == 2
+
+
+class TestAWorkerThatIgnoresBeingAsked:
+    """Asking first is right - a worker given a moment closes its own
+    files. But asking was all this did. A worker that swallows the signal
+    carried on, and the thread that would have killed it was the one
+    reading its output, which is exactly what does not return.
+
+    Two items ran a hundred and fifty-four minutes against a twelve-minute
+    clock that had fired on time.
+    """
+
+    def test_it_is_killed_when_it_does_not_go(self, monkeypatch):
+        import time as real
+
+        from drydock import engines
+
+        monkeypatch.setattr(engines, "GRACE", 0.05)
+        stubborn = _Deaf()
+        engines._asked_to_stop(stubborn, "it ran out of its twelve minutes")
+
+        real.sleep(0.3)
+        assert stubborn.asked, "it should be asked first"
+        assert stubborn.told, "and then told"
+
+    def test_a_worker_that_goes_is_left_alone(self, monkeypatch):
+        import time as real
+
+        from drydock import engines
+
+        monkeypatch.setattr(engines, "GRACE", 0.05)
+        polite = _Deaf(leaves=True)
+        engines._asked_to_stop(polite, "stopping")
+
+        real.sleep(0.3)
+        assert polite.asked
+        assert not polite.told, "killing one that already went is pointless"
+
+    def test_a_process_already_gone_is_not_an_error(self, monkeypatch):
+        from drydock import engines
+
+        class Gone:
+            pid = 1
+
+            def terminate(self):
+                raise OSError("no such process")
+
+        engines._asked_to_stop(Gone(), "stopping")  # must not raise
+
+
+class _Deaf:
+    """A worker that does not act on being asked to stop."""
+
+    pid = 9999
+
+    def __init__(self, leaves: bool = False):
+        self.leaves = leaves
+        self.asked = False
+        self.told = False
+
+    def terminate(self):
+        self.asked = True
+
+    def kill(self):
+        self.told = True
+
+    def poll(self):
+        return 0 if (self.leaves and self.asked) else None

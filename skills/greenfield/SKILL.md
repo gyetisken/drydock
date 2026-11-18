@@ -100,6 +100,9 @@ improvised, and a page with the right one on it is a different page. Give
 it an aspect ratio so nothing moves when it arrives, a real `alt`, and a
 ground colour underneath for when it does not.
 
+Use the URL you were given and do not try to check it. There is no network
+here, and a worker that goes looking spends the whole item on it.
+
 Do not invent requirements. Where the task is silent, choose the plainest thing
 that works and report the choice rather than burying it.
 
