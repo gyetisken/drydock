@@ -146,6 +146,22 @@ class Repo:
             return False, out[-500:]
         return True, self._git("rev-parse --short HEAD")[1].strip()
 
+    def rewind(self, commit: str) -> tuple[bool, str]:
+        """Put the branch back where it was, discarding what came after.
+
+        For a round of items that each passed on its own and do not work
+        together: the cherry-picks applied, so there is nothing to resolve
+        and nothing to keep. `--hard` because the working tree has to
+        match - a half-reverted tree is the state every other check here
+        exists to prevent.
+
+        Only ever called with a commit this program recorded as the branch
+        head before the round began, so the work it discards is exactly
+        the work that round added.
+        """
+        code, out = self._git(f"reset --hard {_quote(commit)}")
+        return code == 0, out[-400:]
+
     def pending_for_review(self) -> str:
         """The uncommitted change, without the parts nobody wrote by hand."""
         self._git("add -A -N")

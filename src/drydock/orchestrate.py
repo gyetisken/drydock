@@ -491,6 +491,9 @@ def _work_a_wave(
         return {items[0].id: result}
 
     trees: dict[int, Path] = {}
+    # Where the branch stood before this round. Everything before it was
+    # verified in the tree it made at the time, so it is known good and is
+    # never rolled back - only what this round adds.
     at = repo.head()
     try:
         for item in items:
@@ -528,6 +531,7 @@ def _work_a_wave(
                 )
 
         out: dict[int, ItemResult] = {}
+        landed: list[int] = []
         for item in items:
             result, commit = done[item.id]
             if result.outcome is not Outcome.DONE or not commit:
@@ -547,7 +551,38 @@ def _work_a_wave(
                 )
                 continue
             result.commit = said
+            landed.append(item.id)
             out[item.id] = result
+
+        # Each item was verified in a worktree of its own, against a tree
+        # that did not contain the others. A cherry-pick that applies
+        # cleanly means no two of them touched the same lines; it does not
+        # mean the result works. So the tree they made together is checked
+        # before any of them is called done.
+        if len(landed) > 1:
+            chain = detect(repo_path)
+            whole = verify(
+                repo_path,
+                "tests",
+                run.baseline,
+                {"build": chain.build_command, "tests": chain.test_command},
+            )
+            if on_gate:
+                on_gate(items[0], "integrated", whole.passed, whole.reason)
+            if not whole.passed:
+                ok, said = repo.rewind(at)
+                for item_id in landed:
+                    out[item_id] = ItemResult(
+                        item=out[item_id].item,
+                        outcome=Outcome.REVERTED,
+                        attempts=out[item_id].attempts,
+                        note=(
+                            "it passed on its own and the others did too, but "
+                            f"together they do not: {whole.reason}. The whole "
+                            "round was taken back out"
+                            + ("" if ok else f", and that failed too:\n{said}")
+                        ),
+                    )
         return out
     finally:
         for where in trees.values():
