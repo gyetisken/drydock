@@ -250,6 +250,8 @@ class Session:
                     risks=[],
                 )
                 self.run.save()
+            elif self._already_read(commit):
+                pass
             else:
                 self._survey(b, chain, commit)
 
@@ -511,6 +513,64 @@ class Session:
         self.feed.emit("agent.state", agent="Analyst", state="done", note="answered")
         self.feed.emit("answer", text=said)
         self.feed.close()
+
+    def _already_read(self, commit: str) -> bool:
+        """Use what was read before, when reading again would buy nothing.
+
+        The Analyst took two minutes and thirty tool calls on a repository
+        this program had worked thirteen times, to establish a toolchain,
+        a build command and a test command that were already written down.
+        Three quarters of that run went by before any code was written.
+
+        Two cases, both decided without asking anybody:
+
+        The same commit was surveyed before. Nothing has changed since, so
+        the reading still holds - this one is free and applies to every
+        profile.
+
+        The repository is known but the commit has moved. The toolchain
+        and the commands do not go stale the way a reading of the code
+        does, so a fast job starts from them; a balanced or deep one still
+        reads, because that is what those profiles are for.
+        """
+        read_before = self.memory.knows(commit)
+        same_commit = bool(read_before)
+        known_project = self.memory.recognises() and self.policy.profile == "fast"
+        if not (same_commit or known_project):
+            return False
+
+        chain = detect(self.repo)
+        findings = read_before or [
+            f"This repository has been worked on here before. It is "
+            f"{self.memory.toolchain}; the build is "
+            f"`{self.memory.build_command}` and the suite is "
+            f"`{self.memory.test_command}`.",
+            "It was not read again for this job, so nothing here is newer "
+            "than the last time it was.",
+        ]
+        self.run.inventory = Inventory(
+            build_tool=chain.build_tool,
+            language=chain.language,
+            test_command=chain.test_command,
+            build_command=chain.build_command,
+            source_files=0,
+            test_files=0,
+            findings=findings,
+            risks=[],
+        )
+        self.run.save()
+        self.feed.emit(
+            "agent.state",
+            agent="Analyst",
+            state="skipped",
+            note=(
+                "this commit has been read before"
+                if same_commit
+                else "this repository is known; reading it again was skipped"
+            ),
+        )
+        self.feed.emit("survey", findings=findings, risks=[])
+        return True
 
     def _survey(self, b, chain, commit: str) -> None:
         """Read the repository, and keep what was read."""

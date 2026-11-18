@@ -253,6 +253,26 @@ class Memory:
             }
         )
 
+    def knows(self, commit: str) -> list[str]:
+        """What was already read about this exact commit, if anything.
+
+        A survey of a commit is a reading of code that has not changed
+        since, so paying for it twice buys nothing. Returns the findings,
+        or an empty list when this commit has never been read - and empty
+        is the honest answer, because a list of facts about some other
+        version of the code is worse than no list.
+        """
+        return [n.text for n in self.notes if n.commit == commit]
+
+    def recognises(self) -> bool:
+        """Whether this repository has been worked on here before.
+
+        Weaker than `knows`: the commit has moved, but the toolchain, the
+        build and the suite were established and do not go stale the way a
+        reading of the code does.
+        """
+        return bool(self.toolchain and self.test_command)
+
     def briefing(self, commit: str) -> str:
         """What to hand the next survey so it does not start from nothing."""
         fresh = [n for n in self.notes if n.commit == commit]
