@@ -45,9 +45,7 @@ def a_landing(id: int, **kw) -> ItemResult:
         "item": an_item(id, "the health check answers"),
         "outcome": Outcome.DONE,
         "files_changed": ["server.js", "server.test.js"],
-        "checks": [
-            Check(name="tests", command="npm test", passed=True, seconds=1.2)
-        ],
+        "checks": [Check(name="tests", command="npm test", passed=True, seconds=1.2)],
         "commit": "6e2e0f9cfd1122",
         "verified_commit": "6e2e0f9cfd1122",
         "note": "1 tests pass",
@@ -120,7 +118,9 @@ class TestPartiallyLanded:
         """A run that stops early leaves items with no result at all. Left
         out of the summary they read as items that were never planned,
         which is the quiet version of claiming the plan was finished."""
-        run = a_run(tmp_path, [an_item(1), an_item(2, "the search page")], [a_landing(1)])
+        run = a_run(
+            tmp_path, [an_item(1), an_item(2, "the search page")], [a_landing(1)]
+        )
         said = run.what_happened()
 
         (missed,) = said["missed"]
@@ -163,9 +163,7 @@ class TestMetadataNobodyRecorded:
         assert "files not recorded" in CHAT
 
     def test_an_item_with_no_plain_sentence_falls_back_to_its_title(self, tmp_path):
-        run = a_run(
-            tmp_path, [an_item(1)], [a_landing(1, item=an_item(1, plain=""))]
-        )
+        run = a_run(tmp_path, [an_item(1)], [a_landing(1, item=an_item(1, plain=""))])
         (landed,) = run.what_happened()["landed"]
         assert landed["plain"] == "item 1"
 
@@ -231,9 +229,7 @@ class TestTheWindowIsGivenAllOfIt:
     def test_no_summary_passes_a_field_the_record_already_carries(self, tmp_path):
         """`cost=` alongside the spread record is "got multiple values for
         keyword argument 'cost'", raised after all the work is done."""
-        from_record = set(
-            Run.start(tmp_path, "build something").what_happened()
-        )
+        from_record = set(Run.start(tmp_path, "build something").what_happened())
         for call in self.summaries():
             named = {k.arg for k in call.keywords if k.arg}
             assert not (named & from_record), sorted(named & from_record)
@@ -247,13 +243,20 @@ class TestTheWindowShowsIt:
 
     @pytest.mark.parametrize(
         "shown",
-        ["it.commit", "it.files", "it.checks", "it.attempts", "e.branch", "e.integration_error"],
+        [
+            "it.commit",
+            "it.files",
+            "it.checks",
+            "it.attempts",
+            "e.branch",
+            "e.integration_error",
+        ],
     )
     def test_the_summary_reads_the_recorded_field(self, shown):
         assert shown in CHAT
 
     def test_the_branch_is_no_longer_rebuilt_from_the_session_key(self):
-        assert 'drydock/${esc((S.key' not in CHAT
+        assert "drydock/${esc((S.key" not in CHAT
         assert "${esc(e.branch" in CHAT
 
     def test_items_that_did_not_land_are_rendered(self):
