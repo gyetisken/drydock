@@ -12,6 +12,7 @@ test stop complaining, and the second attempt is where that starts.
 
 import os
 import re
+import tempfile
 from concurrent.futures import Future, ThreadPoolExecutor
 from pathlib import Path
 
@@ -26,7 +27,7 @@ from .inspect import look
 from .models import ItemResult, Outcome
 from .planner import answer, split
 from .policy import AT_THE_END, NEVER, Policy, of
-from .repo import GitError, Repo
+from .repo import OUR_LOOK, GitError, Repo
 from .reviewer import review
 from .run import Run
 from .verify import verify, verify_build
@@ -65,7 +66,6 @@ def _show_it(repo_path: Path, run, item, on_event):
     a check that did not happen, reported as such, rather than an item
     rolled back for a failure that belongs to this program.
     """
-    import tempfile
 
     from . import preview
 
@@ -135,29 +135,42 @@ def _show_it(repo_path: Path, run, item, on_event):
     else:
         noticed = []
 
-    with tempfile.TemporaryDirectory(prefix="drydock-look-") as scratch:
-        try:
-            verdict, spend = look_at_it(
-                live.url,
-                run.direction,
-                # Everything the item says about itself. The critic is being
-                # asked whether this item did its part, and it cannot know
-                # what that part was from a title alone.
-                f"{item.plain or item.title}\n\nIn full: {item.as_asked()}",
-                Path(scratch),
-                model=run.model,
-                on_event=on_event,
-            )
-            # What was measured goes on the record beside what was seen,
-            # so a contrast failure or a control with no name reaches
-            # somebody without having cost the item an attempt.
-            if verdict is not None and noticed:
-                verdict.noticed = list(verdict.noticed) + noticed
-            return verdict, spend
-        except Exception as exc:  # noqa: BLE001 - a failed look is not a failed item
-            if on_event:
-                on_event("critic", f"could not look at it: {exc}")
-            return None, 0.0
+    # Not a temporary directory any more. When the critic sends an item
+    # back, the one thing the engineer has to work with is a sentence
+    # describing a photograph it cannot see - and twice in one run it read
+    # that sentence, made a different change, and was told the same thing
+    # again. The pictures stay where it can open them.
+    # Into the tree being worked on, so the engineer can open them - and
+    # if that is not somewhere this can write, a temporary directory and
+    # no offer of pictures, because a path that is not there is worse
+    # than no path at all.
+    scratch = repo_path / OUR_LOOK
+    try:
+        scratch.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        scratch = Path(tempfile.mkdtemp(prefix="drydock-look-"))
+    try:
+        verdict, spend = look_at_it(
+            live.url,
+            run.direction,
+            # Everything the item says about itself. The critic is being
+            # asked whether this item did its part, and it cannot know
+            # what that part was from a title alone.
+            f"{item.plain or item.title}\n\nIn full: {item.as_asked()}",
+            scratch,
+            model=run.model,
+            on_event=on_event,
+        )
+        # What was measured goes on the record beside what was seen,
+        # so a contrast failure or a control with no name reaches
+        # somebody without having cost the item an attempt.
+        if verdict is not None and noticed:
+            verdict.noticed = list(verdict.noticed) + noticed
+        return verdict, spend
+    except Exception as exc:  # noqa: BLE001 - a failed look is not a failed item
+        if on_event:
+            on_event("critic", f"could not look at it: {exc}")
+        return None, 0.0
 
 
 def _judge(
@@ -329,12 +342,27 @@ def _one_item(
     # resumed run used to start the item from nothing, and the engineer made
     # the same mistake it had already been corrected on.
     earlier = run.refused.pop(item.id, "")
+    # And the pictures, if the complaint was about what the page looked
+    # like. Being told was the only thing the engineer had: twice in one
+    # run it read a sentence about a photograph, changed something else,
+    # and was told the same thing again. Both times the pictures existed
+    # and were deleted before it could have opened them.
+    looked = here.path / OUR_LOOK
+    pictures = (
+        "\n\nTwo pictures of the page as that attempt left it are in "
+        f"`{OUR_LOOK}/`: desktop.png and phone.png. Open them before "
+        "you change anything. The complaint is about what is in those "
+        "images, and reading them is the difference between fixing it and "
+        "guessing at it."
+        if earlier and any(looked.glob("*.png"))
+        else ""
+    )
     failure = (
         f"This item was attempted before and sent back. What was said:\n\n"
         f"{earlier}\n\nNothing from that attempt is on disk - it was thrown "
         "away - so you are starting from a clean tree. Start by working out "
         "what the complaint is about, because it is the same item and the "
-        "same complaint is waiting."
+        f"same complaint is waiting.{pictures}"
         if earlier
         else ""
     )
@@ -484,6 +512,10 @@ def _one_item(
                 )
 
         if verdict.passed and not refusal:
+            # Before the commit, not after: `commit` runs `add -A`, and the
+            # pictures left for the engineer are untracked files sitting in
+            # the tree. Swept here they never reach one.
+            here.sweep()
             commit = here.commit(f"{item.id}. {item.title}\n\n{report['summary']}")
             return ItemResult(
                 item=item,

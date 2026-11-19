@@ -35,6 +35,14 @@ def _lend_dependencies(repo: Path, where: Path) -> None:
             pass
 
 
+# Pictures of the page as the last attempt left it, put where the engineer
+# can open them. A module constant rather than only a class attribute,
+# because the orchestrator needs the name without needing a repository -
+# and the tests that stand in for one are not going to grow an attribute
+# every time this class does.
+OUR_LOOK = ".drydock-look"
+
+
 class GitError(RuntimeError):
     """Git could not establish the state needed to continue safely."""
 
@@ -176,6 +184,10 @@ class Repo:
     # worker can reach, and they are removed because leaving them would mean
     # drydock dirtying a tree it then refuses to work in.
     OURS = (".drydock-report.json", ".drydock-out.json", ".drydock-preview.log")
+    # Pictures of the page as the last attempt left it, put where the
+    # engineer can open them. A directory rather than a file because there
+    # are two of them, and swept like the rest so it never reaches a commit.
+    OUR_LOOK = OUR_LOOK
 
     def sweep(self) -> list[str]:
         """Remove anything drydock itself left behind. Returns what went."""
@@ -185,12 +197,25 @@ class Repo:
             if path.exists():
                 path.unlink()
                 gone.append(name)
+        look = self.path / self.OUR_LOOK
+        if look.is_dir():
+            for shot in look.iterdir():
+                shot.unlink()
+            look.rmdir()
+            gone.append(self.OUR_LOOK)
         return gone
 
     def discard(self) -> None:
-        """Throw away uncommitted work. The undo button for a failed item."""
+        """Throw away uncommitted work. The undo button for a failed item.
+
+        Everything except the pictures of what the attempt looked like.
+        Those are the one thing the next attempt has that the last one did
+        not, and cleaning them away leaves the engineer reading a sentence
+        about a photograph again. They are swept before any commit, so
+        keeping them here cannot put them in one.
+        """
         self._git("reset --hard -q HEAD")
-        self._git("clean -fdq")
+        self._git(f"clean -fdq -e {_quote(self.OUR_LOOK)}")
 
     # Files that are generated rather than written. They belong in the commit
     # and they do not belong in a review: a lockfile of two thousand lines
