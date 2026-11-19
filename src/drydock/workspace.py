@@ -15,6 +15,7 @@ from datetime import datetime
 from pathlib import Path
 
 from .detect import detect
+from .repo import Repo
 from .run import Run
 from .session import Session
 from .shell import run
@@ -135,9 +136,12 @@ class Workspace:
             code, out = run("git init -q", path, timeout=60)
             if code != 0:
                 raise ValueError(f"could not start a repository in {path}: {out}")
-            run("git add -A", path, timeout=120)
-            # Something has to be committed, or there is no HEAD to roll back to.
-            run('git commit -q --allow-empty -m "before drydock"', path, timeout=120)
+        # Asked separately from whether `.git` exists, because the two are
+        # not the same question. Somebody who runs `git init` and stops has
+        # a repository with no commit in it, and the version of this that
+        # only looked for `.git` skipped the first commit entirely - every
+        # run on that folder then died on `rev-parse --verify HEAD`.
+        Repo(path).start_history()
         for existing in self.projects:
             if existing.path == path:
                 return existing

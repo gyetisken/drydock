@@ -670,6 +670,11 @@ def execute(
                 "kept an anchor commit - it cannot be resumed safely."
             )
         repo.sweep()
+        # After the sweep, so drydock's own leftovers are not what gets
+        # committed, and before the cleanliness check, because a repository
+        # with no commits has every file in it showing as untracked - which
+        # read as a dirty tree and refused the run for the wrong reason.
+        repo.start_history()
         if not repo.is_clean():
             raise DirtyTree(
                 f"{repo_path} has uncommitted changes. The crew needs a clean tree so "

@@ -399,6 +399,9 @@ class _AnyRepo:
     def is_clean(self):
         return True
 
+    def start_history(self):
+        pass
+
     def sweep(self):
         pass
 

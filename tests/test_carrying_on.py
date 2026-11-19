@@ -115,6 +115,9 @@ class _Quiet:
     def discard(self):
         pass
 
+    def start_history(self):
+        pass
+
     def sweep(self):
         pass
 
