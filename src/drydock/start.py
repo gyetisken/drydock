@@ -89,6 +89,20 @@ the best version of the work. Anything the person asking actually fixed -
 an order, a price, a word, a number - is a constraint and is repeated
 exactly; everything they left open stays open.
 
+**One item is a real answer.** If the whole job is one cohesive piece of
+work - one family of files, written in one sitting, where a failure in any
+part would be diagnosed by looking at the others - then it is one item,
+and the range below does not override that. A page and the stylesheet it
+needs are one item. Splitting a cohesive job to reach a number costs a
+full round of building, testing, diff-reading and reviewing for every
+slice and buys nothing back: the slices all touch the same files so none
+of them can run beside another, and every boundary is a place for a
+correct change to be refused for crossing it.
+
+Several items are right when the pieces can fail on their own and can be
+worked on at the same time - different files, different data, different
+endpoints. That is what the range is for.
+
 Two kinds of item are never worth their own slot: an implementation detail
 of another item, and a checking item. Every item is already built, run
 against the recorded test count, read for honesty, reviewed against what it

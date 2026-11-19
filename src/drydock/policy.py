@@ -46,7 +46,16 @@ class Policy:
     # wrong answer in either direction is expensive: too many items and
     # every one carries the fixed cost of being checked, too few and an
     # item is too large for one sitting.
-    fewest_items: int = 4
+    #
+    # One is a real answer. The floor used to be two on the cheapest
+    # profile and four on the default, which meant a job that was one
+    # cohesive piece of work had to be cut up to satisfy a number. A
+    # single page was planned as six items and then as four; both times
+    # every item edited the same two files, so none of them could run
+    # beside another, and each boundary was a place for a correct change
+    # to be refused for crossing it. Work that is genuinely several
+    # independent things still says so and still gets a range.
+    fewest_items: int = 1
     most_items: int = 7
 
     # What one engineer gets for one item.
@@ -113,7 +122,7 @@ PROFILES = {
     # looks at the finished thing once rather than at every step toward it.
     FAST: Policy(
         profile=FAST,
-        fewest_items=2,
+        fewest_items=1,
         most_items=3,
         attempts=2,
         read_the_diff=False,
