@@ -846,6 +846,7 @@ def one_run(run_id: str) -> dict:
         "findings": run.inventory.findings if run.inventory else [],
         "risks": run.inventory.risks if run.inventory else [],
         "summary": run.plan.summary if run.plan else "",
+        "answer": run.answer,
         "items": [
             {
                 "id": i.id,

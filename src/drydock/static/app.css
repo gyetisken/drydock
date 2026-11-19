@@ -752,3 +752,11 @@ body.split .composer .cwrap { max-width:none }
 .linky:hover { color:var(--fg) }
 .linky:focus-visible { outline:2px solid var(--accent); outline-offset:2px;
   border-radius:3px }
+
+/* An older job opened where it sits, rather than over the top of the
+   conversation it is part of. Indented and ruled, so it reads as the
+   inside of the line above it and not as more thread. */
+.opened { margin:10px 0 0 2px; padding:2px 0 2px 13px;
+  border-left:2px solid var(--line) }
+.opened .body > p:first-child { margin-top:0 }
+.opened .card { margin-top:8px }

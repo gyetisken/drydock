@@ -97,3 +97,46 @@ class TestTheThreadReadsLikeOne:
         opening = opening[: opening.index("\n}")]
         assert 'scrollTop = $("thread").scrollHeight' in opening
         assert "scrollTop = 0" not in opening
+
+
+class TestOpeningAJobWhereItSits:
+    def test_it_does_not_clear_the_thread_when_opened_in_place(self):
+        """It used to replace everything on screen, which in a thread that
+        holds the whole conversation means losing the conversation in
+        order to look at one part of it."""
+        job = CHAT[CHAT.index("async function replay(id, into)") :]
+        wipe = job.index('$("thread-inner").innerHTML = ""')
+        guard = job.index("if (!here) {")
+        assert guard < wipe, "the thread is still cleared unconditionally"
+
+    def test_the_old_whole_screen_behaviour_still_works_without_a_container(self):
+        """`replay(id)` with nowhere to open into is the way it was."""
+        assert "const here = into || null;" in CHAT
+        assert "if (!here) return say(" in CHAT
+
+    def test_opening_twice_closes_it_instead_of_stacking(self):
+        assert 'msg.querySelectorAll(".opened").forEach(el => el.remove())' in CHAT
+        assert '"hide this job"' in CHAT
+
+    def test_a_question_shows_its_answer_and_not_a_count(self):
+        """ "0 of 0 items landed" is arithmetic about something that was
+        never counted."""
+        job = CHAT[CHAT.index("async function replay(id, into)") :]
+        assert "if (r.answer && !r.items.length)" in job
+        assert job.index("r.answer && !r.items.length") < job.index(
+            "items\n    landed."
+        )
+
+    def test_the_answer_is_served_with_the_job(self):
+        assert '"answer": run.answer,' in WEB
+
+    def test_the_fallback_does_not_call_itself(self):
+        """Written by replacing every `say(...)` in the function with
+        `put(...)`, which caught the one inside `put` as well: nowhere to
+        open into meant infinite recursion and a locked browser. Nothing
+        ran it, because every caller passes a container."""
+        helper = CHAT[CHAT.index("const put = (html") :]
+        helper = helper[: helper.index("};")]
+
+        assert "return say(" in helper
+        assert "return put(" not in helper

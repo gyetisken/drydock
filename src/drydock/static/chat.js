@@ -1304,14 +1304,29 @@ function pastJob(r, before) {
         : ""}
     </p></div>`, "dim", before);
   const open = msg.querySelector("[data-open]");
-  if (open) open.onclick = () => replay(r.id);
+  if (open) {
+    open.onclick = () => {
+      if (msg.querySelector(".opened")) {
+        // Open already: close it rather than stacking a second copy.
+        msg.querySelectorAll(".opened").forEach(el => el.remove());
+        open.textContent = "open this job";
+        return;
+      }
+      open.textContent = "hide this job";
+      replay(r.id, msg.querySelector(".body"));
+    };
+  }
   const carry = msg.querySelector("[data-carry]");
   if (carry) carry.onclick = () => carryOn(r.id);
 }
 
 // Reading back a finished job. Built from the run on disk rather than from
 // the event stream, because the stream is gone and the run is not.
-async function replay(id) {
+// Opening an older job. It used to replace everything on screen, which in
+// a thread that now holds the whole conversation means losing the
+// conversation to look at one part of it. It opens where it is instead,
+// under the line that names it.
+async function replay(id, into) {
   const r = await (await fetch("/api/run/" + id)).json();
   if (!r.ok) { fail(r.reason); return; }
   S.key = id;
@@ -1338,26 +1353,44 @@ async function replay(id) {
                !!before);
   drawLegend();
   drawDetail();
-  $("thread-inner").innerHTML = "";
-  youSaid(r.task);
-  say("crew", `<div class="body"><p>${esc(r.started)} · ${esc(r.repo)}${
-    r.skills.length ? ` · skill <code>${esc(r.skills[0])}</code>` : ""}</p></div>`, "dim");
+
+  // Everything this job has to say, written into one block. `put` is where
+  // it goes: inside the message that offered to open it, or - with nothing
+  // to open into - the thread, the way it used to work.
+  const here = into || null;
+  const put = (html, cls = "") => {
+    // Nowhere to open into: the thread, the way this worked before.
+    if (!here) return say("crew", html, cls);
+    const el = document.createElement("div");
+    el.className = `opened ${cls}`;
+    el.innerHTML = html;
+    here.appendChild(el);
+    return el;
+  };
+
+  if (!here) {
+    $("thread-inner").innerHTML = "";
+    youSaid(r.task);
+  }
+  put(`<div class="body"><p>${esc(r.started)} · ${esc(r.repo)}${
+    r.skills.length ? ` · skill <code>${esc(r.skills[0])}</code>` : ""}${
+    here ? " · the Office is showing this job" : ""}</p></div>`, "dim");
 
   if (r.baseline) {
     const b = r.baseline;
-    say("crew", `<div class="body"><p>${b.tests_run
+    put(`<div class="body"><p>${b.tests_run
       ? `The suite ran <b>${b.tests_run} tests</b> before anything was touched.`
       : "There was nothing to run before this started."}</p></div>`);
   }
   if (r.findings.length) {
-    say("analyst", `<div class="body"><p>${r.findings.length} findings,
+    put(`<div class="body"><p>${r.findings.length} findings,
       ${r.risks.length} risks.</p><div class="card"><h4>What could go wrong</h4>
       ${r.risks.slice(0, 4).map(x => `<p class="why">${esc(x.slice(0, 260))}</p>`).join("")}
       </div></div>`, "dim");
   }
   if (r.items.length) {
     const by = Object.fromEntries(r.results.map(x => [x.id, x]));
-    say("planner", `<div class="body"><p>${esc(r.summary)}</p>
+    put(`<div class="body"><p>${esc(r.summary)}</p>
       <div class="card"><h4>${r.items.length} items</h4><div class="steps">
       ${r.items.map(i => {
         const res = by[i.id];
@@ -1371,8 +1404,14 @@ async function replay(id) {
             </div></details>` : ""}</div></div>`;
       }).join("")}</div></div></div>`);
   }
+  // A job that was a question has an answer and no items. "0 of 0 items
+  // landed" is arithmetic about something that was never counted.
+  if (r.answer && !r.items.length) {
+    put(`<div class="body"><p>${esc(r.answer)}</p></div>`);
+    return;
+  }
   const landed = r.results.filter(x => x.outcome === "done").length;
-  say("crew", `<div class="body"><p><b>${landed} of ${r.items.length} items
+  put(`<div class="body"><p><b>${landed} of ${r.items.length} items
     landed.</b></p>
     <p class="why">Every item that landed is its own commit on the branch
     <code>drydock/${esc(r.id)}</code>.</p></div>`);
