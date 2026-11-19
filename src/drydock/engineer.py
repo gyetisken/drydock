@@ -11,7 +11,7 @@ reported, not fixed.
 
 from pathlib import Path
 
-from .agent import API_MODEL, JUDGEMENT, Agent, Tool, for_work
+from .agent import API_MODEL, CHEAP_ENGINEER, JUDGEMENT, Agent, Tool, for_work
 from .engines import ClaudeCodeEngine, EngineResult
 from .models import Item
 from .skills import Skill, briefing
@@ -187,16 +187,28 @@ def work(
 
     policy = policy or of(None)
 
+    # The model that will do the typing, named once rather than computed
+    # inside the call, so that it can be said out loud before it is used.
+    # A retry is never routed to a cheaper model: once an item has come
+    # back refused, the attempt that follows is the one that must not fail,
+    # and another ten minutes of the same mistake costs far more than the
+    # difference.
+    typing = model if retry_of else for_work(model)
+    if typing != model and on_event:
+        # Visible, every time, in the feed and in the run log. A routing
+        # decision nobody can see is the bug this replaced.
+        on_event(
+            "model",
+            f"this first attempt runs on {typing} rather than the {model} "
+            f"chosen for the run, because {CHEAP_ENGINEER} is set; a retry "
+            f"would run on {model}",
+        )
+
     if engine == "claude":
         # The worker is whatever Claude Code is signed in as. Everything that
         # decides whether its work survives still happens here.
-        # A retry is the expensive case. The first attempt is given the
-        # faster model because most items are ordinary and it is checked
-        # hard either way; once an item has come back refused, the attempt
-        # that follows is the one that must not fail, and another ten
-        # minutes of the same mistake costs far more than the difference.
         result = ClaudeCodeEngine(
-            model=model if retry_of else for_work(model),
+            model=typing,
             max_turns=policy.turns,
             # A retry has more to do than the attempt before it: the item,
             # plus everything it was sent back for, read and dealt with one
@@ -226,7 +238,7 @@ def work(
 
     agent = Agent(
         name="Engineer",
-        model=API_MODEL.get(for_work(model), JUDGEMENT),
+        model=API_MODEL.get(typing, JUDGEMENT),
         system=SYSTEM + briefing(skills or [], "engineer") + direction,
         tools=write_tools(repo, build_command),
         max_turns=30,

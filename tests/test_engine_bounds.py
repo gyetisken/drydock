@@ -8,6 +8,7 @@ page still said 'working', and it would have said that tomorrow.
 import subprocess
 import time
 
+from drydock.agent import CHEAP_ENGINEER
 from drydock.engines import ClaudeCodeEngine
 
 
@@ -453,11 +454,22 @@ class TestARetryIsGivenMoreThanTheAttemptBeforeIt:
     def test_a_retry_gets_longer(self, monkeypatch):
         assert _minutes_for(monkeypatch, retry_of="the critic sent it back") == 18.0
 
-    def test_a_retry_gets_the_judgement_model(self, monkeypatch):
+    def test_every_attempt_runs_on_the_model_that_was_chosen(self, monkeypatch):
+        """This used to assert the opposite - "sonnet" on a first attempt
+        under a run started on Opus - and it was the only place the
+        downgrade was written down. See test_the_model_you_chose.py."""
+        monkeypatch.delenv(CHEAP_ENGINEER, raising=False)
+        assert _model_for(monkeypatch, retry_of="sent back") == "opus"
+        assert _model_for(monkeypatch, retry_of="") == "opus"
+
+    def test_the_cheap_engineer_is_asked_for_and_never_touches_a_retry(
+        self, monkeypatch
+    ):
         """Another ten minutes of the same mistake costs more than the
         difference between the models."""
-        assert _model_for(monkeypatch, retry_of="sent back") == "opus"
+        monkeypatch.setenv(CHEAP_ENGINEER, "1")
         assert _model_for(monkeypatch, retry_of="") == "sonnet"
+        assert _model_for(monkeypatch, retry_of="sent back") == "opus"
 
 
 def _built(monkeypatch, retry_of: str):

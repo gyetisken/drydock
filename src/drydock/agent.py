@@ -7,6 +7,7 @@ agent different from another is what it is allowed to do, which is why the
 tools are passed in rather than built in.
 """
 
+import os
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
@@ -28,24 +29,46 @@ API_MODEL = {
     "haiku": "claude-haiku-4-5",
 }
 
-# Which model does the typing.
+# Which model does the typing. The one that was chosen, unless somebody
+# asks for the cheaper one.
 #
-# Measured on a four-item greenfield build: the engineer took 180 to 210
-# seconds an item while every other station took 45 to 95, so three quarters
-# of a run was one station writing files. That station is also the one whose
-# output is checked hardest - it is built, its suite is run against the
-# recorded count, its diff is read for honesty, and it is reviewed against
-# the item - so it is the station where a faster model costs least and saves
-# most. Judgement stays where it was put.
+# This used to read {"opus": "sonnet"}, which meant a run started on Opus
+# had its code written by Sonnet on every first attempt, and Opus appeared
+# only on a retry. The measurement behind it was real - the engineer took
+# 180 to 210 seconds an item while every other station took 45 to 95, so
+# three quarters of a run was one station writing files, and it is also the
+# station whose output is checked hardest - but it was applied silently, in
+# a dict nobody reading the picker would ever see. "I chose Opus" has to
+# mean Opus did the work, or the picker is lying about what the run is.
 #
-# A deliberate choice of the cheapest model is not overridden: somebody who
-# picked Haiku wanted Haiku.
-WORK_MODEL = {"opus": "sonnet", "sonnet": "sonnet", "haiku": "haiku"}
+# The saving is still here and now it has to be asked for:
+#
+#     DRYDOCK_CHEAP_ENGINEER=1
+#
+# which routes the engineer's first attempt to the cheaper model and says
+# so, once per item, where the run can be read. A retry is never routed:
+# once an item has come back refused, the attempt that follows is the one
+# that must not fail.
+CHEAPER = {"opus": "sonnet", "sonnet": "sonnet", "haiku": "haiku"}
+
+CHEAP_ENGINEER = "DRYDOCK_CHEAP_ENGINEER"
+
+
+def cheap_engineer() -> bool:
+    """Whether the engineer's first attempt was asked to run cheaply."""
+    return os.environ.get(CHEAP_ENGINEER) == "1"
 
 
 def for_work(model: str) -> str:
-    """The model the engineer uses, given the one chosen for judgement."""
-    return WORK_MODEL.get(model, model)
+    """The model the engineer uses, given the one chosen for the run.
+
+    The same one, unless the cheaper engineer was asked for. A deliberate
+    choice of the cheapest model is never overridden either way: somebody
+    who picked Haiku wanted Haiku.
+    """
+    if not cheap_engineer():
+        return model
+    return CHEAPER.get(model, model)
 
 
 MODEL = JUDGEMENT
