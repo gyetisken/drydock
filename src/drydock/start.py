@@ -133,6 +133,10 @@ class Start:
     toolchain: str = ""
     run_command: str = ""
     test_command: str = ""
+    # Whether it is worth stopping to show this before any of it is done.
+    # Answered after reading the repository, by the one that read it.
+    needs_a_plan: bool = True
+    why_that: str = ""
 
     def inventory(self, chain, source_files: int = 0, test_files: int = 0):
         """What the Analyst used to hand on, assembled from one answer.
@@ -200,6 +204,28 @@ def _tool() -> Tool:
                     "first item is verified by a command that proves nothing."
                 ),
             },
+            "needs_a_plan": {
+                "type": "boolean",
+                "description": (
+                    "Whether this is worth stopping to show somebody before "
+                    "any of it is done. True when it is several pieces of "
+                    "work, when the order matters, when you had to make a "
+                    "decision they might disagree with, or when getting it "
+                    "wrong is expensive. False when it is one change you "
+                    "could make now and they would recognise when they saw "
+                    "it - a copy change, a colour, a rename, one small "
+                    "feature in one file. You have read the repository; "
+                    "answer from what is in it rather than from the "
+                    "wording of the request."
+                ),
+            },
+            "why_that": {
+                "type": "string",
+                "description": (
+                    "One sentence on why it does or does not need showing, "
+                    "naming what you found that decided it."
+                ),
+            },
             "direction": {
                 "type": "string",
                 "description": (
@@ -217,6 +243,8 @@ def _tool() -> Tool:
             "toolchain",
             "run_command",
             "test_command",
+            "needs_a_plan",
+            "why_that",
             "direction",
             *PLAN_SCHEMA["required"],
         ],
@@ -242,6 +270,10 @@ def _said(found: dict) -> Start:
         findings=found.get("findings") or [],
         risks=found.get("risks") or [],
         toolchain=(found.get("toolchain") or "").strip(),
+        # Defaulting to True on a missing field, because the question is
+        # "may this skip being shown" and silence is not a yes.
+        needs_a_plan=bool(found.get("needs_a_plan", True)),
+        why_that=(found.get("why_that") or "").strip(),
         run_command=(found.get("run_command") or "").strip(),
         test_command=(found.get("test_command") or "").strip(),
     )
@@ -293,7 +325,8 @@ def begin(
             system,
             prompt,
             '{"findings": ["..."], "risks": ["..."], "toolchain": "...", '
-            '"run_command": "...", "test_command": "...", "direction": "...", '
+            '"run_command": "...", "test_command": "...", '
+            '"needs_a_plan": true, "why_that": "...", "direction": "...", '
             '"summary": "...", "items": [{"id": 1, "title": "...", '
             '"plain": "...", "rationale": "...", "files": ["..."], '
             '"verify_with": "tests", "needs": [], "worth_looking_at": false, '

@@ -205,12 +205,20 @@ def read(text: str, repo: Path | None = None) -> Guess:
             True,
         )
 
-    # Anything else is a change of unknown size, and the honest answer to
-    # unknown size is the path that writes a plan and asks before touching
-    # anything.
+    # Anything else is a change whose size is not obvious from the sentence,
+    # which is most of them. It used to be sent down the path that always
+    # writes a plan and always asks, because the sentence was all anybody
+    # had to go on.
+    #
+    # It is not any more. The job starts by reading the repository, and the
+    # thing that read it decides whether the work is worth stopping for -
+    # from what the change actually touches rather than from how it was
+    # worded. So this says where to start, not how much ceremony to spend,
+    # and the honest reason is that the sentence does not know.
     return Guess(
         "/do",
-        "this is a change and its size is not obvious, so it will be planned "
-        "and shown to you before anything happens",
+        "a change, and what it touches decides whether you are shown a plan "
+        "first - which is worked out by reading the repository, not by "
+        "reading this sentence",
         False,
     )

@@ -439,6 +439,12 @@ const on = {
           <p class="why">${esc((e.avoid || []).join(" · "))}</p>` : ""}
       </div></div>`);
   },
+  "plan.skipped": (e) => {
+    say("crew", `<div class="body"><p class="why">Going straight to it —
+      ${esc(e.why)}. Every change is still its own commit and still has to
+      pass the checks, so it can be undone if it is not what you meant.</p>
+      </div>`, "dim");
+  },
   "plan.ready": (e) => {
     const msg = say("planner", `<div class="body"><p>${esc(e.summary)}</p>
       <div class="card"><h4>${e.items.length} items</h4><div class="steps"></div></div>

@@ -625,7 +625,27 @@ class Session:
             self.feed.emit("look", idea=started.direction[:400])
         self.run.plan = started.plan
         self.run.save()
-        self._after_plan(auto_run)
+
+        # Whether anybody is stopped to look at this. Asked of the one that
+        # read the repository, because it is the only thing here that knows
+        # what the change actually touches - the router only ever saw the
+        # sentence.
+        #
+        # Three things can insist on being shown, and none of them can be
+        # argued out of it: a floor raised under risky work, a plan of more
+        # than one item, and the worker saying so itself. What is left -
+        # one change, read and judged small by something that looked - goes
+        # straight to the work, which is what happens when you ask anybody
+        # else to change a word on a page.
+        straight = (
+            not self.floor and not started.needs_a_plan and len(started.plan.items) <= 1
+        )
+        if straight:
+            self.feed.emit(
+                "plan.skipped",
+                why=started.why_that or "one change, and nothing it depends on",
+            )
+        self._after_plan(auto_run or straight)
 
     def _plan_it(self, shape: str, surveyed: bool, b):
         """The planner, as a thing that can be handed to a pool.
