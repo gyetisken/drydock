@@ -19,6 +19,10 @@ from .skills import Skill, discover
 # the thing this is meant to prevent.
 STAGES = ["baseline", "analyst", "planner", "engineer"]
 
+# Work that is not a stage of that line: it reads, says something, and
+# stops. Kept as a set because two places ask the same question of it.
+ALONE = ("ask", "review")
+
 
 @dataclass(frozen=True)
 class Command:
@@ -32,12 +36,15 @@ class Command:
     @property
     def stages(self) -> list[str]:
         # Two commands are not stages of the line at all. `/ask` answers and
-        # changes nothing; `/fix` is one change with no plan and no approval,
-        # because a plan for a typo is a plan nobody reads and eight minutes
-        # of ceremony for twenty seconds of work is why somebody opens a
-        # terminal instead.
-        if self.stop_after == "ask":
-            return ["ask"]
+        # `/review` reads; neither starts at the baseline and neither ends
+        # anywhere in STAGES.
+        #
+        # This list and `Session._stages` say the same thing in two places,
+        # and when `/review` was added to one and not the other this raised
+        # ValueError on every call to `GET /api/state` - which is to say the
+        # window would not load at all.
+        if self.stop_after in ALONE:
+            return [self.stop_after]
         if self.stop_after == "straight":
             return ["baseline", "engineer"]
         return STAGES[: STAGES.index(self.stop_after) + 1]
@@ -45,7 +52,7 @@ class Command:
     @property
     def ceremony(self) -> bool:
         """Whether this goes through planning and approval."""
-        return self.stop_after not in ("ask", "straight")
+        return self.stop_after not in (*ALONE, "straight")
 
     def task_for(self, answer: str) -> str:
         if not self.task_template:
@@ -85,6 +92,15 @@ BUILT_IN = [
             "be. Change nothing."
         ),
         stop_after="analyst",
+    ),
+    Command(
+        name="/review",
+        summary="Read what has changed and say what is wrong. Nothing is changed.",
+        task_template=(
+            "Review what has changed in this repository and report what is "
+            "wrong with it. Change nothing."
+        ),
+        stop_after="review",
     ),
     Command(
         name="/plan",

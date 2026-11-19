@@ -444,6 +444,30 @@ const on = {
           <p class="why">${esc((e.avoid || []).join(" · "))}</p>` : ""}
       </div></div>`);
   },
+  "review": (e) => {
+    const found = (e.findings || []).length + (e.counted || []).length;
+    const counted = (e.counted || []).map(c =>
+      `<div class="finding counted"><b>counted</b>
+       <span>${esc(c)}</span></div>`).join("");
+    const findings = (e.findings || []).map(f =>
+      `<div class="finding${f.sure ? "" : " unsure"}">
+         <b>${esc(f.where)}</b>
+         <span>${esc(f.what)}</span>
+         ${f.sure ? "" : '<i>not checked, worth a look</i>'}
+       </div>`).join("");
+    const good = (e.good || []).map(g =>
+      `<div class="finding good"><b>right as it is</b>
+       <span>${esc(g)}</span></div>`).join("");
+    say("crew", `<div class="body">
+      <p>${esc(e.verdict || e.about)}</p>
+      <p class="why">${esc(e.about)}${found
+        ? ` · ${found} thing${found === 1 ? "" : "s"} to look at`
+        : " · nothing to report"}</p>
+      ${counted + findings + good
+        ? `<div class="findings">${counted}${findings}${good}</div>` : ""}
+      <p class="hint">Nothing was changed. This is a reading, not a job.</p>
+      </div>`);
+  },
   "plan.skipped": (e) => {
     say("crew", `<div class="body"><p class="why">Going straight to it —
       ${esc(e.why)}. Every change is still its own commit and still has to

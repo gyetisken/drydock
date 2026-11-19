@@ -280,6 +280,103 @@ class Repo:
         """
         return self._git(f"show --no-color --stat --patch {_quote(commit)}")[1]
 
+    def what_changed(self) -> tuple[str, str]:
+        """The change worth reviewing, and a sentence saying which it is.
+
+        Asked in this order because it is the order somebody means. A dirty
+        tree is what they are working on now. A branch that is not the
+        trunk is the work they would open a pull request for. Otherwise the
+        last commit, which is what they just did.
+
+        Empty when there is nothing: a clean trunk with nothing to say is
+        not an error, and reporting on a diff of nothing is worse than
+        saying there is nothing.
+        """
+        pending = self._pending_without_touching_anything()
+        if pending:
+            return pending, "Everything changed here and not yet committed."
+
+        _, branch = self._git("symbolic-ref --quiet --short HEAD")
+        branch = branch.strip()
+        trunk = self._trunk()
+        if branch and trunk and branch != trunk:
+            code, base = self._git(f"merge-base {_quote(trunk)} HEAD")
+            base = base.strip()
+            if code == 0 and base:
+                said = self._asked(f"diff --no-color {base}..HEAD")
+                if said:
+                    return said, f"Everything on `{branch}` since it left `{trunk}`."
+
+        # Only when there is a commit before this one. A repository with a
+        # single commit has no `HEAD~1`, and git says so on stderr - which,
+        # read without its exit code, came back as a diff whose contents
+        # were the words "fatal: ambiguous argument".
+        if self._git("rev-parse --verify --quiet HEAD~1")[0] == 0:
+            last = self._asked("diff --no-color HEAD~1..HEAD")
+            if last:
+                return last, "The last commit."
+        return "", "there is nothing changed here to read"
+
+    def _pending_without_touching_anything(self) -> str:
+        """The uncommitted change, with the index left exactly as found.
+
+        `pending_for_review` runs `git add -A -N` so that files nobody has
+        tracked yet appear in the diff. That is right during a run - this
+        program owns that tree - and wrong here, where the whole promise is
+        that reading a change does not change it. Watched happen: an
+        untracked file went from `??` to ` A` because somebody asked what
+        was wrong with their work.
+
+        So the files that were untracked before are written down, marked,
+        read, and put back exactly as they were. Nothing else in the index
+        is touched, which rules out `git reset` - somebody may have staged
+        something deliberately and it is not this function's to unstage.
+        """
+        untracked = [
+            line[3:].strip()
+            for line in self._git("status --porcelain")[1].splitlines()
+            if line.startswith("??")
+        ]
+        if untracked:
+            self._git("add -N -- " + " ".join(_quote(p) for p in untracked))
+        try:
+            excludes = " ".join(f"':(exclude){name}'" for name in self.GENERATED)
+            return self._asked(f"diff --no-color HEAD -- . {excludes}")
+        finally:
+            if untracked:
+                self._git("reset -q -- " + " ".join(_quote(p) for p in untracked))
+
+    def _asked(self, args: str) -> str:
+        """The output of a git command, or nothing if it did not work.
+
+        Every caller of this wants a diff and none of them want an error
+        message that reads like one.
+        """
+        code, out = self._git(args)
+        return out.strip() if code == 0 else ""
+
+    def _trunk(self) -> str:
+        """What this repository treats as its trunk.
+
+        Asked of the remote first, because that is where the answer is
+        written down rather than guessed: `origin/HEAD` is whatever the
+        clone was told the default branch is, including `develop` and
+        whatever else somebody chose. Only then the usual local names, for
+        a repository with no remote at all.
+
+        Returning "" is not a failure - a repository on its trunk has no
+        branch to compare against, and the last commit is read instead.
+        """
+        code, said = self._git("symbolic-ref --quiet --short refs/remotes/origin/HEAD")
+        named = said.strip().removeprefix("origin/")
+        if code == 0 and named:
+            return named
+        for name in ("main", "master", "trunk", "develop"):
+            for where in ("refs/heads/", "refs/remotes/origin/"):
+                if self._git(f"show-ref --verify --quiet {where}{name}")[0] == 0:
+                    return name
+        return ""
+
     def diff(self, against: str = "HEAD~1") -> str:
         return self._git(f"diff {against} --unified=3")[1]
 

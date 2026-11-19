@@ -86,6 +86,21 @@ UPGRADING = re.compile(
     re.IGNORECASE,
 )
 
+# Reading a change that already exists, rather than the project around it.
+# `review` sat in AUDITING, which surveys the whole repository - a different
+# and much longer question than "what is wrong with what I just wrote".
+REVIEWING = re.compile(
+    r"\b(review|check\s+over|look\s+over|go\s+over)\b[^.]{0,30}?"
+    r"\b(my|the|this|these)?\s*(change|diff|branch|work|edit|commit|pr|"
+    r"pull\s+request)s?\b"
+    r"|\bwhat('?s| is)\s+wrong\s+with\s+(my|the|this|these)\s*"
+    r"(change|diff|branch|work|edit|code)s?\b"
+    # Not "review this project" / "this repo" / "this codebase", which is
+    # the whole-repository question and belongs to the audit.
+    r"|\breview\s+(it|this)\b(?!\s*(project|repo|repository|codebase|code\s?base))",
+    re.IGNORECASE,
+)
+
 # Looking without changing.
 AUDITING = re.compile(
     r"\b(audit|review|look (at|over)|assess|find (problems|issues|bugs)|"
@@ -165,6 +180,14 @@ def read(text: str, repo: Path | None = None) -> Guess:
 
     if CHECKING.search(said):
         return Guess("/check", "this is asking to run what is already there", True)
+
+    if REVIEWING.search(said):
+        return Guess(
+            "/review",
+            "this is asking about a change that already exists, not about "
+            "the project around it",
+            True,
+        )
 
     # Before the general question test: "what is fragile here" is a request
     # for an audit wearing a question mark, and the audit is the better

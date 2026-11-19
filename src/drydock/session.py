@@ -18,13 +18,14 @@ from . import preview, publish
 from .analyst import baseline, survey
 from .answer import ask
 from .architect import as_briefing, design
-from .commands import STAGES
+from .commands import ALONE, STAGES
 from .crew import GATE_STATION
 from .designer import as_briefing as look_briefing
 from .designer import decide, draw_mark, write_logo
 from .detect import detect
 from .engines import stop_workers
 from .events import Feed
+from .inspect import look
 from .intent import is_small_talk
 from .memory import Memory
 from .models import Inventory, Item, Plan
@@ -33,6 +34,7 @@ from .pace import from_log
 from .planner import plan
 from .policy import AT_THE_END, Policy, of
 from .repo import GitError, Repo
+from .review import read_it
 from .run import Run
 from .settings import Settings
 from .skills import Skill, discover
@@ -158,6 +160,10 @@ class Session:
             # be compared against it.
             if self.stop_after == "ask":
                 self._answer()
+                return
+
+            if self.stop_after == "review":
+                self._review()
                 return
 
             chain = detect(self.repo)
@@ -732,11 +738,100 @@ class Session:
         assumed it always did, and raised on anything that does not appear
         there - which took the whole run down on the first /fix.
         """
-        if self.stop_after == "ask":
-            return ["ask"]
+        if self.stop_after in ALONE:
+            return [self.stop_after]
         if self.stop_after == "straight":
             return ["baseline", "engineer"]
         return STAGES[: STAGES.index(self.stop_after) + 1]
+
+    def _review(self) -> None:
+        """Read what has changed and report. Nothing is touched.
+
+        No branch, no plan, no approval, no commit - the same shape as a
+        question, because that is what this is: a question about a diff
+        somebody already wrote.
+        """
+        self.run = Run.start(self.repo, self.task, [])
+        self.run.budget = self.budget
+        self.run.engine = self.engine
+        self.run.model = self.model
+        repo = Repo(self.repo)
+        diff, about = repo.what_changed()
+
+        self.feed.emit(
+            "run.started",
+            repo=self.repo.name,
+            task=self.task,
+            skills=[],
+            toolchain="",
+            stages=["review"],
+        )
+
+        if not diff.strip():
+            self.feed.emit(
+                "agent.state", agent="Inspector", state="skipped", note=about
+            )
+            self.feed.emit(
+                "review", verdict=about, findings=[], good=[], counted=[], about=about
+            )
+            self.feed.close()
+            return
+
+        # Arithmetic first, because it costs nothing and does not hedge.
+        self.feed.emit(
+            "agent.state",
+            agent="Inspector",
+            state="working",
+            note="counting what the diff removed",
+        )
+        card = look(diff, repo=self.repo)
+        counted = [f.detail for f in card.findings]
+        self.feed.emit(
+            "agent.state",
+            agent="Inspector",
+            state="done" if card.clean else "failed",
+            note="nothing to report" if card.clean else f"{len(counted)} found",
+        )
+
+        self.feed.emit(
+            "agent.state", agent="Reviewer", state="working", note="reading the change"
+        )
+        reading, usage = read_it(
+            self.repo,
+            diff,
+            # What they typed, with what is being read. "review my changes,
+            # the error handling especially" became "review what has
+            # changed" and the second half went nowhere.
+            f"{about}\n\n{self.task}".strip() if self.task.strip() else about,
+            counted,
+            on_event=self._agent_event("Reviewer"),
+            budget=self.run.left if self.budget else 0.0,
+            engine=self.engine,
+            model=self.model,
+        )
+        self._spent(usage, "Reviewer")
+        self.feed.emit(
+            "agent.state",
+            agent="Reviewer",
+            state="done",
+            note=f"{len(reading.findings)} found"
+            if reading.findings
+            else "nothing to report",
+        )
+        self.run.answer = reading.verdict
+        self.run.save()
+        self.feed.emit(
+            "review",
+            about=about,
+            verdict=reading.verdict,
+            findings=[
+                {"where": f.where, "what": f.what, "sure": f.sure}
+                for f in reading.findings
+            ],
+            good=reading.good,
+            counted=counted,
+        )
+        self.feed.close()
 
     def _answer(self) -> None:
         """Read the repository and say what it says."""
