@@ -694,10 +694,16 @@ class TestAWorkerStillWorkingWhenItsTimeRunsOut:
         # A clock that expires while the worker is plainly still working,
         # and a worker that finishes inside the extension but not inside
         # the original budget.
-        worker = _Dribbles(_showing(12), gap=0.02)  # about 0.24s of output
-        _, _, stopped = engines.ClaudeCodeEngine(minutes=0.00333)._read(
+        #
+        # The margins are wide on purpose. The first version of this ran a
+        # 0.24s worker against a 0.2s budget extended to 0.3s - 40ms of
+        # slack on each side - and failed on CI perhaps one run in three,
+        # which costs a push and a wait every time it does. Nothing about
+        # the behaviour needs the numbers to be small.
+        worker = _Dribbles(_showing(12), gap=0.1)  # about 1.2s of output
+        _, _, stopped = engines.ClaudeCodeEngine(minutes=0.0167)._read(
             worker, lambda kind, text: said.append((kind, text))
-        )  # 0.2s, extended once by 0.1s
+        )  # 1.0s, extended once by 0.5s
 
         assert any("still working" in text for _, text in said), "it was offered"
         assert stopped == "", "and it finished inside the extension"

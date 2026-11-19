@@ -105,8 +105,7 @@ PROMPT = """What is being built: {task}
 {shape}
 
 Direct it. Be specific and be local to this business - its city, its kind of
-room, who walks in, what they are deciding. Draw the mark yourself as SVG;
-that one is yours and is never a stock icon.
+room, who walks in, what they are deciding.
 
 Aim high. The brief that gets built is the brief that was written, and a
 cautious one becomes a column of text on a coloured background - which is
@@ -190,17 +189,6 @@ def _tool() -> Tool:
                         "where the composition changes at each breakpoint."
                     ),
                 },
-                "logo_svg": {
-                    "type": "string",
-                    "description": (
-                        "A complete <svg> element, drawn by you, that works at "
-                        "28 pixels as well as 200. No external references."
-                    ),
-                },
-                "logo_reasoning": {
-                    "type": "string",
-                    "description": "Why this mark and not another, in a sentence.",
-                },
                 "words": {
                     "type": "string",
                     "description": (
@@ -224,8 +212,6 @@ def _tool() -> Tool:
                 "moment",
                 "references",
                 "layout",
-                "logo_svg",
-                "logo_reasoning",
                 "words",
                 "avoid",
             ],
@@ -257,7 +243,6 @@ def decide(
             '{"idea": "...", "palette": ["..."], "type_scale": "...", '
             '"composition": "...", "scale_contrast": "...", "density": "...", '
             '"moment": "...", "references": ["..."], "layout": "...", '
-            '"logo_svg": "<svg ...>...</svg>", "logo_reasoning": "...", '
             '"words": "...", "avoid": ["..."]}',
             on_event=on_event,
             tools="",
@@ -275,6 +260,95 @@ def decide(
         on_event=on_event,
     )
     return agent.run(prompt, final_tool=_tool()), agent.usage
+
+
+# The mark is drawn on its own, beside the direction rather than inside it.
+# Measured: asking for the direction and a complete SVG in one generation
+# took five minutes and forty-one seconds, with no tool call in it - one
+# enormous completion, and the planner waiting behind all of it. Drawing is
+# work; it should happen next to the other work, not in front of it.
+MARK_SYSTEM = """You draw marks. Not illustrations and not stock icons: one
+shape that is legible at 28 pixels, holds up at 200, and could be stamped on
+a cup.
+
+Work in one colour. Use `currentColor` for every fill and stroke, so the page
+decides what colour the mark is - the palette is being decided beside you and
+you are not waiting for it, and a mark that inherits its colour is the right
+answer anyway.
+
+No external references, no fonts, no images, no filters. A viewBox and
+paths."""
+
+MARK_PROMPT = """What is being built: {task}
+
+Draw its mark. One <svg> element, currentColor throughout, and one sentence
+on why this shape and not another."""
+
+
+def _mark_tool():
+    return Tool(
+        name="mark",
+        description="The drawn mark.",
+        schema={
+            "type": "object",
+            "properties": {
+                "logo_svg": {
+                    "type": "string",
+                    "description": (
+                        "A complete <svg> element, drawn by you, that works "
+                        "at 28 pixels as well as 200. currentColor only, no "
+                        "external references."
+                    ),
+                },
+                "logo_reasoning": {
+                    "type": "string",
+                    "description": "Why this mark and not another, in a sentence.",
+                },
+            },
+            "required": ["logo_svg", "logo_reasoning"],
+            "additionalProperties": False,
+        },
+        run=lambda **_: "",
+        strict=True,
+    )
+
+
+def draw_mark(
+    repo: Path,
+    task: str,
+    skills: list[Skill] | None = None,
+    on_event=None,
+    budget: float = 0.0,
+    engine: str = "api",
+    model: str = "opus",
+) -> tuple[dict, object]:
+    """Draw the mark, knowing nothing about the palette and needing to know
+    nothing: it is one colour and the page decides which."""
+    prompt = MARK_PROMPT.format(task=task)
+    system = MARK_SYSTEM + briefing(skills or [], "design")
+
+    if engine == "claude":
+        found, dollars, turns = ClaudeCodeEngine(model=model, max_turns=4).structured(
+            repo,
+            system,
+            prompt,
+            '{"logo_svg": "<svg ...>...</svg>", "logo_reasoning": "..."}',
+            on_event=on_event,
+            tools="",
+            without="Bash Read Glob Grep Edit NotebookEdit WebFetch WebSearch Task",
+        )
+        return found, _Spend(dollars, turns)
+
+    agent = Agent(
+        name="Designer",
+        model=API_MODEL.get(model, JUDGEMENT),
+        system=system,
+        tools=[],
+        max_turns=2,
+        budget=budget,
+        on_event=on_event,
+    )
+    return agent.run(prompt, final_tool=_mark_tool()), agent.usage
 
 
 def as_briefing(found: dict) -> str:
@@ -320,8 +394,11 @@ def as_briefing(found: dict) -> str:
         (
             "The mark is already drawn and is in `brand/logo.svg`. "
             f"{(found.get('logo_reasoning') or '').strip()} "
-            "Use it; do not redraw it."
-        ),
+            "It is one colour and inherits it, so set its colour where it "
+            "sits. Use it; do not redraw it."
+        )
+        if (found.get("logo_svg") or "").strip()
+        else "",
         listed("Specifically avoid", "avoid"),
         closing,
     ]

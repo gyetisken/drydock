@@ -19,7 +19,7 @@ from .answer import ask
 from .architect import as_briefing, design
 from .commands import STAGES
 from .designer import as_briefing as look_briefing
-from .designer import decide, write_logo
+from .designer import decide, draw_mark, write_logo
 from .detect import detect
 from .engines import stop_workers
 from .events import Feed
@@ -334,7 +334,20 @@ class Session:
                     note="nothing here is looked at by anybody",
                 )
 
-            with ThreadPoolExecutor(max_workers=2) as pool:
+            # Three at once, and the planner started the moment the one it
+            # actually depends on is done.
+            #
+            # Measured, before this: architect 71s and designer 5m41s ran
+            # together, and the planner waited for both - 2m54s of it
+            # serialised behind a station it does not need. Eight minutes
+            # and thirty-six seconds before the first line of the thing
+            # anybody asked for.
+            #
+            # The planner needs the stack: items name files and a test
+            # command. It does not need the palette - the direction reaches
+            # the engineer at item time through `run.direction`, which is
+            # where it was always read.
+            with ThreadPoolExecutor(max_workers=3) as pool:
                 shaping = (
                     pool.submit(
                         design,
@@ -364,61 +377,106 @@ class Session:
                     if wants_look
                     else None
                 )
+                # Drawn beside the direction rather than inside it, and
+                # knowing nothing about the palette: it is one colour and
+                # the page decides which.
+                drawing = (
+                    pool.submit(
+                        draw_mark,
+                        self.repo,
+                        self.task,
+                        self.skills,
+                        self._agent_event("Designer"),
+                        budget=self.run.left if self.budget else 0.0,
+                        engine=self.engine,
+                        model=self.model,
+                    )
+                    if wants_look
+                    else None
+                )
 
-            if shaping:
-                found, usage = shaping.result()
-                self._spent(usage, "Architect")
-                shape = as_briefing(found)
+                if shaping:
+                    found, usage = shaping.result()
+                    self._spent(usage, "Architect")
+                    shape = as_briefing(found)
+                    self.feed.emit(
+                        "agent.state",
+                        agent="Architect",
+                        state="done",
+                        note=found.get("stack", "")[:90] or "shape decided",
+                    )
+                    self.feed.emit("design", **found)
+
+                # Here, inside the pool, while the designer is still
+                # drawing. This is the whole point of the change.
                 self.feed.emit(
                     "agent.state",
-                    agent="Architect",
-                    state="done",
-                    note=found.get("stack", "")[:90] or "shape decided",
+                    agent="Planner",
+                    state="working",
+                    note="turning the survey into items",
                 )
-                self.feed.emit("design", **found)
+                planning = pool.submit(self._plan_it, shape, surveyed, b)
 
-            if looking:
-                found, usage = looking.result()
-                self._spent(usage, "Designer")
-                write_logo(self.repo, found)
-                look = look_briefing(found)
-                self.run.direction = look
-                self.memory.direct(look)
-                self.memory.save()
-                self.feed.emit(
-                    "agent.state",
-                    agent="Designer",
-                    state="done",
-                    note=found.get("idea", "")[:110] or "the look is decided",
-                )
-                self.feed.emit("look", **found)
+                if looking:
+                    found, usage = looking.result()
+                    self._spent(usage, "Designer")
+                    look = look_briefing(found)
+                    self.run.direction = look
+                    self.memory.direct(look)
+                    self.memory.save()
+                    self.feed.emit(
+                        "agent.state",
+                        agent="Designer",
+                        state="done",
+                        note=found.get("idea", "")[:110] or "the look is decided",
+                    )
+                    self.feed.emit("look", **found)
 
-            self.feed.emit(
-                "agent.state",
-                agent="Planner",
-                state="working",
-                note="turning the survey into items",
-            )
-            self.run.plan, usage = plan(
-                self.repo,
-                self.task,
-                self.run.inventory,
-                b,
-                self.skills,
-                self._agent_event("Planner"),
-                budget=self.run.left if self.budget else 0.0,
-                engine=self.engine,
-                model=self.model,
-                shape=shape + look,
-                policy=self.policy,
-                surveyed=surveyed,
-            )
+                if drawing:
+                    drawn, usage = drawing.result()
+                    self._spent(usage, "Designer")
+                    # Committed before the item loop can start: the loop
+                    # refuses a dirty tree, so a file written here and left
+                    # uncommitted would stop the job before its first item.
+                    write_logo(self.repo, drawn)
+                    if (drawn.get("logo_svg") or "").strip():
+                        self.run.direction += look_briefing(
+                            {
+                                "logo_svg": drawn.get("logo_svg"),
+                                "logo_reasoning": drawn.get("logo_reasoning"),
+                            }
+                        )
+
+                self.run.plan, usage = planning.result()
             self._spent(usage, "Planner")
             self._after_plan(auto_run)
 
         except Exception as exc:  # noqa: BLE001 - the page has to be told
             self.error = f"{type(exc).__name__}: {exc}"
             self.feed.emit("run.error", detail=self.error)
+
+    def _plan_it(self, shape: str, surveyed: bool, b):
+        """The planner, as a thing that can be handed to a pool.
+
+        Given the shape and not the direction. It needs to know what this
+        is built with, because its items name files and a test command;
+        what the thing looks like reaches the engineer at item time, which
+        is where it was always read from.
+        """
+        return plan(
+            self.repo,
+            self.task,
+            self.run.inventory,
+            b,
+            self.skills,
+            self._agent_event("Planner"),
+            budget=self.run.left if self.budget else 0.0,
+            engine=self.engine,
+            model=self.model,
+            shape=shape,
+            policy=self.policy,
+            surveyed=surveyed,
+        )
 
     def _bring_in(self, name: str, when) -> None:
         """Add a skill nobody asked for, when the work calls for it."""
