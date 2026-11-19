@@ -9,6 +9,7 @@ of something that takes twenty minutes and costs money.
 
 import os
 import re
+import tempfile
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -21,6 +22,7 @@ from .architect import as_briefing, design
 from .claims import Report, check
 from .commands import ALONE, STAGES
 from .crew import GATE_STATION
+from .critic import what_looks_wrong
 from .designer import as_briefing as look_briefing
 from .designer import decide, draw_mark, write_logo
 from .detect import detect
@@ -38,6 +40,7 @@ from .repo import GitError, Repo
 from .review import read_it
 from .run import Run
 from .settings import Settings
+from .shot import take
 from .skills import Skill, discover
 from .skills import load as load_skill
 from .stack import already_decided
@@ -841,7 +844,41 @@ class Session:
             )
             self._spent(usage, "Critic")
 
-        broken = sorted({f for one in widths.values() for f in one.findings()})
+        broken = sorted(
+            {f for one in widths.values() for f in one.findings()}
+            # A control that throws, or does nothing, or cannot be reached
+            # is a finding about the page like any other. Left out of here
+            # it showed only in the list of what was pressed, which is a
+            # place somebody has to open.
+            | {one.wrong for one in pressed if one.wrong}
+        )
+
+        # Last, and least certain: somebody looking. It is given what was
+        # already measured and told to leave all of it alone, because an
+        # eye asked about contrast will guess, and a guess dressed as a
+        # second opinion is worse than silence.
+        noticed: list[str] = []
+        if served and served.is_a_page and live is not None:
+            self.feed.emit(
+                "agent.state", agent="Critic", state="working", note="looking at it"
+            )
+            with tempfile.TemporaryDirectory(prefix="drydock-qa-") as scratch:
+                if take(live.url, Path(scratch)):
+                    try:
+                        noticed, dollars = what_looks_wrong(
+                            Path(scratch),
+                            broken,
+                            model=self.model,
+                            on_event=self._agent_event("Critic"),
+                        )
+                        self.run.dollars += dollars
+                    except Exception as exc:  # noqa: BLE001 - a look is not a run
+                        self.feed.emit(
+                            "agent.state",
+                            agent="Critic",
+                            state="done",
+                            note=f"could not look: {exc}",
+                        )
         self.feed.emit(
             "agent.state",
             agent="Critic",
@@ -856,6 +893,7 @@ class Session:
             tests=b.tests_run,
             failing=b.tests_failed,
             broken=broken,
+            noticed=noticed,
             pressed=[
                 {"said": one.said, "did": one.why or one.did, "tried": one.tried}
                 for one in pressed

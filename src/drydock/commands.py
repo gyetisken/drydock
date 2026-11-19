@@ -104,8 +104,13 @@ BUILT_IN = [
     ),
     Command(
         name="/qa",
-        summary="Run it, look at it, and report what is broken. Nothing is changed.",
-        asks="what it is supposed to do, if you want that checked too",
+        summary=(
+            "Run it, look at it, and report what is broken. Add what it is "
+            "supposed to do and that is checked too. Nothing is changed."
+        ),
+        # No `asks`: on its own this measures, and `asks` makes an
+        # argument compulsory - so the most natural thing anybody types,
+        # `/qa` and nothing else, came back as a refusal.
         task_template="{what}",
         stop_after="qa",
     ),

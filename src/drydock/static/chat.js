@@ -463,6 +463,11 @@ const on = {
           e.pressed.map(p => `<div>${p.tried ? "pressed" : "not pressed"} · ${
             esc(p.said)} — ${esc(p.did)}</div>`).join("")}</div></details>`
       : "";
+    // What somebody looking said, kept apart from what was measured. The
+    // difference is the whole arrangement and collapsing it into one list
+    // would undo it.
+    const noticed = (e.noticed || []).map(n =>
+      `<div class="finding seen"><b>looks wrong</b><span>${esc(n)}</span></div>`).join("");
     const unchecked = (e.unchecked || []).map(u =>
       `<div class="finding flat"><b>not checked</b><span>${esc(u)}</span></div>`).join("");
     say("crew", `<div class="body">
@@ -473,12 +478,13 @@ const on = {
       <p class="why">${esc(e.serving)}${e.page ? "" : " — not a page, so nothing was looked at"}</p>
       ${e.checks && e.checks.length
         ? `<p class="why">${esc(e.said)}</p>` : ""}
-      ${broken + checks + unchecked
-        ? `<div class="findings">${broken}${checks}${unchecked}</div>` : ""}
+      ${broken + checks + noticed + unchecked
+        ? `<div class="findings">${broken}${checks}${noticed}${unchecked}</div>` : ""}
       ${pressed}
-      <p class="hint">Nothing was changed. The suite and the measurements are
-      arithmetic; anything marked <i>could not check</i> needed something this
-      cannot do.</p></div>`);
+      <p class="hint">Nothing was changed. The suite, the measurements and the
+      presses are arithmetic. Anything marked <i>looks wrong</i> is somebody's
+      eye and can be mistaken; anything marked <i>could not check</i> needed
+      something this cannot do.</p></div>`);
   },
   "review": (e) => {
     const found = (e.findings || []).length + (e.counted || []).length;

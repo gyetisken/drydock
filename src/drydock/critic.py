@@ -142,3 +142,85 @@ def look(
         ),
         dollars,
     )
+
+
+# The second question this module answers, and a different one. `look`
+# holds a page against the direction it was built to, during a run, for
+# one item. This asks what is wrong with a page when nobody said what it
+# was supposed to look like - which is what somebody means by "is this
+# any good".
+#
+# It is told what was already measured, and told not to say any of it
+# again. Contrast, overflow, broken images and scripts that threw are
+# arithmetic by now; an eye asked about them will guess, and a guess
+# dressed as a second opinion is worse than silence.
+EYES = """You are looking at a page and saying what is wrong with it.
+
+What you are for is the half nobody can measure. A machine has already
+checked, on this page, and reported separately: contrast ratios, anything
+running off the edge, images that did not load, scripts that threw, links
+that go nowhere, and controls that do nothing when pressed. Do not repeat
+any of that and do not guess at it - if it is not in front of you, it has
+been handled.
+
+What is left is what only somebody looking can tell:
+
+- Is there a hierarchy, or is it one flat column of text at one size?
+- Does anything overlap, crowd, or sit so close to something else that
+  they read as one thing?
+- Is the spacing even, or does one band have four times the air of the
+  one beside it?
+- Does it look like the thing it is for, or like a template with the
+  words changed?
+- Is anything obviously unfinished - a placeholder, lorem, a box with
+  nothing in it, an element half off a band?
+
+Be specific about where. "The layout is unbalanced" helps nobody; "the
+three cards sit hard against the left edge while the heading above them
+is centred" can be acted on.
+
+If it looks right, say so and stop. A page with nothing wrong with it is
+a real answer, and one of these written every time somebody asks teaches
+people to stop reading them.
+
+Everything you say here is judgement rather than measurement, and will be
+labelled as such. That is the reason to be careful with it, not a reason
+to hedge: say what you actually see."""
+
+EYES_PROMPT = """Two images of the page are in this directory: desktop.png
+and phone.png. Read both.
+
+{measured}
+
+What is wrong with it that nobody could have measured?"""
+
+
+def what_looks_wrong(
+    scratch: Path,
+    measured: list[str],
+    model: str = "opus",
+    on_event=None,
+) -> tuple[list[str], float]:
+    """What an eye finds on a page, with the measurements already taken."""
+    prompt = EYES_PROMPT.format(
+        measured=(
+            "Already measured and reported, so leave these alone:\n"
+            + "\n".join(f"- {m}" for m in measured[:20])
+            if measured
+            else "The measurements found nothing to report."
+        )
+    )
+    found, dollars, _turns = ClaudeCodeEngine(model=model, max_turns=6).structured(
+        scratch,
+        EYES,
+        prompt,
+        '{"looks_right": true, "found": ["..."]}',
+        on_event=on_event,
+        # It opens two images and nothing else.
+        tools="Read",
+        without="Bash Edit Glob Grep NotebookEdit WebFetch WebSearch Task",
+    )
+    said = [f.strip() for f in (found.get("found") or []) if str(f).strip()]
+    # The dollars, the way `look` above reports them: this module hands
+    # back a number and the caller decides what to do with it.
+    return ([] if found.get("looks_right") and not said else said), dollars

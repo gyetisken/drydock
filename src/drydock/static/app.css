@@ -780,3 +780,5 @@ body.split .composer .cwrap { max-width:none }
 .finding.ok b { color:var(--ok) }
 .finding.flat b { color:var(--faint) }
 .finding i { font-style:italic; color:var(--faint) }
+.finding.seen { border-left-color:var(--warn) }
+.finding.seen b { color:var(--warn) }
