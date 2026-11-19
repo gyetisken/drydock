@@ -185,104 +185,112 @@ twice.
 """
 
 
+# The shape of a plan, kept in one place. It is read by the planner and
+# by the single start call, and when the same contract lived in two
+# places once before, one of them was missing `worth_looking_at` - so
+# the planner answered a schema that could not carry the field the
+# orchestrator then looked for.
+PLAN_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "summary": {
+            "type": "string",
+            "description": "What this plan does and the order it does it in, in two or three sentences.",
+        },
+        "items": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "id": {"type": "integer"},
+                    "title": {"type": "string"},
+                    "plain": {
+                        "type": "string",
+                        "description": (
+                            "The same item in one short sentence for "
+                            "somebody who will not open the files. No "
+                            "paths, no symbol names, no jargon. Say "
+                            "what will be true afterwards that is not "
+                            "true now. Under 80 characters."
+                        ),
+                    },
+                    "rationale": {
+                        "type": "string",
+                        "description": "Why this item exists and which risk it answers.",
+                    },
+                    "files": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Paths or globs this item touches.",
+                    },
+                    "verify_with": {
+                        "type": "string",
+                        "enum": ["build", "tests"],
+                    },
+                    "needs": {
+                        "type": "array",
+                        "items": {"type": "integer"},
+                        "description": (
+                            "The ids of items that must land before "
+                            "this one can start. Empty when it can be "
+                            "done from the state the run began in. "
+                            "Two items that touch the same file need "
+                            "each other; two that do not, do not."
+                        ),
+                    },
+                    "worth_looking_at": {
+                        "type": "boolean",
+                        "description": (
+                            "Whether somebody should look at the "
+                            "rendered page to judge this item. True "
+                            "when the whole point of the item is "
+                            "what it looks like. False for "
+                            "scaffolding, configuration, data, a "
+                            "test command, a stylesheet nobody "
+                            "imports, a placeholder - anything "
+                            "whose success is a build passing "
+                            "rather than a page being right. A "
+                            "critic sent to judge a placeholder "
+                            "refuses it for being a placeholder, "
+                            "which is true and useless and costs "
+                            "the item three attempts."
+                        ),
+                    },
+                    "removes_tests": {
+                        "type": "boolean",
+                        "description": (
+                            "True only for an item whose purpose is to "
+                            "delete tests. Any other item that loses a "
+                            "test will be refused, so say so here when "
+                            "it is deliberate."
+                        ),
+                    },
+                },
+                "required": [
+                    "id",
+                    "title",
+                    "plain",
+                    "rationale",
+                    "files",
+                    "verify_with",
+                    "needs",
+                    "worth_looking_at",
+                    "removes_tests",
+                ],
+                "additionalProperties": False,
+            },
+        },
+    },
+    "required": ["summary", "items"],
+    "additionalProperties": False,
+}
+
+
 def _plan_tool() -> Tool:
     return Tool(
         name="submit_plan",
         description="Submit the plan. Call this once, at the end.",
-        schema={
-            "type": "object",
-            "properties": {
-                "summary": {
-                    "type": "string",
-                    "description": "What this plan does and the order it does it in, in two or three sentences.",
-                },
-                "items": {
-                    "type": "array",
-                    "items": {
-                        "type": "object",
-                        "properties": {
-                            "id": {"type": "integer"},
-                            "title": {"type": "string"},
-                            "plain": {
-                                "type": "string",
-                                "description": (
-                                    "The same item in one short sentence for "
-                                    "somebody who will not open the files. No "
-                                    "paths, no symbol names, no jargon. Say "
-                                    "what will be true afterwards that is not "
-                                    "true now. Under 80 characters."
-                                ),
-                            },
-                            "rationale": {
-                                "type": "string",
-                                "description": "Why this item exists and which risk it answers.",
-                            },
-                            "files": {
-                                "type": "array",
-                                "items": {"type": "string"},
-                                "description": "Paths or globs this item touches.",
-                            },
-                            "verify_with": {
-                                "type": "string",
-                                "enum": ["build", "tests"],
-                            },
-                            "needs": {
-                                "type": "array",
-                                "items": {"type": "integer"},
-                                "description": (
-                                    "The ids of items that must land before "
-                                    "this one can start. Empty when it can be "
-                                    "done from the state the run began in. "
-                                    "Two items that touch the same file need "
-                                    "each other; two that do not, do not."
-                                ),
-                            },
-                            "worth_looking_at": {
-                                "type": "boolean",
-                                "description": (
-                                    "Whether somebody should look at the "
-                                    "rendered page to judge this item. True "
-                                    "when the whole point of the item is "
-                                    "what it looks like. False for "
-                                    "scaffolding, configuration, data, a "
-                                    "test command, a stylesheet nobody "
-                                    "imports, a placeholder - anything "
-                                    "whose success is a build passing "
-                                    "rather than a page being right. A "
-                                    "critic sent to judge a placeholder "
-                                    "refuses it for being a placeholder, "
-                                    "which is true and useless and costs "
-                                    "the item three attempts."
-                                ),
-                            },
-                            "removes_tests": {
-                                "type": "boolean",
-                                "description": (
-                                    "True only for an item whose purpose is to "
-                                    "delete tests. Any other item that loses a "
-                                    "test will be refused, so say so here when "
-                                    "it is deliberate."
-                                ),
-                            },
-                        },
-                        "required": [
-                            "id",
-                            "title",
-                            "plain",
-                            "rationale",
-                            "files",
-                            "verify_with",
-                            "needs",
-                            "worth_looking_at",
-                            "removes_tests",
-                        ],
-                        "additionalProperties": False,
-                    },
-                },
-            },
-            "required": ["summary", "items"],
-            "additionalProperties": False,
-        },
+        schema=PLAN_SCHEMA,
         run=lambda **_: "",
         strict=True,
     )

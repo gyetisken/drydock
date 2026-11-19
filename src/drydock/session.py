@@ -7,6 +7,7 @@ survives the browser being closed, which is the behaviour anyone would expect
 of something that takes twenty minutes and costs money.
 """
 
+import os
 import re
 import threading
 from concurrent.futures import ThreadPoolExecutor
@@ -19,7 +20,7 @@ from .answer import ask
 from .architect import as_briefing, design
 from .commands import STAGES
 from .designer import as_briefing as look_briefing
-from .designer import decide, write_logo
+from .designer import decide, draw_mark, write_logo
 from .detect import detect
 from .engines import stop_workers
 from .events import Feed
@@ -35,6 +36,7 @@ from .settings import Settings
 from .skills import Skill, discover
 from .skills import load as load_skill
 from .stack import already_decided
+from .start import begin, desk_for
 
 
 def _skills_named(names: list[str]) -> list:
@@ -44,6 +46,18 @@ def _skills_named(names: list[str]) -> list:
         return []
     installed = {s.name: s for s in discover(root)}
     return [load_skill(installed[n]) for n in names if n in installed]
+
+
+# What each desk is doing when the single start call names its phase. The
+# words are the station's own job, said in the present tense, because the
+# room shows one worker moving through four of them rather than four
+# workers queueing.
+STEP = {
+    "Analyst": "reading the repository",
+    "Architect": "deciding what this is made of",
+    "Designer": "deciding how it should look",
+    "Planner": "turning it into items",
+}
 
 
 class Session:
@@ -233,6 +247,16 @@ class Session:
             empty = not any(p.name != ".git" for p in self.repo.iterdir())
             commit = Repo(self.repo).head()
 
+            # One worker instead of four. Kept behind a switch while the two
+            # are being compared on the same task: the four stations are
+            # eight and a half minutes of prose written by people who never
+            # see the result, and whether one worker with the repository in
+            # front of it plans as well is a question to answer with two
+            # runs rather than an opinion.
+            if os.environ.get("DRYDOCK_ONE_START") == "1":
+                self._begin_it(empty, b, chain, auto_run, commit)
+                return
+
             surveyed = False
             if empty:
                 self.feed.emit(
@@ -334,7 +358,20 @@ class Session:
                     note="nothing here is looked at by anybody",
                 )
 
-            with ThreadPoolExecutor(max_workers=2) as pool:
+            # Three at once, and the planner started the moment the one it
+            # actually depends on is done.
+            #
+            # Measured, before this: architect 71s and designer 5m41s ran
+            # together, and the planner waited for both - 2m54s of it
+            # serialised behind a station it does not need. Eight minutes
+            # and thirty-six seconds before the first line of the thing
+            # anybody asked for.
+            #
+            # The planner needs the stack: items name files and a test
+            # command. It does not need the palette - the direction reaches
+            # the engineer at item time through `run.direction`, which is
+            # where it was always read.
+            with ThreadPoolExecutor(max_workers=3) as pool:
                 shaping = (
                     pool.submit(
                         design,
@@ -364,61 +401,209 @@ class Session:
                     if wants_look
                     else None
                 )
+                # Drawn beside the direction rather than inside it, and
+                # knowing nothing about the palette: it is one colour and
+                # the page decides which.
+                drawing = (
+                    pool.submit(
+                        draw_mark,
+                        self.repo,
+                        self.task,
+                        self.skills,
+                        self._agent_event("Designer"),
+                        budget=self.run.left if self.budget else 0.0,
+                        engine=self.engine,
+                        model=self.model,
+                    )
+                    if wants_look
+                    else None
+                )
 
-            if shaping:
-                found, usage = shaping.result()
-                self._spent(usage, "Architect")
-                shape = as_briefing(found)
+                if shaping:
+                    found, usage = shaping.result()
+                    self._spent(usage, "Architect")
+                    shape = as_briefing(found)
+                    self.feed.emit(
+                        "agent.state",
+                        agent="Architect",
+                        state="done",
+                        note=found.get("stack", "")[:90] or "shape decided",
+                    )
+                    self.feed.emit("design", **found)
+
+                # Here, inside the pool, while the designer is still
+                # drawing. This is the whole point of the change.
                 self.feed.emit(
                     "agent.state",
-                    agent="Architect",
-                    state="done",
-                    note=found.get("stack", "")[:90] or "shape decided",
+                    agent="Planner",
+                    state="working",
+                    note="turning the survey into items",
                 )
-                self.feed.emit("design", **found)
+                planning = pool.submit(self._plan_it, shape, surveyed, b)
 
-            if looking:
-                found, usage = looking.result()
-                self._spent(usage, "Designer")
-                write_logo(self.repo, found)
-                look = look_briefing(found)
-                self.run.direction = look
-                self.memory.direct(look)
-                self.memory.save()
-                self.feed.emit(
-                    "agent.state",
-                    agent="Designer",
-                    state="done",
-                    note=found.get("idea", "")[:110] or "the look is decided",
-                )
-                self.feed.emit("look", **found)
+                if looking:
+                    found, usage = looking.result()
+                    self._spent(usage, "Designer")
+                    look = look_briefing(found)
+                    self.run.direction = look
+                    self.memory.direct(look)
+                    self.memory.save()
+                    self.feed.emit(
+                        "agent.state",
+                        agent="Designer",
+                        state="done",
+                        note=found.get("idea", "")[:110] or "the look is decided",
+                    )
+                    self.feed.emit("look", **found)
 
-            self.feed.emit(
-                "agent.state",
-                agent="Planner",
-                state="working",
-                note="turning the survey into items",
-            )
-            self.run.plan, usage = plan(
-                self.repo,
-                self.task,
-                self.run.inventory,
-                b,
-                self.skills,
-                self._agent_event("Planner"),
-                budget=self.run.left if self.budget else 0.0,
-                engine=self.engine,
-                model=self.model,
-                shape=shape + look,
-                policy=self.policy,
-                surveyed=surveyed,
-            )
+                if drawing:
+                    drawn, usage = drawing.result()
+                    self._spent(usage, "Designer")
+                    # Committed before the item loop can start: the loop
+                    # refuses a dirty tree, so a file written here and left
+                    # uncommitted would stop the job before its first item.
+                    write_logo(self.repo, drawn)
+                    if (drawn.get("logo_svg") or "").strip():
+                        self.run.direction += look_briefing(
+                            {
+                                "logo_svg": drawn.get("logo_svg"),
+                                "logo_reasoning": drawn.get("logo_reasoning"),
+                            }
+                        )
+
+                self.run.plan, usage = planning.result()
             self._spent(usage, "Planner")
             self._after_plan(auto_run)
 
         except Exception as exc:  # noqa: BLE001 - the page has to be told
             self.error = f"{type(exc).__name__}: {exc}"
             self.feed.emit("run.error", detail=self.error)
+
+    def _what_is_already_known(self, commit: str) -> str:
+        """What was learned about this repository last time, if anything.
+
+        The four stations each rediscovered this; one worker should be
+        handed it. Only notes against the commit it is looking at - a fact
+        about a tree that has since changed is not a fact.
+        """
+        notes = self.memory.knows(commit)
+        if not notes:
+            return ""
+        return "What this repository taught the last job here:\n" + "\n".join(
+            f"- {n}" for n in notes[:20]
+        )
+
+    def _begin_it(
+        self, empty: bool, b, chain, auto_run: bool, commit: str = ""
+    ) -> None:
+        """Read, decide and plan in one call, and tell the office which
+        desk is doing which part as it goes.
+
+        The desks are not inferred. The worker names the phase it is
+        starting by running a command, so what the room shows is something
+        that was reported rather than something that was guessed - which is
+        the distinction this program keeps getting wrong in the other
+        direction.
+        """
+        looked_at = self._has_a_face()
+        remembered = self.memory.direction
+
+        def report(what: str, text: str) -> None:
+            desk = desk_for(text) or desk_for(what)
+            if desk:
+                # The old desk goes dark before the new one lights. One
+                # worker is at one desk; two lit at once says two workers,
+                # which is the thing this change exists to stop saying.
+                for other in list(self._lit):
+                    if other != desk:
+                        self.feed.emit(
+                            "agent.state",
+                            agent=other,
+                            state="done",
+                            note="done, in the same sitting",
+                        )
+                        self._lit.discard(other)
+                self.feed.emit(
+                    "agent.state", agent=desk, state="working", note=STEP[desk]
+                )
+                self._lit.add(desk)
+            first = text.strip().splitlines()[0] if text.strip() else ""
+            self.feed.emit(
+                "agent.tool", agent=desk or "Planner", what=what, detail=first[:200]
+            )
+
+        self._lit = set()
+        if remembered:
+            self.feed.emit(
+                "agent.state",
+                agent="Designer",
+                state="skipped",
+                note=f"already directed on {self.memory.directed_on}; "
+                "using what was decided then",
+            )
+        elif not looked_at:
+            self.feed.emit(
+                "agent.state",
+                agent="Designer",
+                state="skipped",
+                note="nothing here is looked at by anybody",
+            )
+
+        started, usage = begin(
+            self.repo,
+            self.task,
+            empty=empty,
+            looked_at=looked_at and not remembered,
+            known=self._what_is_already_known(commit),
+            skills=self.skills,
+            on_event=report,
+            budget=self.run.left if self.budget else 0.0,
+            engine=self.engine,
+            model=self.model,
+        )
+        self._spent(usage, "Planner")
+
+        for desk in self._lit:
+            self.feed.emit(
+                "agent.state",
+                agent=desk,
+                state="done",
+                note="done, in the same sitting",
+            )
+        self._lit = set()
+
+        self.run.inventory = started.inventory(chain)
+        self.run.direction = started.direction or remembered
+        if started.direction:
+            self.memory.direct(started.direction)
+            self.memory.save()
+            self.feed.emit("look", idea=started.direction[:400])
+        self.run.plan = started.plan
+        self.run.save()
+        self._after_plan(auto_run)
+
+    def _plan_it(self, shape: str, surveyed: bool, b):
+        """The planner, as a thing that can be handed to a pool.
+
+        Given the shape and not the direction. It needs to know what this
+        is built with, because its items name files and a test command;
+        what the thing looks like reaches the engineer at item time, which
+        is where it was always read from.
+        """
+        return plan(
+            self.repo,
+            self.task,
+            self.run.inventory,
+            b,
+            self.skills,
+            self._agent_event("Planner"),
+            budget=self.run.left if self.budget else 0.0,
+            engine=self.engine,
+            model=self.model,
+            shape=shape,
+            policy=self.policy,
+            surveyed=surveyed,
+        )
 
     def _bring_in(self, name: str, when) -> None:
         """Add a skill nobody asked for, when the work calls for it."""
