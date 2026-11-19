@@ -40,6 +40,17 @@ list of facts are one item. A layout and the first page that uses it are one
 item. A feature and its tests are always one item. A README is never an item
 of its own - it goes with the last piece of work it describes.
 
+Two kinds of item that are never worth their own slot. An implementation
+detail of another item: a meta tag in the head of a page a later item
+rewrites anyway is two lines, and it cost a full round of building,
+testing, diff-reading and reviewing to deliver them. And a checking item -
+"look at it on a phone", "run the suite green", "verify the layout" -
+because every item is already built, run against the recorded test count,
+read for honesty, reviewed against what it was asked for, and looked at if
+it renders. An item asking for that is asking for work that is already
+happening, and it arrives after the thing it was meant to catch has
+already been accepted.
+
 The test for a seam: if two pieces would always be written in the same
 sitting, and a failure in one would be diagnosed by looking at the other,
 they are one item.
@@ -104,6 +115,22 @@ is judged by that suite.
 
 Name files. "The test classes" is not a plan. If the survey counted them, the
 item says which ones or how many and on what pattern.
+
+**Say what has to be true afterwards, not how to type it.** An item is an
+outcome and the way that outcome will be judged. Which files it touches,
+what it must do, what must not break, what somebody will check - those are
+yours. The markup, the structure inside a file, the values, the layout and
+the names are the engineer's, and it is a capable one with the repository
+open and the page in front of it.
+
+So: "the hours read as a table a person can scan on a phone, from the one
+place the week is already stored" is an item. The same thing with the
+padding, the border rule, the font weight and the element names written out
+is a transcription, and what arrives is what was dictated rather than the
+best version of it. Where the brief or the person asking fixed something -
+an order, a price, a word, a number - that is a constraint, say it exactly.
+Where nothing was fixed, leave it open and say how you will know it went
+well.
 
 An item that renders something has to say what a visitor gets from it, not
 only what gets computed. The failure that survives every check is the page
@@ -216,7 +243,16 @@ PLAN_SCHEMA = {
                     },
                     "rationale": {
                         "type": "string",
-                        "description": "Why this item exists and which risk it answers.",
+                        "description": (
+                            "Why this item exists and which risk it "
+                            "answers, and what has to be true when it is "
+                            "done. Decisions the engineer should not have "
+                            "to re-derive and constraints the person "
+                            "asking actually fixed. Not the "
+                            "implementation: the markup, the values, the "
+                            "layout and the names are the engineer's to "
+                            "choose with the code in front of it."
+                        ),
                     },
                     "files": {
                         "type": "array",

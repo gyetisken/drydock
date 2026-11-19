@@ -186,6 +186,10 @@ def _show_it(repo_path: Path, run, item, on_event):
             # what that part was from a title alone.
             f"{item.plain or item.title}\n\nIn full: {item.as_asked()}",
             scratch,
+            # What was actually asked for. Without it the critic had only
+            # the direction to judge against, so a direction that had
+            # drifted from the brief was ratified rather than caught.
+            brief=run.brief,
             model=run.model,
             on_event=on_event,
         )

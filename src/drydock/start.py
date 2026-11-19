@@ -79,6 +79,23 @@ Two rules about scope.
 Do not write any of the work. You read; the engineers write. The only thing
 you produce is the plan and the direction.
 
+And do not write it in prose either. An item says what has to be true
+afterwards and how anybody would know - which files, what it must do, what
+must not break. The markup, the structure inside a file, the values, the
+layout and the names belong to the engineer, which is a capable one with
+the repository open and the page in front of it. An item written out to the
+last padding value gets you a transcription of your own guess instead of
+the best version of the work. Anything the person asking actually fixed -
+an order, a price, a word, a number - is a constraint and is repeated
+exactly; everything they left open stays open.
+
+Two kinds of item are never worth their own slot: an implementation detail
+of another item, and a checking item. Every item is already built, run
+against the recorded test count, read for honesty, reviewed against what it
+was asked for, and looked at if it renders - so "look at it on a phone" or
+"run the suite green" is an item asking for work that is already happening,
+delivered after the thing it was meant to catch was accepted.
+
 Say when you move on. Before each phase, run exactly:
 
     echo "{mark} reading"      - before you read the repository
@@ -110,12 +127,26 @@ EXISTING = """This repository already works. What it is built with is a fact
 to be read, not a decision to be made, and the plan has to fit what is here
 rather than what you would have chosen."""
 
-LOOKED_AT = """Somebody is going to look at the result, so direct it: a
-palette, a type scale, a composition, what the one memorable moment is, and
-what the generic version would be so it cannot arrive by default. Be local
-to this business - its city, its kind of room, who walks in. The engineer
-has your words and nothing else; a sentence they cannot act on becomes a
-column of text on a coloured background."""
+LOOKED_AT = """Somebody is going to look at the result, so direct it: who
+walks in and what they came to find, the character of the thing, what the
+one memorable moment is, and what the generic version would be so it cannot
+arrive by default. Be local to this business - its city, its kind of room.
+
+Direct the intent, not the stylesheet. Name a colour the way a person does
+- "a deep oxblood, not a web red" - and leave the hex, the type scale in
+rem, the spacing scale and the breakpoints to the engineer, who is a
+capable designer, has the repository open, and renders the page and looks
+at it before anybody else does. Those are decisions better taken in front
+of the thing than here. A direction written as a stylesheet in prose does
+not produce a designed page; it produces a transcription.
+
+Anything the person asking for this actually specified - a colour they
+named, an order they fixed, a number they gave - is theirs, is a
+constraint, and is repeated exactly.
+
+Being vague is the other failure and it is just as bad: "clean and modern"
+directs nothing. Be specific about what the page IS and quiet about how to
+type it."""
 
 UNSEEN = """Nothing here is looked at by anybody, so do not direct a look.
 Spend the words on the plan."""

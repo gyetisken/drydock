@@ -1521,6 +1521,7 @@ class Session:
                     self.run.direction,
                     f"The whole of it: {self.run.task.splitlines()[0]}",
                     Path(scratch),
+                    brief=self.run.brief,
                     model=self.model,
                     on_event=self._agent_event("Critic"),
                 )

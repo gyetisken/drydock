@@ -6,9 +6,16 @@ three can pass a page that is a flat column of stacked text on one surface,
 because none of them can see, and a design skill that says "the things a
 suite cannot see" was being enforced by nobody.
 
-This one is given the rendered page as an image at two widths, and the
-direction it was supposed to be built to, and answers one question: does the
-thing in front of me look like what was asked for. It can send work back.
+This one is given the rendered page as an image at two widths, what the
+person actually asked for, and the direction that was written from it, and
+answers one question: does the thing in front of me look like what was
+asked for. It can send work back.
+
+The brief is the standard and the direction is only context, because the
+direction is a reading of the brief made before anybody had seen a page. A
+run that judged against the direction alone ratified it: a page built
+exactly to a direction that had drifted passed every gate, and the one
+station able to see was the one agreeing with the drift.
 
 It is honest about not running. A machine with no browser cannot take a
 screenshot, and a check that silently did not happen is worse than one that
@@ -22,8 +29,17 @@ from pathlib import Path
 from .engines import ClaudeCodeEngine
 from .shot import take
 
-SYSTEM = """You are looking at a page somebody has just built, against the
-direction it was supposed to be built to.
+SYSTEM = """You are looking at a page somebody has just built, and deciding
+whether it is any good and whether it is what was asked for.
+
+What it is judged against is the brief - what the person who asked for this
+actually wanted - and your own eye. The direction is one reading of that
+brief, written before anybody had seen a page; it tells you what was
+intended and it is worth knowing, but matching it is not the standard and
+departing from it is not a fault. An engineer who found a better answer in
+front of the rendered page than the direction imagined has done the job,
+not broken it. A page that follows the direction to the letter and is still
+a bad page is a bad page, and saying so is the entire reason you are here.
 
 You have been art-directing for twenty years and your eye is the only one in
 this process. Nothing before you can see: the tests check behaviour, the
@@ -60,15 +76,25 @@ Look at the images and answer honestly:
 - Contrast, and anything a person would struggle to read.
 
 Be specific and point at what you are looking at. "The hero feels weak" is
-not usable; "the display line is about 2.5x the body text where the
-direction asked for 6x, so the page opens quietly and nothing on it reads as
-a headline" is.
+not usable; "the display line is about 2.5x the body text, so the page
+opens quietly and nothing on it reads as a headline" is.
 
-Reject when the page does not carry out the direction. Approve when it does,
-even if you would have directed it differently - you are not re-directing
-it. If something is wrong but outside this item, put it in `noticed`."""
+Refuse when what this item owed the brief is not on the page, or is on it
+badly enough that a person would notice. Approve when it is there and it
+works, even if you would have done it differently - you are judging the
+page, not re-directing it, and "not how I would have set it" is not a
+reason. If something is wrong but outside this item, put it in `noticed`.
 
-PROMPT = """The direction the whole project is being built to, for context:
+Two things that are never a reason on their own: that the page departs
+from the direction, and that it follows it. Say what you can see."""
+
+PROMPT = """What the person asked for. This is what the finished thing is
+judged against:
+
+{brief}
+
+The direction that was written from it, before anybody had seen a page.
+Context for what was intended, not the standard:
 
 {direction}
 
@@ -79,8 +105,8 @@ The item that was just finished, which is the only thing you are judging:
 The page has had this item and everything before it, and nothing after it.
 
 Two images of the page as it renders now are in this directory: desktop.png
-and phone.png. Read both, then answer: did this item put its part of the
-direction on the page?"""
+and phone.png. Read both, then answer: of what this item owed, is it on the
+page, and is the page good?"""
 
 
 @dataclass
@@ -100,6 +126,7 @@ def look(
     direction: str,
     item_title: str,
     scratch: Path,
+    brief: str = "",
     engine: str = "claude",
     model: str = "opus",
     on_event=None,
@@ -123,7 +150,14 @@ def look(
     found, dollars, _turns = ClaudeCodeEngine(model=model, max_turns=8).structured(
         scratch,
         SYSTEM,
-        PROMPT.format(direction=direction[:8000], item=item_title),
+        PROMPT.format(
+            # The brief first and uncut. It is a few hundred characters
+            # and it is the thing being judged against; the direction is
+            # the long one and it is only context.
+            brief=brief.strip() or "(not recorded for this run)",
+            direction=direction[:8000] or "(none was written)",
+            item=item_title,
+        ),
         _shape(),
         on_event=on_event,
         # It needs to open the images and nothing else.

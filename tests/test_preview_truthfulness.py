@@ -232,7 +232,9 @@ class TestWhatTheCriticIsAllowedToJudge:
     def show(self, orchestrate, said):
         return orchestrate._show_it(
             Path("/nowhere"),
-            SimpleNamespace(direction="", model="opus"),
+            SimpleNamespace(
+                direction="", model="opus", brief="a page somebody asked for"
+            ),
             SimpleNamespace(plain="a page", title="a page", as_asked=lambda: ""),
             lambda who, text: said.append((who, text)),
         )
@@ -438,7 +440,9 @@ class TestMeasuringBeforeLooking:
     def show(self, orchestrate, said):
         return orchestrate._show_it(
             Path("/nowhere"),
-            SimpleNamespace(direction="", model="opus"),
+            SimpleNamespace(
+                direction="", model="opus", brief="a page somebody asked for"
+            ),
             SimpleNamespace(plain="a page", title="a page", as_asked=lambda: ""),
             lambda who, text: said.append((who, text)),
         )
