@@ -76,7 +76,13 @@ NOT_A_CHECK = (
     "This is not a check that counts. What you write is still built, its "
     "suite still run, its diff still read, and the page still measured and "
     "looked at by somebody who is not you. None of them is told that you "
-    "looked - looking is only how you stop handing on work nobody has seen."
+    "looked - looking is only how you stop handing on work nobody has seen.\n\n"
+    # Said here as well as in the system prompt because this is the moment
+    # it happens: the engineer reads the pictures, sees what it wants to
+    # know, and then goes and confirms it a second time from the source.
+    "What you can see above, and in the pictures, you do not need to go and "
+    "confirm again in the source or by asking the running page. Change what "
+    "needs changing, or finish and report."
 )
 
 
