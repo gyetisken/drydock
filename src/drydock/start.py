@@ -25,6 +25,7 @@ be the thing that says it may stay. Every failure this project has had
 was the harness believing its own report.
 """
 
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -48,12 +49,19 @@ PHASE_DESK = {
 PHASE_MARK = "DRYDOCK PHASE:"
 
 
+# The word after the mark, and nothing else that is on the line. The first
+# version of this split on whitespace and took the first piece, which on a
+# real event - `Bash command=echo "DRYDOCK PHASE: plan", description=...` -
+# is `plan",` and matches no desk. Six minutes of a measured run went by
+# with the room showing nobody working, because the test for it was written
+# against a tidier string than the one that arrives.
+_PHASE = re.compile(re.escape(PHASE_MARK) + r"""\s*["'`]*([a-zA-Z]+)""")
+
+
 def desk_for(said: str) -> str:
     """The station a phase line names, or empty if it names none."""
-    if PHASE_MARK not in (said or ""):
-        return ""
-    after = said.split(PHASE_MARK, 1)[1].strip().strip("\"'`").lower()
-    return PHASE_DESK.get(after.split()[0] if after.split() else "", "")
+    found = _PHASE.search(said or "")
+    return PHASE_DESK.get(found.group(1).lower(), "") if found else ""
 
 
 SYSTEM = """You are starting a piece of work. You read the repository, decide

@@ -136,7 +136,28 @@ class TestSayingWhichDeskIsWorking:
         ],
     )
     def test_a_named_phase_lights_its_desk(self, phase, desk):
-        said = f'Bash command=echo "{start.PHASE_MARK} {phase}"'
+        # Copied from a real log, trailing comma and all. The first version
+        # of this test wrote the string by hand and ended it at the closing
+        # quote; the event that actually arrives carries `", description=`
+        # after it, the parser read `plan",`, and six minutes of a measured
+        # run went by with the room showing nobody working.
+        said = (
+            f'Bash command=echo "{start.PHASE_MARK} {phase}", '
+            f"description=Announce the {phase} phase"
+        )
+        assert start.desk_for(said) == desk
+
+    @pytest.mark.parametrize(
+        "said,desk",
+        [
+            ('Bash command=echo "DRYDOCK PHASE: stack"', "Architect"),
+            ("Bash command=echo 'DRYDOCK PHASE: direction' && ls -la", "Designer"),
+            ("DRYDOCK PHASE:reading", "Analyst"),
+            ('echo "DRYDOCK PHASE:  plan"  # about to write it', "Planner"),
+        ],
+    )
+    def test_it_reads_the_word_and_not_the_line(self, said, desk):
+        """However the worker quotes it and whatever it puts after it."""
         assert start.desk_for(said) == desk
 
     def test_anything_else_lights_nothing(self):
