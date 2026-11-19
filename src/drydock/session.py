@@ -799,7 +799,7 @@ class Session:
             state="working",
             note="starting it and looking at it",
         )
-        seen, served, widths = None, None, {}
+        seen, served, widths, pressed = None, None, {}, []
         try:
             live = preview.running(self.repo) or preview.start(self.repo)
         except (LookupError, RuntimeError, TimeoutError) as exc:
@@ -813,6 +813,17 @@ class Session:
                 for width in (390, 1440):
                     widths[width] = probe.look(live.url, width)
                 seen = widths.get(1440) or widths.get(390)
+                # And press what is safe to press. It establishes that a
+                # control does something, never that it did the right
+                # thing - that needs somebody to have said what the right
+                # thing was, which is what the claims are for.
+                self.feed.emit(
+                    "agent.state",
+                    agent="Critic",
+                    state="working",
+                    note="pressing what is safe to press",
+                )
+                pressed = probe.press(live.url, 1440)
 
         # 4. Only now a model, and only on what was claimed.
         wanted = [c for c in self._claims() if c.strip()]
@@ -822,6 +833,7 @@ class Session:
                 self.repo,
                 wanted,
                 seen,
+                pressed,
                 on_event=self._agent_event("Critic"),
                 budget=self.run.left if self.budget else 0.0,
                 engine=self.engine,
@@ -844,6 +856,10 @@ class Session:
             tests=b.tests_run,
             failing=b.tests_failed,
             broken=broken,
+            pressed=[
+                {"said": one.said, "did": one.why or one.did, "tried": one.tried}
+                for one in pressed
+            ],
             unchecked=[one.error for one in widths.values() if one.error],
             checks=[
                 {

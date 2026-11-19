@@ -455,6 +455,14 @@ const on = {
        </div>`).join("");
     const broken = (e.broken || []).map(b =>
       `<div class="finding no"><b>broken</b><span>${esc(b)}</span></div>`).join("");
+    // What was pressed, and what was deliberately not. "Not pressed" and
+    // "pressed and nothing happened" are different things to know.
+    const pressed = (e.pressed || []).length
+      ? `<details class="tools"><summary>${e.pressed.length} control${
+          e.pressed.length === 1 ? "" : "s"}</summary><div class="lines">${
+          e.pressed.map(p => `<div>${p.tried ? "pressed" : "not pressed"} · ${
+            esc(p.said)} — ${esc(p.did)}</div>`).join("")}</div></details>`
+      : "";
     const unchecked = (e.unchecked || []).map(u =>
       `<div class="finding flat"><b>not checked</b><span>${esc(u)}</span></div>`).join("");
     say("crew", `<div class="body">
@@ -467,6 +475,7 @@ const on = {
         ? `<p class="why">${esc(e.said)}</p>` : ""}
       ${broken + checks + unchecked
         ? `<div class="findings">${broken}${checks}${unchecked}</div>` : ""}
+      ${pressed}
       <p class="hint">Nothing was changed. The suite and the measurements are
       arithmetic; anything marked <i>could not check</i> needed something this
       cannot do.</p></div>`);

@@ -30,6 +30,150 @@ from pathlib import Path
 
 from .shot import find_browser
 
+# The same six lines of plumbing both scripts need: start a headless
+# Chrome, find the port it printed, open a socket to it, and get a session
+# attached to a page. Kept once rather than twice, because the pair of them
+# drifting apart is how one of them quietly stops emulating a phone.
+CONNECT = r"""
+const { spawn } = await import('node:child_process');
+const { mkdtempSync } = await import('node:fs');
+const chrome = spawn(process.env.DRYDOCK_BROWSER, [
+  '--headless=new', '--disable-gpu', '--hide-scrollbars',
+  '--remote-debugging-port=0', `--window-size=${width},1200`,
+  '--user-data-dir=' + mkdtempSync('/tmp/drydock-probe-'), 'about:blank',
+]);
+const done = (value) => { console.log(value); chrome.kill(); process.exit(0); };
+const wsUrl = await new Promise((ok, no) => {
+  chrome.stderr.on('data', (b) => {
+    const m = /ws:\/\/[^\s]+/.exec(b.toString());
+    if (m) ok(m[0]);
+  });
+  chrome.on('exit', () => no(new Error('the browser stopped')));
+});
+const ws = new WebSocket(wsUrl);
+let id = 0;
+const waiting = new Map();
+const heard = [];
+ws.onmessage = (e) => {
+  const m = JSON.parse(e.data);
+  if (waiting.has(m.id)) { waiting.get(m.id)(m); waiting.delete(m.id); return; }
+  heard.push(m);
+};
+await new Promise((ok) => { ws.onopen = ok; });
+const send = (method, params = {}, sessionId) => new Promise((ok) => {
+  const n = ++id;
+  waiting.set(n, ok);
+  ws.send(JSON.stringify({ id: n, method, params, sessionId }));
+});
+const { result: { targetId } } = await send('Target.createTarget', { url: 'about:blank' });
+const { result: { sessionId } } = await send('Target.attachToTarget', { targetId, flatten: true });
+await send('Emulation.setDeviceMetricsOverride',
+  { width, height: 1200, deviceScaleFactor: 1, mobile: width < 700 }, sessionId);
+"""
+
+CLICK = (
+    r"""
+const [, , target, widthArg] = process.argv;
+const width = Number(widthArg);
+"""
+    + CONNECT
+    + r"""
+setTimeout(() => done(JSON.stringify({ error: 'the browser did not answer' })), 90000);
+await send('Runtime.enable', {}, sessionId);
+await send('Page.enable', {}, sessionId);
+
+const go = async (url) => {
+  await send('Page.navigate', { url }, sessionId);
+  await new Promise((r) => setTimeout(r, 2200));
+};
+const ask = async (expression) => {
+  const out = await send('Runtime.evaluate',
+    { returnByValue: true, expression }, sessionId);
+  return out.result && out.result.result && out.result.result.value;
+};
+
+await go(target);
+
+// Only what is safe to press. A link that leaves for somewhere else is a
+// request to the internet made on somebody's behalf, and a new tab is a
+// browser this never gets back. Those are listed as skipped rather than
+// pressed, because "not pressed" and "pressed and did nothing" are
+// different findings.
+const found = await ask(`(() => {
+  const here = location.origin;
+  const out = [];
+  const seen = new Set();
+  for (const el of document.querySelectorAll('button, a[href], [role=button]')) {
+    const said = ((el.innerText || el.textContent || '').trim() || '(no text)')
+      .slice(0, 50);
+    const href = el.getAttribute('href') || '';
+    const key = said + '|' + href;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    let why = '';
+    if (el.getAttribute('target') === '_blank') why = 'it opens a new tab';
+    else if (/^(mailto|tel|sms):/i.test(href)) why = 'it hands off to another app';
+    else if (href && !href.startsWith('#') && !href.startsWith('/')
+             && !href.startsWith(here) && /^[a-z]+:/i.test(href))
+      why = 'it leaves this site';
+    out.push({ said, href, why });
+  }
+  return out.slice(0, 14);
+})()`);
+
+const before = async () => await ask(`JSON.stringify({
+  url: location.href, y: Math.round(scrollY),
+  size: document.body.innerHTML.length,
+})`);
+
+const pressed = [];
+for (const one of found) {
+  if (one.why) { pressed.push({ ...one, did: 'not pressed' }); continue; }
+
+  const was = JSON.parse(await before());
+  const spot = await ask(`(() => {
+    const all = [...document.querySelectorAll('button, a[href], [role=button]')];
+    const el = all.find(e => (((e.innerText || e.textContent || '').trim()
+      || '(no text)').slice(0, 50)) === ${JSON.stringify(one.said)}
+      && (e.getAttribute('href') || '') === ${JSON.stringify(one.href)});
+    if (!el) return null;
+    el.scrollIntoView({ block: 'center' });
+    const r = el.getBoundingClientRect();
+    if (r.width < 1 || r.height < 1) return { hidden: true };
+    return { x: Math.round(r.left + r.width / 2),
+             y: Math.round(r.top + r.height / 2) };
+  })()`);
+
+  if (!spot) { pressed.push({ ...one, did: 'was not there any more' }); continue; }
+  if (spot.hidden) { pressed.push({ ...one, did: 'is there but has no size' }); continue; }
+
+  const from = heard.length;
+  // A real press at a real place, not el.click(): an element covered by
+  // something else is a bug, and only a press at coordinates finds it.
+  for (const type of ['mousePressed', 'mouseReleased']) {
+    await send('Input.dispatchMouseEvent',
+      { type, x: spot.x, y: spot.y, button: 'left', clickCount: 1 }, sessionId);
+  }
+  await new Promise((r) => setTimeout(r, 900));
+
+  const threw = heard.slice(from)
+    .filter(m => m.method === 'Runtime.exceptionThrown')
+    .map(m => (m.params.exceptionDetails.exception || {}).description
+              || m.params.exceptionDetails.text);
+  const now = JSON.parse(await before());
+  const moved = now.url !== was.url ? 'went to ' + now.url.slice(0, 80)
+    : now.y !== was.y ? 'moved the page'
+    : now.size !== was.size ? 'changed the page'
+    : 'did nothing';
+  pressed.push({ ...one, did: moved, threw: threw.slice(0, 2) });
+
+  if (now.url !== was.url) await go(target);
+}
+
+done(JSON.stringify({ pressed }));
+"""
+)
+
 LOOK = r"""
 const [, , target, widthArg] = process.argv;
 const width = Number(widthArg);
@@ -312,6 +456,87 @@ class Looked:
         # a request that failed and a navigation that did - and a report
         # that says it twice reads as twice as much wrong.
         return list(dict.fromkeys(said))
+
+
+@dataclass
+class Pressed:
+    """One control, and what happened when it was pressed."""
+
+    said: str
+    href: str = ""
+    did: str = ""
+    why: str = ""
+    threw: list[str] = field(default_factory=list)
+
+    @property
+    def tried(self) -> bool:
+        return self.did != "not pressed"
+
+    @property
+    def wrong(self) -> str:
+        """What is worth saying about it, or nothing."""
+        if not self.tried:
+            return ""
+        if self.threw:
+            return f'"{self.said}" threw when pressed: {self.threw[0][:100]}'
+        if self.did == "did nothing":
+            return f'"{self.said}" does nothing when pressed'
+        if self.did == "is there but has no size":
+            return f'"{self.said}" is on the page with no size, so nobody can press it'
+        if self.did == "was not there any more":
+            return f'"{self.said}" vanished between being found and being pressed'
+        return ""
+
+
+def press(url: str, width: int = 1440, timeout: int = 120) -> list[Pressed]:
+    """Press what is safe to press, and report what happened.
+
+    What this establishes is that a control does *something* - the page
+    moved, the page changed, the address changed. What it cannot
+    establish is that it did the right thing, which needs somebody to
+    have said what the right thing is.
+
+    What it will not do is leave the site. A link to somewhere else is a
+    request made to the internet on somebody's behalf, and a new tab is a
+    browser this never gets back - so those are reported as not pressed,
+    which is a different finding from pressed and nothing happened.
+    """
+    browser = find_browser()
+    if not browser or not shutil.which("node"):
+        return []
+
+    with tempfile.TemporaryDirectory(prefix="drydock-press-") as scratch:
+        script = Path(scratch) / "press.mjs"
+        script.write_text(CLICK)
+        try:
+            done = subprocess.run(
+                ["node", str(script), url, str(width)],
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+                env={**_env(), "DRYDOCK_BROWSER": browser},
+                check=False,
+            )
+        except (subprocess.TimeoutExpired, OSError):
+            return []
+
+    said = (done.stdout or "").strip().splitlines()
+    if not said:
+        return []
+    try:
+        found = json.loads(said[-1])
+    except ValueError:
+        return []
+    return [
+        Pressed(
+            said=one.get("said", ""),
+            href=one.get("href", ""),
+            did=one.get("did", ""),
+            why=one.get("why", ""),
+            threw=one.get("threw") or [],
+        )
+        for one in found.get("pressed") or []
+    ]
 
 
 def _at(url: str | None) -> str:

@@ -28,10 +28,11 @@ MET = "met"
 MISSING = "missing"
 UNKNOWN = "could not check"
 
-SYSTEM = """You are told what a page was supposed to do, and given what is
-actually on it: its text, its headings, its links and buttons, and how many
-rows are in each list and table. Nothing else - you cannot click, you cannot
-scroll, and you are not looking at a picture.
+SYSTEM = """You are told what a page was supposed to do, and given what is actually on
+it: its text, its headings, its links and where they go, how many rows are
+in each list and table, and what happened when each control was pressed.
+You are not looking at a picture, and anything that is not in what you were
+given, you were not given.
 
 For each thing it was supposed to do, answer one of three:
 
@@ -40,8 +41,10 @@ For each thing it was supposed to do, answer one of three:
 - missing: the page facts show it is not there. Quote what is there
   instead, or say which count is wrong.
 - could not check: settling it needs something you were not given -
-  clicking, hovering, scrolling, a second page, a login, waiting for
-  something to happen, or how it looks rather than what it says.
+  hovering, a second page, a login, waiting for something to happen, or
+  how it looks rather than what it says. Note that pressing is not in
+  that list any more: what each control did when it was pressed is
+  given to you, and a control that was not pressed says why.
 
 "could not check" is a real answer and the right one more often than
 people expect. A claim about behaviour cannot be settled by text. Guessing
@@ -68,6 +71,9 @@ Links and buttons:
 
 Where the links go:
 {going}
+
+What happened when each was pressed:
+{pressed}
 
 Lists and tables:
 {lists}
@@ -187,6 +193,7 @@ def check(
     repo,
     claims: list[str],
     seen,
+    pressed=None,
     on_event=None,
     budget: float = 0.0,
     engine: str = "api",
@@ -211,6 +218,10 @@ def check(
             for row in seen.lists
         )
         or "(none)",
+        pressed="\n".join(
+            f"- {one.said}: {one.why or one.did}" for one in (pressed or [])
+        )
+        or "(nothing was pressed)",
         text=seen.text or "(the page has no text)",
     )
 
@@ -225,7 +236,7 @@ def check(
             tools="",
             without="Bash Read Glob Grep Edit NotebookEdit WebFetch WebSearch Task",
         )
-        return _said(found, claims, seen), _Spend(dollars, turns)
+        return _said(found, claims, seen, pressed), _Spend(dollars, turns)
 
     agent = Agent(
         name="Critic",
@@ -236,10 +247,13 @@ def check(
         budget=budget,
         on_event=on_event,
     )
-    return _said(agent.run(prompt, final_tool=_tool()), claims, seen), agent.usage
+    return (
+        _said(agent.run(prompt, final_tool=_tool()), claims, seen, pressed),
+        agent.usage,
+    )
 
 
-def _said(found: dict, claims: list[str], seen) -> Report:
+def _said(found: dict, claims: list[str], seen, pressed=None) -> Report:
     """Read the answer back, and check the evidence it rests on."""
     page = _tidy(
         " ".join(
@@ -248,6 +262,7 @@ def _said(found: dict, claims: list[str], seen) -> Report:
             + list(seen.links)
             + [f"{link['said']} {link['to']}" for link in getattr(seen, "going", [])]
             + [f"{row['rows']} {row['said']}" for row in seen.lists]
+            + [f"{one.said} {one.why or one.did}" for one in (pressed or [])]
         )
     )
     checks = []

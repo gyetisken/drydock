@@ -42,6 +42,22 @@ FINE = """<!DOCTYPE html><html lang="en"><head><title>Good</title>
   <a href="/somewhere">A link that goes somewhere</a>
 </body></html>"""
 
+BUTTONS = """<!DOCTYPE html><html><head><title>Buttons</title>
+<meta name="viewport" content="width=device-width"><style>
+body{background:#fff;color:#111;font:16px system-ui} .invisible{width:0;height:0;
+overflow:hidden;padding:0;border:0} button,a{display:block;margin:10px 0}
+</style></head><body>
+<h1>Four buttons</h1>
+<button onclick="document.getElementById('out').textContent='it happened'">This one works</button>
+<button>This one does nothing</button>
+<button onclick="null.explode()">This one throws</button>
+<button class="invisible">Nobody can press this</button>
+<a href="/fine.html">A link that goes somewhere</a>
+<a href="https://example.com/away" target="_blank">A link that opens a tab</a>
+<a href="tel:+19415550142">(941) 555-0142</a>
+<p id="out"></p>
+</body></html>"""
+
 EMPTY = """<!DOCTYPE html><html><head><title>Nothing</title>
 <meta name="viewport" content="width=device-width"></head><body></body></html>"""
 
@@ -53,6 +69,7 @@ def serve(tmp_path_factory):
     (root / "broken.html").write_text(BROKEN)
     (root / "fine.html").write_text(FINE)
     (root / "empty.html").write_text(EMPTY)
+    (root / "buttons.html").write_text(BUTTONS)
 
     class Quiet(http.server.SimpleHTTPRequestHandler):
         def __init__(self, *a, **kw):
@@ -202,3 +219,44 @@ class TestTheThingThatMadeItLookLikeItWorked:
         page = page[: page.index("})()`")]
 
         assert "`" not in page
+
+
+class TestPressingWhatIsSafeToPress:
+    @pytest.fixture(scope="class")
+    def pressed(self, serve):
+        from drydock.probe import press
+
+        if not find_browser():
+            pytest.skip("no browser on this machine")
+        return {p.said: p for p in press(f"{serve}/buttons.html", 1440)}
+
+    def test_one_that_works_is_not_a_finding(self, pressed):
+        assert pressed["This one works"].wrong == ""
+
+    def test_one_that_does_nothing_is(self, pressed):
+        assert "does nothing when pressed" in pressed["This one does nothing"].wrong
+
+    def test_one_that_throws_says_what_it_threw(self, pressed):
+        said = pressed["This one throws"].wrong
+        assert "threw when pressed" in said
+        assert "explode" in said
+
+    def test_one_nobody_can_reach_is_a_finding(self, pressed):
+        """On the page, with no size. A test suite never sees it and a
+        screenshot does not show it."""
+        assert "no size" in pressed["Nobody can press this"].wrong
+
+    def test_a_link_within_the_site_is_followed(self, pressed):
+        assert pressed["A link that goes somewhere"].did.startswith("went to")
+
+    def test_a_new_tab_is_left_alone(self, pressed):
+        """A browser this never gets back."""
+        one = pressed["A link that opens a tab"]
+        assert not one.tried
+        assert one.why == "it opens a new tab"
+        assert one.wrong == "", "not pressed is not a finding about the page"
+
+    def test_another_app_is_left_alone(self, pressed):
+        one = pressed["(941) 555-0142"]
+        assert not one.tried
+        assert "another app" in one.why
