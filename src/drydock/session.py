@@ -25,6 +25,7 @@ from .designer import decide, draw_mark, write_logo
 from .detect import detect
 from .engines import stop_workers
 from .events import Feed
+from .intent import is_small_talk
 from .memory import Memory
 from .models import Inventory, Item, Plan
 from .orchestrate import execute
@@ -730,11 +731,15 @@ class Session:
             toolchain="",
             stages=["ask"],
         )
+        chatting = is_small_talk(self.task)
         self.feed.emit(
             "agent.state",
             agent="Analyst",
             state="working",
-            note="reading the repository",
+            # Said truthfully. It is not reading anything when somebody
+            # has said hello, and a desk that claims to be reading a
+            # repository nobody asked about is the office lying again.
+            note="answering" if chatting else "reading the repository",
         )
 
         commit = Repo(self.repo).head()

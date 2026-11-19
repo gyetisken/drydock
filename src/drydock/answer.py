@@ -15,6 +15,7 @@ from pathlib import Path
 
 from .agent import API_MODEL, JUDGEMENT, Agent
 from .engines import ClaudeCodeEngine
+from .intent import is_small_talk
 from .memory import Memory
 from .tools import read_only
 
@@ -36,6 +37,16 @@ Quote what you are relying on, with the file and the line, so the answer can
 be checked without being taken on trust."""
 
 
+SMALL_TALK = """Somebody said hello, or asked how you are.
+
+Answer them in a sentence, the way a colleague would. Do not read the
+repository, do not mention it, and do not report on what is or is not in
+it - they did not ask. If they want something built or looked at they
+will say so, and that is a different job from this one.
+
+Short. One line is usually right."""
+
+
 def ask(
     repo: Path,
     question: str,
@@ -46,25 +57,42 @@ def ask(
     commit: str = "",
 ) -> tuple[str, object]:
     """Read the repository and answer. Returns the answer and what it cost."""
-    known = memory.briefing(commit) if memory and commit else ""
+    # Hello is not a question about a repository. Answered with the same
+    # machinery and none of the tools, because reading a project to say
+    # good morning is how `hello, how are you today ?` came back as a
+    # paragraph about which files are tracked.
+    chatting = is_small_talk(question)
+    system = SMALL_TALK if chatting else SYSTEM
+    known = "" if chatting else (memory.briefing(commit) if memory and commit else "")
     prompt = f"{question}{known}"
 
     if engine == "claude":
-        answer, dollars, turns = ClaudeCodeEngine(model=model, max_turns=30).structured(
+        answer, dollars, turns = ClaudeCodeEngine(
+            model=model, max_turns=2 if chatting else 30
+        ).structured(
             repo,
-            SYSTEM,
+            system,
             prompt,
             '{"answer": "...", "looked_at": ["path:line", "..."]}',
             on_event=on_event,
+            **(
+                {
+                    "tools": "",
+                    "without": "Bash Read Glob Grep Edit Write "
+                    "NotebookEdit WebFetch WebSearch Task",
+                }
+                if chatting
+                else {}
+            ),
         )
         return answer.get("answer", ""), _Spend(dollars, turns)
 
     agent = Agent(
         name="Answer",
         model=API_MODEL.get(model, JUDGEMENT),
-        system=SYSTEM,
-        tools=read_only(repo),
-        max_turns=20,
+        system=system,
+        tools=[] if chatting else read_only(repo),
+        max_turns=2 if chatting else 20,
         on_event=on_event,
     )
     return agent.run(prompt), agent.usage

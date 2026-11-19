@@ -57,6 +57,17 @@ NOTHING_LEFT = re.compile(
     re.IGNORECASE,
 )
 
+# Asked of whoever is answering, not of the repository. "how are you" is a
+# question and routes like one, and then the answering side reads the whole
+# project and quotes files at somebody who asked how the day was going.
+ABOUT_YOU = re.compile(
+    r"^\s*(how\s+(are|is|was)\s+(you|it|things|your\s+day)|"
+    r"how(\'?s| is)\s+(it\s+going|everything|life)|"
+    r"what(\'?s| is)\s+up|how\s+do\s+you\s+do|"
+    r"are\s+you\s+(ok|okay|there|alright|ready)|you\s+(ok|okay|there|good))\b",
+    re.IGNORECASE,
+)
+
 # Starting something that does not exist.
 STARTING = re.compile(
     r"\b(build|create|make|start|scaffold|set up|spin up)\b.{0,40}?"
@@ -120,6 +131,22 @@ def _jobs(text: str) -> int:
     return len({m.group(0).lower() for m in CHANGE_VERBS.finditer(text)})
 
 
+def is_small_talk(text: str) -> bool:
+    """Whether this is hello and nothing else.
+
+    Asked in two places: here, to route it away from the work, and by the
+    answering side, which otherwise reads the repository and quotes files
+    at somebody who said good morning.
+    """
+    said = (text or "").strip()
+    rest = GREETING.sub("", said, count=1).strip() if GREETING.match(said) else said
+    if ABOUT_YOU.match(rest):
+        return True
+    # A greeting on its own. Without one there is nothing to strip, and the
+    # whole message would have to be nothing at all.
+    return bool(GREETING.match(said)) and bool(NOTHING_LEFT.match(rest))
+
+
 def read(text: str, repo: Path | None = None) -> Guess:
     """Which command this sentence is asking for, and why."""
     said = text.strip()
@@ -128,15 +155,10 @@ def read(text: str, repo: Path | None = None) -> Guess:
 
     # A hello on the front of an instruction is still an instruction; a
     # hello on its own is not one at all.
+    if is_small_talk(said):
+        return Guess("/ask", "this is not asking for anything to be changed", True)
     if GREETING.match(said):
-        rest = GREETING.sub("", said, count=1).strip()
-        if NOTHING_LEFT.match(rest):
-            return Guess(
-                "/ask",
-                "this is not asking for anything to be changed",
-                True,
-            )
-        said = rest
+        said = GREETING.sub("", said, count=1).strip()
 
     if POLITE_INSTRUCTION.match(said):
         said = POLITE_INSTRUCTION.sub("", said).strip()
