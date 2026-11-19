@@ -22,6 +22,7 @@ Those are not ceremony. They are the reason the output can be believed, and
 a profile that switched them off would be a different program.
 """
 
+import re
 from dataclasses import dataclass, replace
 
 FAST = "fast"
@@ -129,6 +130,102 @@ def of(profile: str | None) -> Policy:
     return PROFILES.get((profile or "").strip().lower(), PROFILES[BALANCED])
 
 
+# Work that is not allowed to be done cheaply, however it was asked for.
+#
+# Narrow on purpose. Every production coding agent makes a person choose
+# between a fast path and a planned one - Factory's Spec Mode, Cline's Plan
+# mode, Aider's architect - and none of them classifies automatically,
+# because classifying from a sentence is guessing from the weakest signal
+# anybody has. This does not try to be a classifier. It only refuses to let
+# a handful of specific, nameable kinds of work take the cheap road.
+#
+# The asymmetry is the whole argument, and it is not symmetrical in cost:
+# reading a one-line fix too carefully wastes twenty minutes, and treating
+# a migration as a one-line fix loses data. So this only ever raises, it
+# only fires on words that name the work rather than describe it, and what
+# it did is said out loud.
+RISKY = (
+    (
+        "a migration",
+        re.compile(
+            r"\b(migrat(e|ion|ing)|backfill|re-?index|"
+            r"(alter|drop|rename)\s+(table|column|index)|"
+            r"schema\s+(change|update|migration)|"
+            r"(add|remove|change)\s+a?\s*(column|table|constraint))\b",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        "who is allowed in",
+        re.compile(
+            r"\b(auth(entication|orisation|orization|z|n)?|login|log\s?in|"
+            r"sign\s?(in|up)|session\s+(token|cookie)|permission|"
+            r"access\s+control|rbac|oauth|jwt|password\s+(reset|hash)|"
+            r"api\s+key|credential|secret)\b",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        "money",
+        re.compile(
+            # Not `price`. A price shown on a card is a number on a page;
+            # the coffee site this was first tried on says "fiyat" three
+            # times and handles no money at all. What is meant here is
+            # money moving.
+            r"\b(payment|billing|invoice|refund|checkout|stripe|"
+            r"charge\s+(the|a|their)|take\s+(a\s+)?payment|"
+            r"card\s+details|subscription\s+(plan|billing))\b",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        "removing data",
+        re.compile(
+            # Not `file`. A deleted source file is in git and the item that
+            # deleted it is one revert away; what is meant here is the kind
+            # of removal nothing gives back.
+            r"\b(delete|remove|purge|truncate|wipe|drop)\b[^.]{0,40}?"
+            r"\b(data|record|row|user|account|customer|table|"
+            r"history|upload|backup)s?\b",
+            re.IGNORECASE,
+        ),
+    ),
+)
+
+
+@dataclass(frozen=True)
+class Raised:
+    """Whether this work has a floor under it, and what put it there."""
+
+    floor: str
+    why: str
+
+    def __bool__(self) -> bool:
+        return bool(self.floor)
+
+
+def floor_for(task: str) -> Raised:
+    """The least ceremony this work may be done with.
+
+    Empty when nothing in the task names one of the few kinds of work that
+    cannot be done cheaply. It says what it matched, because a floor nobody
+    can see is a floor nobody can argue with.
+    """
+    said = (task or "").strip()
+    for what, pattern in RISKY:
+        found = pattern.search(said)
+        if found:
+            return Raised(
+                DEEP,
+                f'this touches {what} - "{_tidy(found.group(0))}"',
+            )
+    return Raised("", "")
+
+
+def _tidy(said: str) -> str:
+    return re.sub(r"\s+", " ", said).strip()[:60]
+
+
 def at_least(policy: Policy, floor: str) -> Policy:
     """Raise a policy to a floor, keeping anything already stronger.
 
@@ -137,6 +234,13 @@ def at_least(policy: Policy, floor: str) -> Policy:
     told - but raising is, because the cost of being wrong about a
     migration is not symmetrical with the cost of twenty extra minutes.
     """
+    # No floor is no raise. Without this, an empty floor reads as BALANCED
+    # through `.get(floor, 1)` and quietly *lowers* a job somebody asked to
+    # have done fast - the one thing this function says it never does. It
+    # only showed when something started passing "" for "nothing raised
+    # it", which is the honest way to say that.
+    if not floor:
+        return policy
     ranked = {FAST: 0, BALANCED: 1, DEEP: 2}
     if ranked.get(policy.profile, 1) >= ranked.get(floor, 1):
         return policy

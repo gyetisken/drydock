@@ -71,6 +71,10 @@ class Session:
         model: str = "opus",
         stop_after: str = "planner",
         standing: str = "",
+        # Why this job was not allowed to be done cheaply, when it was not.
+        # Carried rather than re-derived: the sentence that raised it is
+        # the only thing that makes the raise arguable.
+        floor: str = "",
         policy: Policy | None = None,
     ) -> None:
         self.feed = Feed()
@@ -85,6 +89,7 @@ class Session:
         # run, so nothing downstream is ever asked to speak about a repository
         # nobody has read.
         self.stop_after = stop_after
+        self.floor = floor
         # How much ceremony this job gets. Decided once, here, and carried
         # rather than re-derived anywhere downstream.
         self.policy = policy or of(None)
@@ -170,7 +175,15 @@ class Session:
                 skills=[s.name for s in self.skills],
                 toolchain=f"{chain.build_tool} / {chain.language}",
                 stages=self._stages(),
+                floor=self.floor,
             )
+            if self.floor:
+                self.feed.emit(
+                    "policy.raised",
+                    profile=self.policy.profile,
+                    why=self.floor,
+                    say=self.policy.say,
+                )
 
             self.feed.emit(
                 "agent.state",
