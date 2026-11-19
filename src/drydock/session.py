@@ -275,13 +275,29 @@ class Session:
             empty = not any(p.name != ".git" for p in self.repo.iterdir())
             commit = Repo(self.repo).head()
 
-            # One worker instead of four. Kept behind a switch while the two
-            # are being compared on the same task: the four stations are
-            # eight and a half minutes of prose written by people who never
-            # see the result, and whether one worker with the repository in
-            # front of it plans as well is a question to answer with two
-            # runs rather than an opinion.
-            if os.environ.get("DRYDOCK_ONE_START") == "1":
+            # One worker reads, decides and plans. The four stations it
+            # replaced are still here behind DRYDOCK_FOUR_STATIONS, as a way
+            # back if this turns out to be wrong somewhere the measurement
+            # did not look.
+            #
+            # Measured once, same prompt, same empty folder, the only
+            # difference being which of these ran:
+            #
+            #   one worker     8 of 8 items landed, 0 reverted
+            #   four stations  0 of 8 items landed, 2 reverted
+            #
+            # Not faster to plan - 6.3 minutes against 5.5. What it bought
+            # was a plan that could be built. Both of the four stations'
+            # attempts were reverted with "there is still no way to run
+            # anything in this repository": their first item was written by
+            # a Planner reading the Analyst's and the Architect's prose,
+            # and their own Engineer could not satisfy it twice. The one
+            # worker had read the folder itself, and its first item landed
+            # first time in eighty-four seconds.
+            #
+            # One run each. The way back is kept because of that, and
+            # should be taken out once there is a second.
+            if os.environ.get("DRYDOCK_FOUR_STATIONS") != "1":
                 self._begin_it(empty, b, chain, auto_run, commit)
                 return
 

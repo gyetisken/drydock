@@ -210,17 +210,28 @@ class TestWhatItIsAndIsNotAllowedToDo:
             assert station not in start.PHASE_DESK.values()
 
 
-class TestBothRoadsStillExist:
-    """The old path stays until the two have been compared on the same
-    task. A claim about plan quality is a thing to measure with two runs,
-    not a thing to assert."""
+class TestWhichRoadIsTheDefault:
+    """One run each, same prompt, same empty folder, the only difference
+    being which of these ran: one worker landed 8 of 8 and reverted none;
+    the four stations landed 0 of 8 and reverted 2, both times with "there
+    is still no way to run anything in this repository".
 
-    def test_the_switch_chooses_between_them(self):
-        assert 'os.environ.get("DRYDOCK_ONE_START") == "1"' in SESSION
+    So one worker is what happens when nobody asks for anything, and the
+    four stations are the way back - which has to be asked for by name.
+    """
+
+    def test_one_worker_is_what_happens_when_nobody_asks(self):
+        assert 'os.environ.get("DRYDOCK_FOUR_STATIONS") != "1"' in SESSION
+        assert "DRYDOCK_ONE_START" not in SESSION, (
+            "the old switch read the other way round; left in, it would be "
+            "a name that quietly does nothing"
+        )
+
+    def test_the_way_back_is_still_there(self):
         assert "self._begin_it(" in SESSION
         assert "self._plan_it" in SESSION
 
-    def test_the_new_path_returns_rather_than_falling_through(self):
+    def test_the_default_returns_rather_than_falling_through(self):
         """Falling through would run the four stations after the one call
         had already planned - and bill for both."""
         tree = ast.parse(SESSION)
@@ -228,7 +239,7 @@ class TestBothRoadsStillExist:
             node
             for node in ast.walk(tree)
             if isinstance(node, ast.If)
-            and "DRYDOCK_ONE_START" in ast.unparse(node.test)
+            and "DRYDOCK_FOUR_STATIONS" in ast.unparse(node.test)
         ]
         assert len(found) == 1
         assert isinstance(found[0].body[-1], ast.Return)
