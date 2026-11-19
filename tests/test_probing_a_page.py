@@ -188,3 +188,17 @@ class TestTheThingThatMadeItLookLikeItWorked:
         assert r"/\\s+/" in page
         assert r"/[\\d.]+/g" in page
         assert r"/\s+/" not in page.replace(r"/\\s+/", "")
+
+    def test_there_is_no_backtick_anywhere_in_the_page_script(self):
+        """The same trap from the other side. A backtick closes the
+        template, and one in the words "a `tel:` link" - in a comment -
+        stopped the whole script compiling: `SyntaxError: Unexpected
+        identifier 'tel'`, no output, and the probe reported "the browser
+        said nothing" about every page it was pointed at.
+        """
+        from drydock import probe
+
+        page = probe.LOOK[probe.LOOK.index("expression: `") + 13 :]
+        page = page[: page.index("})()`")]
+
+        assert "`" not in page

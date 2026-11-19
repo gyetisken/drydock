@@ -14,10 +14,11 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import ClassVar
 
-from . import preview, publish
+from . import preview, probe, publish
 from .analyst import baseline, survey
 from .answer import ask
 from .architect import as_briefing, design
+from .claims import Report, check
 from .commands import ALONE, STAGES
 from .crew import GATE_STATION
 from .designer import as_briefing as look_briefing
@@ -164,6 +165,10 @@ class Session:
 
             if self.stop_after == "review":
                 self._review()
+                return
+
+            if self.stop_after == "qa":
+                self._qa()
                 return
 
             chain = detect(self.repo)
@@ -743,6 +748,150 @@ class Session:
         if self.stop_after == "straight":
             return ["baseline", "engineer"]
         return STAGES[: STAGES.index(self.stop_after) + 1]
+
+    def _qa(self) -> None:
+        """Run it, look at it, report. Nothing is touched.
+
+        The order is from cheapest and most certain to least: the suite is
+        arithmetic, what the server serves is one request, what the browser
+        can see is a measurement, and only the claims need a model - and
+        the model's answer is checked against the page afterwards.
+        """
+        self.run = Run.start(self.repo, self.task, [])
+        self.run.budget = self.budget
+        self.run.engine = self.engine
+        self.run.model = self.model
+        chain = detect(self.repo)
+
+        self.feed.emit(
+            "run.started",
+            repo=self.repo.name,
+            task=self.task,
+            skills=[],
+            toolchain=f"{chain.build_tool} / {chain.language}",
+            stages=["qa"],
+        )
+
+        # 1. The suite, untouched. Zero passing tests is green and proves
+        # nothing, which is why the number is always said.
+        self.feed.emit(
+            "agent.state",
+            agent="Verifier",
+            state="working",
+            note="building it and running the suite",
+        )
+        b = baseline(self.repo, chain)
+        self.run.baseline = b
+        self.feed.emit(
+            "agent.state",
+            agent="Verifier",
+            state="done" if b.builds and not b.tests_failed else "failed",
+            note=f"{b.tests_run} tests, {b.tests_failed} failing"
+            if b.tests_run or b.tests_failed
+            else "no suite to run",
+        )
+
+        # 2. Start it, and ask what it actually serves. Answering on a port
+        # and serving a page are two different facts.
+        self.feed.emit(
+            "agent.state",
+            agent="Critic",
+            state="working",
+            note="starting it and looking at it",
+        )
+        seen, served, widths = None, None, {}
+        try:
+            live = preview.running(self.repo) or preview.start(self.repo)
+        except (LookupError, RuntimeError, TimeoutError) as exc:
+            live = None
+            serving = str(exc)
+        else:
+            served = preview.what_it_serves(live.url)
+            serving = f"{live.url} answered {served.said}"
+            # 3. What the browser knows, at both widths.
+            if served.is_a_page:
+                for width in (390, 1440):
+                    widths[width] = probe.look(live.url, width)
+                seen = widths.get(1440) or widths.get(390)
+
+        # 4. Only now a model, and only on what was claimed.
+        wanted = [c for c in self._claims() if c.strip()]
+        report = Report()
+        if wanted and seen is not None and seen.ran:
+            report, usage = check(
+                self.repo,
+                wanted,
+                seen,
+                on_event=self._agent_event("Critic"),
+                budget=self.run.left if self.budget else 0.0,
+                engine=self.engine,
+                model=self.model,
+            )
+            self._spent(usage, "Critic")
+
+        broken = sorted({f for one in widths.values() for f in one.findings()})
+        self.feed.emit(
+            "agent.state",
+            agent="Critic",
+            state="failed" if broken else "done",
+            note=f"{len(broken)} found" if broken else "nothing to report",
+        )
+        self.feed.emit(
+            "qa",
+            serving=serving,
+            page=bool(served and served.is_a_page),
+            builds=b.builds,
+            tests=b.tests_run,
+            failing=b.tests_failed,
+            broken=broken,
+            unchecked=[one.error for one in widths.values() if one.error],
+            checks=[
+                {
+                    "claim": c.claim,
+                    "verdict": c.verdict,
+                    "evidence": c.evidence,
+                    "why": c.why,
+                }
+                for c in report.checks
+            ],
+            said=report.say,
+        )
+        self.run.save()
+        self.feed.close()
+
+    def _claims(self) -> list[str]:
+        """What this was supposed to do, if anybody said.
+
+        Whatever was typed after the command, a line at a time. Failing
+        that, the plain sentences of the last plan run here - which is
+        what somebody already approved and is the nearest thing to a
+        specification this program has.
+        """
+        typed = [
+            line.strip(" -\t")
+            for line in (self.task or "").splitlines()
+            if line.strip(" -\t")
+        ]
+        # The task template for /qa is whatever was typed, so anything
+        # here that is not the command's own words is a claim.
+        if typed and not typed[0].lower().startswith(
+            ("run it", "report the health", "review what")
+        ):
+            return typed[:12]
+
+        try:
+            for past in sorted(Path("runs").glob("*.json"), reverse=True)[:20]:
+                run = Run.model_validate_json(past.read_text())
+                if Path(run.repo) != self.repo or not run.plan:
+                    continue
+                said = [
+                    i.plain or i.title for i in run.plan.items if i.plain or i.title
+                ]
+                if said:
+                    return said[:12]
+        except (OSError, ValueError):
+            pass
+        return []
 
     def _review(self) -> None:
         """Read what has changed and report. Nothing is touched.

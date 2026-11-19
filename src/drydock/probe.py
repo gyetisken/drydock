@@ -99,13 +99,16 @@ await send('Page.enable', {}, sessionId);
 await send('Page.navigate', { url: target }, sessionId);
 await new Promise((r) => setTimeout(r, 3500));
 
-// Every backslash in here is doubled on purpose. This is a template
+// Two things about the text below, both because it is a template literal
+// and not a file. Every backslash in it is doubled on purpose. This is a template
 // literal, and a template literal eats one: `/\s+/` written singly
 // arrives in the page as `/s+/`, which splits on the letter s and counts
 // nothing. It looked like it worked - a page of a hundred words
 // measured as sixteen, and the colour parser silently returned null for
 // everything, so the contrast check reported a clean page it had never
-// looked at.
+// looked at. And there are no backticks in it at all, comments included:
+// one in the words "a tel: link" closed the literal and the whole script
+// stopped compiling.
 const out = await send('Runtime.evaluate', {
   returnByValue: true,
   expression: `(() => {
@@ -183,7 +186,41 @@ const out = await send('Runtime.evaluate', {
       }
     }
 
+    // What is on the page, as facts rather than as a picture. Anything
+    // asked about the page later is answered out of these and has to
+    // quote them, which is what keeps the answer checkable.
+    const texts = (el) => [...document.querySelectorAll(el)]
+      .map(e => (e.innerText || e.textContent || '').trim())
+      .filter(t => t && t.length < 200);
+
+    // Where a link actually goes, not only what it says. Without this,
+    // "there is a phone number you can tap" cannot be settled: the number
+    // is plainly in the text and whether it is a tel: link is the
+    // question. (No backticks in here - see the note above the template.)
+    const going = [...document.querySelectorAll('a[href]')]
+      .map(a => ({
+        said: (a.innerText || a.textContent || '').trim().slice(0, 60),
+        to: a.getAttribute('href').slice(0, 120),
+      }))
+      .filter(l => l.said || l.to)
+      .slice(0, 40);
+
+    const rows = [...document.querySelectorAll('table')].map(t => ({
+      what: 'table',
+      rows: t.querySelectorAll('tr').length,
+      said: (t.innerText || '').trim().slice(0, 300),
+    })).concat([...document.querySelectorAll('ul, ol, dl')].map(l => ({
+      what: l.tagName.toLowerCase(),
+      rows: l.querySelectorAll('li, dt').length,
+      said: (l.innerText || '').trim().slice(0, 300),
+    })));
+
     return {
+      text: (document.body.innerText || '').trim().slice(0, 6000),
+      headings: texts('h1, h2, h3, h4'),
+      links: texts('a, button').slice(0, 40),
+      going,
+      lists: rows.slice(0, 20),
       title: document.title || '',
       viewport: !!document.querySelector('meta[name="viewport"]'),
       visible: document.querySelectorAll('body *').length,
@@ -211,6 +248,12 @@ class Looked:
     visible: int = 0
     words: int = 0
     controls: int = 0
+    # What the page says, for anything asked about it afterwards.
+    text: str = ""
+    headings: list[str] = field(default_factory=list)
+    links: list[str] = field(default_factory=list)
+    going: list[dict] = field(default_factory=list)
+    lists: list[dict] = field(default_factory=list)
     unreadable: list[dict] = field(default_factory=list)
     images: list[str] = field(default_factory=list)
     nameless: list[dict] = field(default_factory=list)

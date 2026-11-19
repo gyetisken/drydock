@@ -444,6 +444,33 @@ const on = {
           <p class="why">${esc((e.avoid || []).join(" · "))}</p>` : ""}
       </div></div>`);
   },
+  "qa": (e) => {
+    const mark = { met: "ok", missing: "no", "could not check": "flat" };
+    const checks = (e.checks || []).map(c =>
+      `<div class="finding ${mark[c.verdict] || "flat"}">
+         <b>${esc(c.verdict)}</b>
+         <span>${esc(c.claim)}${c.evidence
+           ? ` — <i>${esc(c.evidence.slice(0, 90))}</i>` : ""}${c.why
+           ? `<br><i>${esc(c.why)}</i>` : ""}</span>
+       </div>`).join("");
+    const broken = (e.broken || []).map(b =>
+      `<div class="finding no"><b>broken</b><span>${esc(b)}</span></div>`).join("");
+    const unchecked = (e.unchecked || []).map(u =>
+      `<div class="finding flat"><b>not checked</b><span>${esc(u)}</span></div>`).join("");
+    say("crew", `<div class="body">
+      <p><b>${e.builds ? "It builds" : "It does not build"}</b> ·
+        ${e.tests} test${e.tests === 1 ? "" : "s"}${e.failing
+          ? `, <b>${e.failing} failing</b>` : ""}${e.tests
+            ? "" : " — a suite of nothing is green and proves nothing"}</p>
+      <p class="why">${esc(e.serving)}${e.page ? "" : " — not a page, so nothing was looked at"}</p>
+      ${e.checks && e.checks.length
+        ? `<p class="why">${esc(e.said)}</p>` : ""}
+      ${broken + checks + unchecked
+        ? `<div class="findings">${broken}${checks}${unchecked}</div>` : ""}
+      <p class="hint">Nothing was changed. The suite and the measurements are
+      arithmetic; anything marked <i>could not check</i> needed something this
+      cannot do.</p></div>`);
+  },
   "review": (e) => {
     const found = (e.findings || []).length + (e.counted || []).length;
     const counted = (e.counted || []).map(c =>

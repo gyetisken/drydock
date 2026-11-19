@@ -21,7 +21,7 @@ STAGES = ["baseline", "analyst", "planner", "engineer"]
 
 # Work that is not a stage of that line: it reads, says something, and
 # stops. Kept as a set because two places ask the same question of it.
-ALONE = ("ask", "review")
+ALONE = ("ask", "review", "qa")
 
 
 @dataclass(frozen=True)
@@ -103,6 +103,13 @@ BUILT_IN = [
         stop_after="review",
     ),
     Command(
+        name="/qa",
+        summary="Run it, look at it, and report what is broken. Nothing is changed.",
+        asks="what it is supposed to do, if you want that checked too",
+        task_template="{what}",
+        stop_after="qa",
+    ),
+    Command(
         name="/plan",
         summary="Work out how a change would be made, and stop before making it.",
         asks="what you are considering",
@@ -139,7 +146,11 @@ def match(text: str, commands: list[Command]) -> tuple[Command | None, str]:
     text = text.strip()
     if not text.startswith("/"):
         return None, text
-    head, _, rest = text.partition(" ")
+    # Any whitespace, not only a space. A brief typed as `/new` and then
+    # a newline and then twenty lines - which is how anybody writes one -
+    # left the whole thing as the command name and came back "unknown
+    # command. Type / to see the list."
+    head, rest = (text.split(None, 1) + [""])[:2]
     for command in commands:
         if command.name == head:
             return command, rest.strip()

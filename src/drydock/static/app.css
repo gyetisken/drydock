@@ -774,3 +774,9 @@ body.split .composer .cwrap { max-width:none }
 .finding.unsure { border-left-color:var(--warn) }
 .finding.good { border-left-color:var(--ok) }
 .finding.good b { color:var(--ok) }
+
+.finding.no { border-left-color:var(--bad) }
+.finding.no b { color:var(--bad) }
+.finding.ok b { color:var(--ok) }
+.finding.flat b { color:var(--faint) }
+.finding i { font-style:italic; color:var(--faint) }

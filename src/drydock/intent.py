@@ -108,6 +108,15 @@ AUDITING = re.compile(
     re.IGNORECASE,
 )
 
+# Running it and looking at it, rather than reading what was written.
+TESTING = re.compile(
+    r"\b(qa|smoke\s?test|test\s+(it|the\s+(page|site|app|ui))|"
+    r"(is|does)\s+(it|the\s+(page|site|app))\s+(work|working|broken)|"
+    r"what('?s| is)\s+broken|check\s+the\s+(page|site|app|ui)|"
+    r"look\s+at\s+the\s+(page|site|app)\s+and)\b",
+    re.IGNORECASE,
+)
+
 # Just run the thing.
 CHECKING = re.compile(
     r"^\s*(run|do) the (tests|suite|build)\b|^\s*(check|test|build) (it|this)\b",
@@ -180,6 +189,14 @@ def read(text: str, repo: Path | None = None) -> Guess:
 
     if CHECKING.search(said):
         return Guess("/check", "this is asking to run what is already there", True)
+
+    if TESTING.search(said):
+        return Guess(
+            "/qa",
+            "this is asking whether the thing works when it runs, which is "
+            "answered by running it",
+            True,
+        )
 
     if REVIEWING.search(said):
         return Guess(
