@@ -11,6 +11,7 @@ calling it the run's duration would overstate it, so waves are measured by
 when the first one started and the last one finished.
 """
 
+import json
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -175,15 +176,20 @@ def _said(seconds: float) -> str:
     return f"{int(seconds // 60)}m {int(seconds % 60):02d}s"
 
 
-def _clock(stamp: str) -> datetime | None:
-    """Read one of the log's times. They carry no date, only a wall clock."""
+def clock(stamp: str) -> datetime | None:
+    """Read one of the log's times. They carry no date, only a wall clock.
+
+    Public because the office reads the same stamps off the same log to say
+    when a station started and stopped. Two copies of this would be two
+    places to get the midnight case wrong.
+    """
     try:
         return datetime.strptime(stamp, "%H:%M:%S")
     except (TypeError, ValueError):
         return None
 
 
-def _gap(start: datetime | None, end: datetime | None) -> float:
+def gap(start: datetime | None, end: datetime | None) -> float:
     """Seconds between two wall clocks, allowing for one midnight."""
     if start is None or end is None:
         return 0.0
@@ -210,13 +216,13 @@ def read(events: list[dict]) -> Pace:
     checking_from: dict[int, datetime] = {}
 
     for event in events:
-        at = _clock(event.get("at", ""))
+        at = clock(event.get("at", ""))
         if at is None:
             continue
         kind = event.get("kind")
 
         if first is not None:
-            at_second = _gap(first, at)
+            at_second = gap(first, at)
             if kind == "agent.tool":
                 tool_calls += 1
                 if not to_first_change and _is_a_write(event):
@@ -253,7 +259,7 @@ def read(events: list[dict]) -> Pace:
             started[number] = at
             checking_from.pop(number, None)
             spell = spells.setdefault(number, Spell(item=number))
-            spell.began = _gap(first, at)
+            spell.began = gap(first, at)
         elif kind == "gate":
             number = event.get("id")
             if number is None or event.get("who") not in GATES:
@@ -267,7 +273,7 @@ def read(events: list[dict]) -> Pace:
             # after it is the harness, not the engineer.
             if number not in checking_from:
                 checking_from[number] = at
-                spell.working = _gap(started.get(number), at)
+                spell.working = gap(started.get(number), at)
         elif kind == "item.done":
             number = event.get("id")
             # An item whose result is replayed when a run is picked back up
@@ -278,12 +284,12 @@ def read(events: list[dict]) -> Pace:
             spell = spells.setdefault(number, Spell(item=number))
             spell.outcome = event.get("outcome", "")
             spell.attempts = max(1, int(event.get("attempts") or 1))
-            spell.ended = _gap(first, at)
+            spell.ended = gap(first, at)
             if spell.outcome == "done" and not to_first_landed:
                 to_first_landed = spell.ended
-            spell.seconds = _gap(started.get(number), at)
+            spell.seconds = gap(started.get(number), at)
             if number in checking_from:
-                spell.checking = _gap(checking_from[number], at)
+                spell.checking = gap(checking_from[number], at)
                 # An item worked in a worktree beside its neighbours, or one
                 # whose start was never recorded, can produce a checking time
                 # longer than the item itself. Report the part that is
@@ -300,13 +306,13 @@ def read(events: list[dict]) -> Pace:
     # question somebody watching is actually asking.
     for number, spell in spells.items():
         if not spell.outcome and number in started:
-            spell.seconds = _gap(started[number], last)
+            spell.seconds = gap(started[number], last)
             spell.working = spell.seconds - spell.checking
             spell.outcome = "working"
 
     return Pace(
-        seconds=_gap(first, last),
-        before_the_plan=_gap(first, plan_at),
+        seconds=gap(first, last),
+        before_the_plan=gap(first, plan_at),
         to_first_change=to_first_change,
         to_first_landed=to_first_landed,
         stations=stations,
@@ -328,10 +334,14 @@ def _is_a_write(event: dict) -> bool:
     return any(said.startswith(name) for name in WRITES)
 
 
-def from_log(path: Path) -> Pace:
-    """Measure a run from the file its events were written to."""
-    import json
+def events_in(path: Path) -> list[dict]:
+    """The events a run wrote, as far as the file can be read.
 
+    A line that will not parse is skipped rather than fatal: the log is
+    appended to while the run happens, so the last line of a run that was
+    killed is routinely half-written, and refusing to read the file is
+    refusing to answer what happened at exactly the moment somebody asks.
+    """
     events = []
     for line in path.read_text().splitlines() if path.exists() else []:
         line = line.strip()
@@ -341,4 +351,9 @@ def from_log(path: Path) -> Pace:
             events.append(json.loads(line))
         except ValueError:
             continue
-    return read(events)
+    return events
+
+
+def from_log(path: Path) -> Pace:
+    """Measure a run from the file its events were written to."""
+    return read(events_in(path))

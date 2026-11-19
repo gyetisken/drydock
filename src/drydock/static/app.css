@@ -727,3 +727,30 @@ body.split .composer .cwrap { max-width:none }
 .missed { margin:12px 0 4px; padding-top:9px; border-top:1px solid var(--line-soft) }
 .missed-item { margin:6px 0 0 }
 .missed-plain { font-size:13px; color:var(--fg); margin-right:7px }
+/* One station, in detail. Beside the room rather than over it: the point of
+   the office is watching the crew work, and a pane that covers them to
+   explain them is the wrong trade. */
+.who-list .who-row { width:100%; text-align:left; background:none; border:0;
+  color:inherit; font:inherit; cursor:pointer }
+.who-list .who-row:hover { background:var(--line-soft) }
+.who-list .who-row.on { background:var(--raise); box-shadow:inset 2px 0 0 var(--accent) }
+.who-list .who-row:focus-visible { outline:2px solid var(--accent); outline-offset:1px }
+.who-row.cut .mk, .who-row.never .mk { color:var(--faint) }
+.who-detail { margin-top:12px; padding-top:11px; border-top:1px solid var(--line-soft) }
+.wd-head { display:flex; align-items:center; gap:8px; flex-wrap:wrap }
+.wd-head b { font-size:13.5px }
+.who-detail .why { margin:5px 0 0 }
+.who-detail .why.last { color:var(--fg) }
+.wd-facts { display:flex; gap:6px; flex-wrap:wrap; margin-top:8px }
+.wd-list { margin-top:12px }
+.wd-list h5 { font-size:11px; text-transform:uppercase; letter-spacing:.07em;
+  color:var(--faint); margin:0 0 5px; font-weight:600 }
+.wd-list h5 .why { display:inline; text-transform:none; letter-spacing:0 }
+.wd-row { display:flex; gap:8px; align-items:baseline; padding:3px 0;
+  font-size:12px; line-height:1.5 }
+.wd-row .mono.dim { color:var(--faint); flex:none; font-size:11px }
+.wd-row .why { min-width:0; overflow:hidden; text-overflow:ellipsis;
+  white-space:nowrap }
+/* A gate chip for something that is not a verdict - a restart, a split.
+   It must not read as a pass. */
+.gate.flat { background:var(--raise); color:var(--faint) }

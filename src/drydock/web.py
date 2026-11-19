@@ -17,6 +17,7 @@ from pydantic import BaseModel
 from . import crew, intent, preview, publish
 from .commands import available, match
 from .engines import stop_workers
+from .pace import events_in
 from .repo import GitError, Repo
 from .run import Run
 from .session import Session
@@ -116,6 +117,7 @@ PAGE = """<!doctype html><html lang="en"><head><meta charset="utf-8">
         <div class="room" id="room"></div>
         <div class="legend">
           <div class="who-list" id="who-list"></div>
+          <div class="who-detail" id="who-detail" aria-live="polite"></div>
           <div class="shelf">
             <span class="shelf-h">Skills on the shelf</span>
             <span class="shelf-items" id="shelf"></span>
@@ -856,9 +858,18 @@ def one_run(run_id: str) -> dict:
                 "note": r.note,
                 "attempts": r.attempts,
                 "commit": r.commit,
+                # What the suite stood at when this item was accepted, so
+                # the board of a finished run shows the count it reached
+                # rather than the one it started from.
+                "tests_run": r.tests_run,
             }
             for r in run.results
         ],
+        # What each station did, read back out of the event log. Without
+        # this the office for a finished run showed nine idle desks: the
+        # live stream is gone with the process that served it, and reading
+        # the thread back never touched the room at all.
+        "crew": crew.what_each_did(events_in(Path("runs") / f"{run.id}.log")),
     }
 
 

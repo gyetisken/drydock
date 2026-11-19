@@ -19,6 +19,7 @@ from .analyst import baseline, survey
 from .answer import ask
 from .architect import as_briefing, design
 from .commands import STAGES
+from .crew import GATE_STATION
 from .designer import as_briefing as look_briefing
 from .designer import decide, draw_mark, write_logo
 from .detect import detect
@@ -200,6 +201,20 @@ class Session:
                 failed=b.tests_failed,
                 skipped=b.tests_skipped,
                 green=b.green,
+            )
+            # The station closing its own state. The browser was doing this
+            # for it, off the baseline figures, which meant the log said the
+            # Verifier started and never finished - and a finished run read
+            # back off that log showed it still at work.
+            self.feed.emit(
+                "agent.state",
+                agent="Verifier",
+                state="done",
+                note=(
+                    f"{b.tests_run} tests pass before anything is touched"
+                    if b.green
+                    else f"{b.tests_failed} failing before anything is touched"
+                ),
             )
             self.run.save()
 
@@ -959,19 +974,36 @@ class Session:
                 "gate",
                 id=item.id,
                 who=who,
+                # Which desk this belongs to, decided here rather than in
+                # the browser. The same three-name map in two languages is
+                # two places for it to drift.
+                station=GATE_STATION.get(who, ""),
                 passed=passed,
                 note=note or ("nothing to report" if passed else ""),
             )
-            self.feed.emit(
-                "agent.state",
-                agent={
-                    "inspector": "Inspector",
-                    "reviewer": "Reviewer",
-                    "critic": "Critic",
-                }.get(who, "Reviewer"),
-                state="done" if passed else "failed",
-                note=(note or "nothing to report")[:140],
-            )
+            # Only the three gates are verdicts. `on_gate` is also called
+            # for an engineer's question, a planner's answer, a restart and
+            # a split, and every unrecognised one used to be mapped onto
+            # the Reviewer with `passed` true - so the Reviewer was shown
+            # as done, with a note about a restart, for items it had not
+            # read. A station's state has to come from that station.
+            station = GATE_STATION.get(who)
+            if station:
+                self.feed.emit(
+                    "agent.state",
+                    agent=station,
+                    state="done" if passed else "failed",
+                    note=(note or "nothing to report")[:140],
+                )
+            elif who == "answered":
+                # This one is a station working: the planner settled a
+                # question the engineer stopped to ask.
+                self.feed.emit(
+                    "agent.state",
+                    agent="Planner",
+                    state="done",
+                    note=note[:140] or "answered the question",
+                )
 
         execute(
             self.run,
