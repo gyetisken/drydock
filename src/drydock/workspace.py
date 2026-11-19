@@ -216,7 +216,7 @@ class Workspace:
         profile: str = "",
     ) -> Session:
         # What was asked for, or what this person has set, or the default.
-        from .policy import of
+        from .policy import at_least, floor_for, of
         from .settings import Settings
 
         session = Session(
@@ -228,7 +228,16 @@ class Workspace:
             model=model,
             stop_after=stop_after,
             standing=standing,
-            policy=of(profile or Settings.load().profile),
+            # Raised, never lowered. A handful of kinds of work are not
+            # allowed to take the cheap road however this was asked for,
+            # because reading a one-line fix too carefully costs twenty
+            # minutes and treating a migration as a one-line fix loses
+            # data. What raised it is carried so it can be said.
+            policy=at_least(
+                of(profile or Settings.load().profile),
+                floor_for(task).floor,
+            ),
+            floor=floor_for(task).why,
         )
         session.start(auto_run=False)
         # The session has an id only once its run exists, so it is keyed by the
