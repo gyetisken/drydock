@@ -69,8 +69,14 @@ class TestItDoesNotReadTheRepository:
         source = inspect.getsource(answer.ask)
 
         assert '"tools": ""' in source
-        assert "Bash Read Glob Grep Edit Write" in source
+        assert "Bash Read Glob Grep Edit" in source
         assert "tools=[] if chatting else read_only(repo)" in source
+        # Not Write. The answer comes back through a file, and refusing
+        # that is how `hey, how are you today ?` came back as
+        # "the worker stopped without writing an answer (exit 1)".
+        assert '"without": "Bash Read Glob Grep Edit "\n' in source or (
+            "Write" not in source.split('"without"')[1].split("}")[0]
+        )
 
     def test_it_gets_two_turns_rather_than_thirty(self):
         source = inspect.getsource(answer.ask)

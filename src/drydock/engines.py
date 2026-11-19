@@ -328,6 +328,24 @@ def stop_workers(repo: Path | None = None) -> int:
     return stopped
 
 
+def _but_not_the_answer(without: str) -> str:
+    """Whatever a station refuses, it cannot refuse the file it answers in.
+
+    The answer comes back through `Write(.drydock-out.json)`, appended to
+    what is allowed a line above this. A station that also lists `Write`
+    among the tools it does not want leaves a worker that can read the
+    repository, run commands, and has nowhere to put what it found: it
+    talks to itself until the turn limit and exits without an answer.
+
+    Written twice before it was caught twice - once in the start call,
+    where it span for three minutes, and once in the answering path, where
+    saying hello came back as `EngineUnavailable: the worker stopped
+    without writing an answer (exit 1)`. The second time is what made it
+    the engine's business rather than each caller's.
+    """
+    return " ".join(t for t in without.split() if t != "Write")
+
+
 def _confinement(repo: Path) -> tuple[str, dict]:
     """Settings and environment that keep the worker inside one repository.
 
@@ -755,7 +773,7 @@ class ClaudeCodeEngine:
             "acceptEdits",
             "--allowedTools",
             f"{tools} Write(.drydock-out.json)".strip(),
-            *(["--disallowedTools", without] if without else []),
+            *(["--disallowedTools", _but_not_the_answer(without)] if without else []),
             "--append-system-prompt",
             system,
         ]

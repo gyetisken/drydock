@@ -78,7 +78,11 @@ def ask(
             **(
                 {
                     "tools": "",
-                    "without": "Bash Read Glob Grep Edit Write "
+                    # Not `Write`: the answer itself comes back through a
+                    # file. The engine strips it now even if it is asked
+                    # for, and it is left out here as well so the reason is
+                    # written where somebody changing this will read it.
+                    "without": "Bash Read Glob Grep Edit "
                     "NotebookEdit WebFetch WebSearch Task",
                 }
                 if chatting
