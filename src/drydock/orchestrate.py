@@ -389,7 +389,10 @@ def _one_item(
         try:
             report, usage = work(
                 where,
-                run.task,
+                # The brief, not this run's instruction. An item is worked
+                # on three jobs after the one that said what the thing is,
+                # and "carry on" told the engineer nothing about it.
+                run.brief,
                 item,
                 detect(where).build_command,
                 failure,

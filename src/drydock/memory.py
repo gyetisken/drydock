@@ -138,6 +138,15 @@ class Memory:
     # Questions already answered about this repository, and the answers. The
     # same question asked twice should not be read for twice.
     answers: list[dict] = field(default_factory=list)
+    # What this repository is being built to be, in the words of whoever
+    # first asked for it. The second and third jobs here are typed as
+    # follow-ups - "carry on", "also fix the footer", "make it nicer" -
+    # sentences that mean nothing on their own, and the run record used to
+    # hold one of those as the whole of what was being asked for. One run
+    # planned twelve items against "could you please continue what you do ?"
+    # while the paragraph describing the restaurant sat in `jobs` unread.
+    objective: str = ""
+    objective_at: str = ""
 
     @property
     def path(self) -> Path:
@@ -197,6 +206,21 @@ class Memory:
             if fact not in known:
                 self.notes.append(Note(text=fact, commit=commit, learned=now))
         self.notes = [n for n in self.notes if n.commit == commit][-keep:]
+
+    def aim(self, task: str) -> str:
+        """The objective in force here, set by the first job that has one.
+
+        Set once rather than per run, and never overwritten by a later
+        task: a follow-up is read as adding to this or revising it, which
+        is what `Run.brief` says to every station that is handed one. A
+        job that really is a different project in the same folder is the
+        known limit of that - there is no way yet to retire one.
+        """
+        said = task.strip()
+        if not self.objective.strip() and said:
+            self.objective = said
+            self.objective_at = datetime.now().strftime("%Y-%m-%d")
+        return self.objective
 
     def direct(self, direction: str) -> None:
         """Keep the look, so the next job here builds the same thing."""

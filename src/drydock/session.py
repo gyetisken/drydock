@@ -175,12 +175,19 @@ class Session:
                 return
 
             chain = detect(self.repo)
+            # Taken before the standing instructions are appended. They hold
+            # for every job here, so they are not part of what this one is
+            # for, and an objective that carried them would repeat them in
+            # every brief for the life of the repository.
+            objective = self.memory.aim(self.task)
+            self.memory.save()
             if self.standing:
                 self.task = (
                     f"{self.task}\n\nStanding instructions for this repository, "
                     f"which hold for every job here:\n{self.standing}"
                 )
             self.run = Run.start(self.repo, self.task, [s.name for s in self.skills])
+            self.run.objective = objective
             self.run.budget = self.budget
             self.run.engine = self.engine
             self.run.model = self.model
@@ -188,6 +195,10 @@ class Session:
                 "run.started",
                 repo=self.repo.name,
                 task=self.task,
+                # Said out loud when this job is carrying one it did not
+                # type, which is the case somebody needs to be able to see.
+                objective=objective if objective.strip() != self.task.strip() else "",
+                objective_at=self.memory.objective_at,
                 skills=[s.name for s in self.skills],
                 toolchain=f"{chain.build_tool} / {chain.language}",
                 stages=self._stages(),
@@ -435,7 +446,7 @@ class Session:
                     pool.submit(
                         design,
                         self.repo,
-                        self.task,
+                        self.run.brief,
                         self.skills,
                         self._agent_event("Architect"),
                         budget=self.run.left if self.budget else 0.0,
@@ -449,7 +460,7 @@ class Session:
                     pool.submit(
                         decide,
                         self.repo,
-                        self.task,
+                        self.run.brief,
                         "",
                         self.skills,
                         self._agent_event("Designer"),
@@ -467,7 +478,7 @@ class Session:
                     pool.submit(
                         draw_mark,
                         self.repo,
-                        self.task,
+                        self.run.brief,
                         self.skills,
                         self._agent_event("Designer"),
                         budget=self.run.left if self.budget else 0.0,
@@ -627,7 +638,7 @@ class Session:
             drawing = ThreadPoolExecutor(max_workers=1).submit(
                 draw_mark,
                 self.repo,
-                self.task,
+                self.run.brief,
                 self.skills,
                 self._agent_event("Designer"),
                 budget=self.run.left if self.budget else 0.0,
@@ -637,7 +648,9 @@ class Session:
 
         started, usage = begin(
             self.repo,
-            self.task,
+            # The brief, not this instruction. A plan written against
+            # "carry on" is twelve items about nothing.
+            self.run.brief,
             empty=empty,
             looked_at=wanted_a_look,
             known=self._what_is_already_known(commit),
@@ -741,7 +754,7 @@ class Session:
         """
         return plan(
             self.repo,
-            self.task,
+            self.run.brief,
             self.run.inventory,
             b,
             self.skills,
@@ -1244,7 +1257,7 @@ class Session:
         )
         self.run.inventory, usage = survey(
             self.repo,
-            self.task,
+            self.run.brief,
             b,
             self.skills,
             self._agent_event("Analyst"),

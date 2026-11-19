@@ -64,7 +64,11 @@ reported is an item that is thrown away, so leave yourself the turn."""
 PROMPT = """Repository: {repo}
 Build: {build_command}
 
-Overall task, for context only:
+What is being built, and what it is for. This does not widen your scope -
+the item below is still the whole of what you touch - but it is what the
+finished thing is judged against, so where the item leaves you a choice,
+this is what decides it:
+
 {task}
 
 Your item, which is the entire scope:

@@ -23,6 +23,13 @@ class Run(BaseModel):
     skills: list[str] = Field(default_factory=list)
     engine: str = "api"
     model: str = "opus"
+    # The original request this work is answering, which is not always what
+    # was typed this time. `task` is this instruction; a second job in the
+    # same repository is usually a follow-up, and a run planned against
+    # "could you please continue what you do ?" alone plans twelve items
+    # against nothing. Carried on the record rather than looked up, so
+    # planning, every retry and a resume days later all read the same one.
+    objective: str = ""
     # How this is to look, decided once before planning. Kept here because
     # the engineer needs it on every item that renders anything, and until
     # now only the planner ever saw it - which is why the accent colour that
@@ -71,6 +78,27 @@ class Run(BaseModel):
             task=task,
             started=now.isoformat(timespec="seconds"),
             skills=skills or [],
+        )
+
+    @property
+    def brief(self) -> str:
+        """What is being asked for, as every station should read it.
+
+        The objective first, because that is what the finished thing is
+        judged against, then this instruction - which adds to it or
+        revises it, and does not replace it. When there is no objective,
+        or it is the thing that was just typed, this is the task and
+        nothing is said twice.
+        """
+        aim, now = self.objective.strip(), self.task.strip()
+        if not aim or aim == now or aim in now:
+            return self.task
+        return (
+            "The original request, which is what the finished work is "
+            f"judged against:\n\n{aim}\n\nWhat is being asked for now. "
+            "It adds to the request above, or revises it where the two "
+            "disagree. It does not replace it, and nothing above stops "
+            f"being true because of it:\n\n{now}"
         )
 
     @property
