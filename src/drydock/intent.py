@@ -36,6 +36,27 @@ POLITE_INSTRUCTION = re.compile(
     re.IGNORECASE,
 )
 
+# Saying hello, and whatever comes after it. A greeting is not a request to
+# change anything, and `hello, how are you today?` started a baseline suite,
+# an Analyst reading the repository and a Planner writing items - a full
+# planning run, for a hello. Stripped like a polite prefix rather than
+# matched as its own command, so that `hi, add a logout button` is still an
+# instruction with a hello on the front of it.
+GREETING = re.compile(
+    r"^\s*(hey|hi|hello|yo|hiya|howdy|good\s+(morning|afternoon|evening)|"
+    r"thanks|thank\s+you|thx|ta|cheers|ok|okay|cool|nice|great|"
+    r"sorry|bye|goodbye|see\s+you)\b[\s,!.:;-]*",
+    re.IGNORECASE,
+)
+
+# Nothing left to act on. Punctuation, an emoji, a trailing "there" or
+# "mate" - the shapes a bare greeting ends in.
+NOTHING_LEFT = re.compile(
+    r"^[\s,.!?;:\-–—)(\u2000-\u3300\U0001F000-\U0001FAFF]*"
+    r"(there|all|everyone|mate|man|folks|again)?[\s,.!?;:\-]*$",
+    re.IGNORECASE,
+)
+
 # Starting something that does not exist.
 STARTING = re.compile(
     r"\b(build|create|make|start|scaffold|set up|spin up)\b.{0,40}?"
@@ -104,6 +125,18 @@ def read(text: str, repo: Path | None = None) -> Guess:
     said = text.strip()
     if said.startswith("/"):
         return Guess(said.split()[0], "you asked for it by name", True)
+
+    # A hello on the front of an instruction is still an instruction; a
+    # hello on its own is not one at all.
+    if GREETING.match(said):
+        rest = GREETING.sub("", said, count=1).strip()
+        if NOTHING_LEFT.match(rest):
+            return Guess(
+                "/ask",
+                "this is not asking for anything to be changed",
+                True,
+            )
+        said = rest
 
     if POLITE_INSTRUCTION.match(said):
         said = POLITE_INSTRUCTION.sub("", said).strip()

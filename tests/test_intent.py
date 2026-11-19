@@ -8,6 +8,8 @@ and nothing is reached by inference that could not be undone.
 
 from pathlib import Path
 
+import pytest
+
 from drydock.intent import read
 
 
@@ -89,3 +91,65 @@ class TestItNeverGuessesExpensively:
     def test_every_guess_carries_its_reason(self):
         for said in ("what is this", "fix the footer", "build me a site"):
             assert read(said).why, said
+
+
+class TestSayingHello:
+    """`hello, how are you today ?` ran a baseline suite, sent the Analyst
+    to read the repository and started the Planner writing items. A full
+    planning run, for a hello.
+
+    Watched happen while somebody was trying the application out, which is
+    exactly when it matters: the first thing a new person types is rarely
+    a work item.
+    """
+
+    @pytest.mark.parametrize(
+        "said",
+        [
+            "hello, how are you today ?",
+            "hi",
+            "hey there",
+            "good morning",
+            "thanks!",
+            "thank you",
+            "cheers mate",
+            "ok",
+            "nice",
+            "bye",
+            "hello 👋",
+        ],
+    )
+    def test_nothing_is_started(self, said):
+        guess = read(said)
+        assert guess.command == "/ask"
+        assert guess.sure
+
+    @pytest.mark.parametrize(
+        "said,wanted",
+        [
+            ("hi, add a logout button to the navbar", "/fix"),
+            ("thanks, now fix the footer typo", "/fix"),
+            ("hello, what does the planner do?", "/ask"),
+            ("hey, build a landing page for a coffee roaster", "/new"),
+        ],
+    )
+    def test_a_greeting_in_front_of_work_is_still_work(self, said, wanted):
+        """The hello is stripped, not matched. Somebody who says hello and
+        then asks for something has asked for something."""
+        assert read(said).command == wanted
+
+    def test_the_task_itself_is_not_rewritten(self):
+        """`read` says which command; it does not edit what was asked. The
+        worker is handed the sentence the person typed, hello and all."""
+        import inspect
+
+        from drydock import intent
+
+        source = inspect.getsource(intent.read)
+        assert "return Guess(" in source
+        assert "said" in source
+
+    def test_a_thing_called_hello_world_is_not_a_greeting_after_all(self):
+        """`hello world page` keeps a request after the hello is taken off,
+        so it is work, and is routed as work."""
+        assert read("hello world page").command != "/ask"
