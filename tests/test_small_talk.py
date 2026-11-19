@@ -95,3 +95,35 @@ class TestTheOfficeSaysWhatIsHappening:
 
         session = (Path(answer.__file__).parent / "session.py").read_text()
         assert 'note="answering" if chatting else "reading the repository"' in session
+
+
+class TestAQuestionTheCodeCannotAnswer:
+    """`how's the weather today in sarasota ?` read the repository, grepped
+    it for `weather`, `forecast`, `temperature` and `sarasota`, and
+    reported that there is no weather API client and no cached forecast
+    data. Six steps to arrive somewhere visible from the start.
+
+    It is not small talk and it is not about the code, and the second one
+    is the part that matters: the instruction said read before answering
+    and gave no way out of it.
+    """
+
+    def test_it_is_not_small_talk(self):
+        """Nothing about it is a greeting, and pattern-matching it as one
+        would catch `how's the build` with it."""
+        assert not is_small_talk("how's the weather today in sarasota ?")
+
+    def test_the_instruction_has_a_way_out_of_reading(self):
+        assert "not about this repository at all" in answer.SYSTEM
+        assert "do\nnot search it" in answer.SYSTEM
+
+    def test_it_says_which_way_to_be_wrong(self):
+        """Told to stop at one or two lines, because the failure here was
+        length as much as it was searching."""
+        assert "one or two lines" in answer.SYSTEM
+
+    def test_it_is_about_the_subject_and_not_the_opening_words(self):
+        assert "how is the weather" in answer.SYSTEM
+        assert "How are the tests run here" in answer.SYSTEM or (
+            "how are the tests run here" in answer.SYSTEM.lower()
+        )

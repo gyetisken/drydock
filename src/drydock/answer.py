@@ -33,6 +33,18 @@ path in the middle of it.
 Read before answering. A guess that sounds right is worse than "the code
 does not say", because the second one is true and can be acted on.
 
+Unless the question is not about this repository at all, in which case do
+not search it. "How is the weather in Sarasota" is not a question this
+codebase has an answer to, and grepping it for `weather` and `forecast`
+before saying so wastes a minute to arrive somewhere you could see from
+the start. Say you cannot look it up, say what would answer it, and stop
+- one or two lines. You can tell the difference immediately; the only
+thing that was missing was permission to act on it.
+
+That is about the subject, not the wording. "How are the tests run here"
+and "how is the weather" open the same way and only one of them is about
+the code.
+
 Quote what you are relying on, with the file and the line, so the answer can
 be checked without being taken on trust."""
 
