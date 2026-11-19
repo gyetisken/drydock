@@ -23,21 +23,23 @@ You are the **primary implementation agent**. There is no independent reviewer: 
 - Verify the exact final integrated tree before reporting success. Do not count isolated worktree tests as verification of the combined result.
 - Never remove/overwrite dirty changes during resume without the owner's explicit consent.
 
-## Handoff for independent review
+## Handoff
 
-When implementation is ready, provide a draft PR with:
+Work goes straight to `main`. When implementation is ready, report:
 
 - Task and acceptance criteria
-- Branch, base, and commit SHA
+- Commit SHA
 - Files changed and why
 - Exact test commands and results; any skipped/opt-in checks
 - Evidence that verification ran on the delivered final tree
 - Time/usage estimates versus actual measurements (when available)
 - Risks, limitations, and rollback instructions
 
-Then **stop** and hand it to the owner. Address only actionable, approved blocking findings. Limit review/fix cycles to two without renewed owner approval. Do not merge automatically.
+Then **stop**. Address only actionable, approved blocking findings. Limit fix cycles to two without renewed owner approval.
 
-Nobody else reads the diff, so the evidence in the handoff is the review. State what was measured, what was not, and what you are uncertain about — the omissions are the part that matters now.
+Nobody reads the diff before it lands, so what protects the tree is the suite, the linter and the formatter, run before every push without exception. State what was measured, what was not, and what you are uncertain about — the omissions are the part that matters now.
+
+A branch is still right for a change that is large, risky, or wants looking at first. Ask for one rather than assuming.
 
 ## Finish-line report
 
