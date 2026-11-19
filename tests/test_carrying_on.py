@@ -53,10 +53,11 @@ class Crew:
         monkeypatch.setattr(orchestrate, "detect", lambda path: _Chain())
         monkeypatch.setattr(orchestrate, "verify", lambda *a, **k: _Passed())
         monkeypatch.setattr(orchestrate, "look", lambda *a, **k: _Clean())
-        # Nothing refused it, and nobody refused it: `_judge` reports both
-        # now, because a refusal from the critic alone on the last attempt
-        # is not worth the same as one from the inspector.
-        monkeypatch.setattr(orchestrate, "_judge", lambda *a, **k: ("", []))
+        # Nothing refused it, nobody refused it, and nothing went
+        # unverified: `_judge` reports all three. A refusal from the critic
+        # alone on the last attempt is not worth the same as one from the
+        # inspector, and a check that could not finish is neither.
+        monkeypatch.setattr(orchestrate, "_judge", lambda *a, **k: ("", [], []))
         monkeypatch.setattr(orchestrate, "_work_a_wave", self._wave)
         # Splitting a failed item asks the planner, which is a model call.
         # These tests are about what happens to the rest of the plan, so

@@ -35,6 +35,29 @@ class EngineUnavailable(RuntimeError):
     pass
 
 
+class MalformedAnswer(RuntimeError):
+    """The worker answered, and what it wrote is not the shape asked for.
+
+    Kept apart from EngineUnavailable because the two call for opposite
+    responses. A worker that never answered has told you nothing and the
+    machine may be at fault; one that wrote an answer you cannot read has
+    done the work and lost it on the way out, and asking the same question
+    again usually gets a readable answer for a fraction of the cost.
+
+    A critic's verdict was lost this way: it rendered the page, read both
+    images, judged them and wrote `{"approved": true, "reason": "..."}`
+    with an unescaped character two and a half thousand characters in. The
+    parse failed, the exception was caught as "could not look at it", no
+    gate decision was recorded, and the item shipped without the one
+    station that can see having been heard.
+    """
+
+    def __init__(self, why: str, text: str = "") -> None:
+        super().__init__(why)
+        # What it actually wrote, for the report and for one repair.
+        self.text = text
+
+
 def _claude_binary() -> str:
     binary = shutil.which("claude")
     if not binary:
@@ -883,8 +906,20 @@ class ClaudeCodeEngine:
                 + (f" (exit {process.returncode})" if process.returncode else "")
                 + (f".\n\n{why}" if why else ".")
             )
-        payload = json.loads(out.read_text())
+        written = out.read_text()
         out.unlink(missing_ok=True)
+        try:
+            payload = json.loads(written)
+        except ValueError as exc:
+            raise MalformedAnswer(
+                f"the worker wrote an answer that is not valid JSON: {exc}",
+                written,
+            ) from exc
+        if not isinstance(payload, dict):
+            raise MalformedAnswer(
+                f"the worker wrote {type(payload).__name__} where an object was asked for",
+                written,
+            )
         return payload, dollars, turns
 
 

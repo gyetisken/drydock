@@ -220,10 +220,20 @@ def _show_it(repo_path: Path, run, item, on_event):
         if verdict is not None and noticed:
             verdict.noticed = list(verdict.noticed) + noticed
         return verdict, spend
-    except Exception as exc:  # noqa: BLE001 - a failed look is not a failed item
+    except Exception as exc:  # noqa: BLE001 - the run must not die here
+        # A verdict that could not be produced, said as one. Returning
+        # None meant "nothing to report", which is what a clean page
+        # looks like from here, so an item shipped with the only station
+        # that can see never having been heard from. See critic.Verdict.
         if on_event:
             on_event("critic", f"could not look at it: {exc}")
-        return None, 0.0
+        return Seen(
+            looked=True,
+            approved=False,
+            reason=f"could not look at it: {exc}",
+            noticed=[],
+            failed=f"could not look at it: {exc}",
+        ), 0.0
 
 
 def _judge(
@@ -277,6 +287,10 @@ def _judge(
             jobs["critic"] = pool.submit(_show_it, repo_path, run, item, on_event)
 
     refusals = []
+    # Checks that were required and could not be completed. Kept apart
+    # from refusals because they are not the item's fault and retrying
+    # the engineer would not change them.
+    unverified: list[str] = []
     # Which gates refused, not only what they said. The two are not worth
     # the same: one read the diff against the item, the other looked at a
     # picture - and only one of them can be the sole reason an item that
@@ -308,11 +322,16 @@ def _judge(
                     if answer.looked
                     else "not looked at: " + answer.reason,
                 )
-            if not answer.approved:
+            if not answer.verified:
+                # The check was required, was attempted, and did not
+                # finish. Not a refusal - there is nothing for the
+                # engineer to fix - and not an approval either.
+                unverified.append(answer.failed)
+            elif not answer.approved:
                 refusals.append(answer.reason)
                 refused_by.append(name)
 
-    return _with_the_usual_cause("\n\n".join(refusals)), refused_by
+    return _with_the_usual_cause("\n\n".join(refusals)), refused_by, unverified
 
 
 # Complaints that have cost this crew more than one attempt because the
@@ -579,6 +598,7 @@ def _one_item(
             )
 
         refusal = ""
+        unverified: list[str] = []
         if verdict.passed:
             diff = here.pending()
             report_card = look(
@@ -605,7 +625,7 @@ def _one_item(
                     item, attempt, "the run was stopped before this was reviewed"
                 ), None
             else:
-                refusal, refused_by = _judge(
+                refusal, refused_by, unverified = _judge(
                     here,
                     where,
                     run,
@@ -652,6 +672,27 @@ def _one_item(
                     "kept, with what I said against it: this was the last "
                     "attempt and nothing but the look was wrong",
                 )
+
+        # A check that was required and could not be completed stops the
+        # delivery. Not a refusal: there is nothing for the engineer to
+        # fix and another attempt would render the same page and lose the
+        # same verdict, so this does not spend one. The work is thrown
+        # away because nothing may be committed that the gates could not
+        # agree on, and the item is reported as unverified with the real
+        # error under the station that hit it.
+        if verdict.passed and unverified:
+            if on_gate:
+                on_gate(item, "critic", False, "; ".join(unverified))
+            here.discard()
+            return ItemResult(
+                item=item,
+                outcome=Outcome.BLOCKED,
+                attempts=attempt,
+                note=(
+                    "visual verification could not be completed, so this was "
+                    "not delivered: " + "; ".join(unverified)
+                ),
+            ), None
 
         if verdict.passed and not refusal:
             # Before the commit, not after: `commit` runs `add -A`, and the

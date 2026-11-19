@@ -26,7 +26,7 @@ nobody made.
 from dataclasses import dataclass
 from pathlib import Path
 
-from .engines import ClaudeCodeEngine
+from .engines import ClaudeCodeEngine, EngineUnavailable, MalformedAnswer
 from .shot import take
 
 SYSTEM = """You are looking at a page somebody has just built, and deciding
@@ -111,14 +111,61 @@ page, and is the page good?"""
 
 @dataclass
 class Verdict:
+    """What the one station that can see came back with.
+
+    Three outcomes, not two, and the third is the one this was missing.
+
+    approved        it looked and the page is right
+    not approved    it looked and the page is wrong, with a reason
+    failed          it could not finish, and nothing was established
+
+    `looked=False` with `approved=True` is a fourth thing and a
+    deliberate one: a machine with no browser cannot take a screenshot,
+    the check does not exist here, and holding an item against a check
+    nobody can run would stop every run on such a machine. That is an
+    absence of the capability. `failed` is the opposite - the capability
+    was there, the work was done, and the answer was lost - and it must
+    never read as approval.
+    """
+
     looked: bool
     approved: bool
     reason: str
     noticed: list
+    # Why the check could not be completed, when it could not. Empty on
+    # every verdict that is actually a verdict.
+    failed: str = ""
+
+    @property
+    def verified(self) -> bool:
+        """Whether this is an answer about the page at all."""
+        return not self.failed
 
 
 def _shape() -> str:
     return '{"approved": true, "reason": "...", "noticed": ["..."]}'
+
+
+# Said on the second ask, and only then. The first ask is the ordinary
+# one; repeating the warning every time would spend a paragraph of every
+# critic's prompt on a failure that is rare.
+REPAIR = """
+
+Your last answer could not be read: the file was not valid JSON. The
+usual cause is a quotation mark, a backslash or a newline inside one of
+the strings that was not escaped. Answer again, with the same judgement,
+and keep `reason` short - two or three sentences, plain, with no quoted
+markup in it."""
+
+
+def _could_not(why: str) -> Verdict:
+    """A check that was possible, was attempted, and did not finish.
+
+    Not approved, because nothing about the page was established; and
+    marked `failed`, so that whoever reads it can tell this from a page
+    that was looked at and found wanting.
+    """
+    return Verdict(looked=True, approved=False, reason=why, noticed=[], failed=why)
 
 
 def look(
@@ -147,35 +194,72 @@ def look(
             0.0,
         )
 
-    found, dollars, _turns = ClaudeCodeEngine(model=model, max_turns=8).structured(
-        scratch,
-        SYSTEM,
-        PROMPT.format(
-            # The brief first and uncut. It is a few hundred characters
-            # and it is the thing being judged against; the direction is
-            # the long one and it is only context.
-            brief=brief.strip() or "(not recorded for this run)",
-            direction=direction[:8000] or "(none was written)",
-            item=item_title,
-        ),
-        _shape(),
-        on_event=on_event,
-        # It needs to open the images and nothing else.
-        tools="Read",
-        without="Bash Edit Glob Grep NotebookEdit WebFetch WebSearch Task",
+    asked = PROMPT.format(
+        # The brief first and uncut. It is a few hundred characters and it
+        # is the thing being judged against; the direction is the long one
+        # and it is only context.
+        brief=brief.strip() or "(not recorded for this run)",
+        direction=direction[:8000] or "(none was written)",
+        item=item_title,
     )
 
-    return (
-        Verdict(
-            looked=True,
-            # Fails closed, like the other reviewer: a station that did not
-            # answer has not approved anything.
-            approved=bool(found.get("approved")) if "approved" in found else False,
-            reason=found.get("reason") or "the critic did not return a verdict",
-            noticed=found.get("noticed") or [],
-        ),
-        dollars,
-    )
+    # One repair, and only for an answer that was written and cannot be
+    # read. The pictures are already on disk and are not taken again: what
+    # is paid for twice is the judgement, which is the cheap half, and
+    # only when the first one came back unreadable.
+    spent = 0.0
+    for attempt in (1, 2):
+        try:
+            found, dollars, _turns = ClaudeCodeEngine(
+                model=model, max_turns=8
+            ).structured(
+                scratch,
+                SYSTEM,
+                asked if attempt == 1 else asked + REPAIR,
+                _shape(),
+                on_event=on_event,
+                # It needs to open the images and nothing else.
+                tools="Read",
+                without="Bash Edit Glob Grep NotebookEdit WebFetch WebSearch Task",
+            )
+        except MalformedAnswer as exc:
+            spent += 0.0
+            if on_event:
+                on_event(
+                    "critic",
+                    f"the verdict could not be read ({exc}); asking once more"
+                    if attempt == 1
+                    else f"the verdict could not be read twice: {exc}",
+                )
+            if attempt == 1:
+                continue
+            return _could_not(f"the critic's answer was not readable: {exc}"), spent
+        except (EngineUnavailable, OSError) as exc:
+            if on_event:
+                on_event("critic", f"the critic could not run: {exc}")
+            return _could_not(f"the critic could not run: {exc}"), spent
+
+        spent += dollars
+        if "approved" not in found:
+            # It answered in the right shape and left out the verdict.
+            # That is not an approval and it is not a refusal either.
+            if attempt == 1:
+                if on_event:
+                    on_event("critic", "no verdict in the answer; asking once more")
+                continue
+            return _could_not("the critic answered without a verdict"), spent
+
+        return (
+            Verdict(
+                looked=True,
+                approved=bool(found.get("approved")),
+                reason=found.get("reason") or "the critic gave no reason",
+                noticed=found.get("noticed") or [],
+            ),
+            spent,
+        )
+
+    return _could_not("the critic did not produce a verdict"), spent
 
 
 # The second question this module answers, and a different one. `look`

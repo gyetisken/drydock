@@ -1545,6 +1545,17 @@ class Session:
         if seen is None:
             return
         self.run.dollars += spend
+        # Nothing is reverted on the strength of this one - the work has
+        # already been verified piece by piece - so a check that could not
+        # finish is said rather than hidden, under its own station.
+        if not seen.verified:
+            self.feed.emit(
+                "looked",
+                approved=False,
+                reason=f"not verified: {seen.failed}",
+                noticed=[],
+            )
+            return
         self.feed.emit(
             "looked",
             approved=seen.approved,
