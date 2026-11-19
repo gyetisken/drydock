@@ -608,11 +608,15 @@ class Session:
                 note="nothing here is looked at by anybody",
             )
 
+        # Asked for once and used twice: to tell the worker whether to
+        # direct a look, and to decide afterwards whether what came back
+        # in that field is one.
+        wanted_a_look = looked_at and not remembered
         started, usage = begin(
             self.repo,
             self.task,
             empty=empty,
-            looked_at=looked_at and not remembered,
+            looked_at=wanted_a_look,
             known=self._what_is_already_known(commit),
             skills=self.skills,
             on_event=report,
@@ -632,11 +636,26 @@ class Session:
         self._lit = set()
 
         self.run.inventory = started.inventory(chain)
-        self.run.direction = started.direction or remembered
-        if started.direction:
-            self.memory.direct(started.direction)
+
+        # Only when a look was asked for. `direction` is a required field,
+        # so a worker told not to direct one still has to put something in
+        # it - and what it puts there is a paragraph explaining why it is
+        # not directing. That paragraph was being used as the direction
+        # for the whole run and then written over the real one in memory.
+        #
+        # Watched happen: a restaurant had seven and a half thousand
+        # characters of art direction from its first job - who walks in,
+        # the plaster walls, the linen, the 5:30 seating that is the
+        # market in that town - and its second job replaced all of it with
+        # "No look is being directed", permanently. The pages built after
+        # that are correct, tested, and visually dead, because nothing
+        # told the engineers what the thing was supposed to look like.
+        directed = started.direction if wanted_a_look else ""
+        self.run.direction = directed or remembered
+        if directed:
+            self.memory.direct(directed)
             self.memory.save()
-            self.feed.emit("look", idea=started.direction[:400])
+            self.feed.emit("look", idea=directed[:400])
         self.run.plan = started.plan
         self.run.save()
 
