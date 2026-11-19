@@ -753,6 +753,8 @@ class Session:
                 state="done",
                 note="this was asked before and nothing has changed since",
             )
+            self.run.answer = already
+            self.run.save()
             self.feed.emit("answer", text=already, remembered=True)
             self.feed.close()
             return
@@ -767,6 +769,8 @@ class Session:
             commit=commit,
         )
         self._spent(usage, "Analyst")
+        self.run.answer = said
+        self.run.save()
         self.memory.answered(self.task, said, commit)
         self.memory.save()
         self.feed.emit("agent.state", agent="Analyst", state="done", note="answered")

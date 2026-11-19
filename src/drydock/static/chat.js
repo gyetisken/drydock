@@ -13,17 +13,23 @@ const MK = { done: "✓", reverted: "✗", blocked: "✗", working: "▸", waiti
 
 /* ---------- thread ---------- */
 
-function say(who, html, cls = "") {
+// `before` puts the message above an existing one rather than at the end.
+// Only the history uses it, to load older jobs in above the newer ones.
+function say(who, html, cls = "", before = null) {
   const el = document.createElement("div");
   el.className = `msg ${cls}`;
   el.innerHTML = (who ? `<div class="from">${esc(who)}</div>` : "") + html;
+  if (before) {
+    before.parentNode.insertBefore(el, before);
+    return el;
+  }
   $("thread-inner").appendChild(el);
   $("thread").scrollTop = $("thread").scrollHeight;
   return el;
 }
 
-function youSaid(text) {
-  say("", `<div class="bubble">${esc(text)}</div>`, "you");
+function youSaid(text, before = null) {
+  say("", `<div class="bubble">${esc(text)}</div>`, "you", before);
 }
 
 /* ---------- live run ---------- */
@@ -1241,30 +1247,66 @@ function openProject(path) {
     you approve the plan.</p>
   </div>`, "intro");
 
-  if (!p.runs.length) return;
-  const rows = p.runs.map(r => `
-    <div class="past ${r.unfinished ? "unfinished" : ""}" data-run="${esc(r.id)}">
-      <div class="when">${esc(r.started)}</div>
-      <div class="what">${esc(r.task.split("\n")[0])}</div>
-      <div class="outcome">${r.items
-        ? `${r.done} of ${r.items} items${r.unfinished ? " · stopped partway" : ""}`
-        : "nothing was planned"}</div>
-      ${r.unfinished ? `<button class="btn small" data-carry="${esc(r.id)}">Carry on</button>` : ""}
-    </div>`).join("");
-  const msg = say("", `<div class="body"><div class="card">
-    <h4>Earlier in this project</h4>${rows}</div></div>`, "dim");
-  msg.querySelectorAll(".past").forEach(row => {
-    row.onclick = (ev) => {
-      if (ev.target.dataset.carry) return;
-      replay(row.dataset.run);
+  // What happened here before, as the conversation it was rather than a
+  // list of records to click. Opening a project should look like coming
+  // back to a chat: what you said, what came back, oldest first, and the
+  // box at the bottom carries on from there.
+  //
+  // The history list already carries everything these lines need, so this
+  // costs no requests. Opening a job in full is one request, made when
+  // somebody asks for it.
+  earlierHere(p.runs, 4);
+  $("thread").scrollTop = $("thread").scrollHeight;
+}
+
+// How many jobs are shown without being asked for. Four is about a
+// screenful; the rest are one line away.
+function earlierHere(runs, howMany) {
+  if (!runs || !runs.length) return;
+  const order = runs.slice().reverse();          // oldest first, like a chat
+  const hidden = Math.max(0, order.length - howMany);
+
+  if (hidden) {
+    const more = say("", `<div class="body"><button class="linky" id="more-past">
+      ${hidden} earlier job${hidden === 1 ? "" : "s"}</button></div>`, "dim");
+    more.querySelector("#more-past").onclick = () => {
+      // Built where the button is and put in its place, so the older jobs
+      // land above the newer ones and the page does not jump.
+      const keep = $("thread").scrollTop;
+      order.slice(0, hidden).forEach(r => pastJob(r, more));
+      more.remove();
+      $("thread").scrollTop = keep;
     };
-  });
-  msg.querySelectorAll("[data-carry]").forEach(b => {
-    b.onclick = (ev) => { ev.stopPropagation(); carryOn(b.dataset.carry); };
-  });
-  // Opening a project should start at the top of it, not at the bottom of
-  // its history. say() scrolls down because a live run belongs at the end.
-  $("thread").scrollTop = 0;
+  }
+
+  order.slice(hidden).forEach(r => pastJob(r));
+}
+
+// One job, said the way it was asked and answered. `before` puts it above
+// an existing element instead of at the end, which is what loading older
+// jobs needs.
+function pastJob(r, before) {
+  youSaid(r.task, before);
+  // A question is answered; a change lands items. Saying "nothing was
+  // planned" about somebody saying hello is true and is not the answer.
+  const outcome = r.answer
+    ? esc(r.answer)
+    : r.items
+    ? `<b>${r.done} of ${r.items} items landed.</b>${
+        r.unfinished ? " It stopped partway." : ""}`
+    : "Nothing was planned.";
+  const msg = say("crew", `<div class="body">
+    <p>${outcome} <span class="why">${esc(r.started)}</span></p>
+    <p class="hint">
+      ${r.answer ? "" : `<button class="linky" data-open="${esc(r.id)}">open this job</button>`}
+      ${r.unfinished
+        ? ` · <button class="linky" data-carry="${esc(r.id)}">carry on from here</button>`
+        : ""}
+    </p></div>`, "dim", before);
+  const open = msg.querySelector("[data-open]");
+  if (open) open.onclick = () => replay(r.id);
+  const carry = msg.querySelector("[data-carry]");
+  if (carry) carry.onclick = () => carryOn(r.id);
 }
 
 // Reading back a finished job. Built from the run on disk rather than from

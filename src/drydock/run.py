@@ -37,6 +37,11 @@ class Run(BaseModel):
     plan: Plan | None = None
     results: list[ItemResult] = Field(default_factory=list)
     integration_error: str = ""
+    # What was said back, when the job was a question rather than a change.
+    # Kept on the record because the history is read as a conversation now,
+    # and a conversation that shows what was asked and not what was said is
+    # half of one. It went to the feed and to memory and nowhere durable.
+    answer: str = ""
     # Why each unfinished item was refused last time it was tried. Kept
     # because a resumed run used to throw this away: the results for items
     # that did not land are dropped so they can be attempted again, and the

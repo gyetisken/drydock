@@ -497,6 +497,7 @@ def state() -> dict:
                         "done": sum(1 for x in r.results if x.outcome.value == "done"),
                         "cost": round(r.cost, 2),
                         "started": r.started[:16].replace("T", " "),
+                        "answer": r.answer,
                         "unfinished": bool(
                             r.plan
                             and len(r.results) < len(r.plan.items)
@@ -508,7 +509,7 @@ def state() -> dict:
                     # A run that never reached a plan and never spent anything
                     # did not happen. Keeping those turns the project's own
                     # history into the noise the global list used to be.
-                    and (r.plan or r.cost or r.results)
+                    and (r.plan or r.cost or r.results or r.answer)
                 ],
                 "toolchain": p.toolchain(),
                 "last_used": p.last_used,
