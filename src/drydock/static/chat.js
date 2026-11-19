@@ -137,6 +137,57 @@ function renderStats() {
 // Each landed item offers its own diff, read back out of git on demand. It
 // is not kept with the run: the commit is the record, and a second copy is a
 // copy that can disagree with it.
+// What each item left behind, from the run record. Nothing here is
+// inferred: a field that was not written down is shown as not recorded,
+// because a check nobody ran is not a check that passed.
+function whatLanded(e) {
+  const items = e.landed || [];
+  if (!items.length) return "";
+  return `<div class="landed">${items.map(it => `
+    <div class="landed-item">
+      <div class="landed-head">
+        <span class="landed-plain">${esc(it.plain)}</span>
+        ${it.commit
+          ? `<code class="landed-commit">${esc(it.commit)}</code>`
+          : `<span class="landed-commit flat">commit not recorded</span>`}
+      </div>
+      <div class="landed-facts">
+        ${(it.checks || []).length
+          ? it.checks.map(c =>
+              `<span class="fact ${c.passed ? "ok" : "bad"}">
+                 ${esc(c.name)}${c.command ? ` · <code>${esc(c.command)}</code>` : ""}
+                 ${c.passed ? "passed" : "failed"}
+               </span>`).join("")
+          : `<span class="fact flat">no checks recorded</span>`}
+        ${it.attempts > 1
+          ? `<span class="fact flat">${it.attempts} attempts</span>` : ""}
+        ${it.verified === false
+          ? `<span class="fact flat">not verified on the branch</span>` : ""}
+      </div>
+      ${(it.files || []).length
+        ? `<div class="landed-files">${
+             it.files.map(f => `<code>${esc(f)}</code>`).join(" ")
+           }</div>`
+        : `<div class="landed-files flat">files not recorded</div>`}
+    </div>`).join("")}</div>`;
+}
+
+// What was planned and is not here. Named, with the reason that was
+// recorded - a run that quietly omits them reads as a run that did
+// everything.
+function whatDidNot(e) {
+  const items = e.missed || [];
+  if (!items.length) return "";
+  return `<div class="missed">
+    <p class="why"><b>Not in the branch:</b></p>
+    ${items.map(it => `<div class="missed-item">
+      <span class="missed-plain">${esc(it.plain)}</span>
+      <span class="fact flat">${esc(it.outcome)}</span>
+      ${it.note ? `<div class="why">${esc(it.note)}</div>` : ""}
+    </div>`).join("")}
+  </div>`;
+}
+
 async function offerPullRequest(msg, runId) {
   const row = msg.querySelector("#pr-row");
   if (!row) return;
@@ -537,7 +588,7 @@ const on = {
       e.read_only ? "drydock finished reading" : `${e.done} of ${e.total} items landed`,
       e.read_only ? "Nothing was changed." :
         `${S.projects.find(p => p.path === S.project)?.name || "The project"} · ` +
-        `$${(e.cost || 0).toFixed(2)} of work`);
+        `$${(e.cost || 0).toFixed(2)} ${e.cost_is_enforced ? "of a capped budget" : "observed"}`);
     drawOffice();
     if (e.read_only) {
       const kept = e.remembered
@@ -564,8 +615,12 @@ const on = {
     const msg = say("crew", `<div class="body">
       <p><b>${e.done} of ${e.total} items landed.</b> ${suite}</p>
       <p class="why">Each one is its own commit on
-      <code>drydock/${esc((S.key || "").replace(/-resumed$/, ""))}</code>, and nothing
+      <code>${esc(e.branch || "the run's branch")}</code>, and nothing
       touched your main branch. ${kept}</p>
+      ${whatLanded(e)}
+      ${whatDidNot(e)}
+      ${e.integration_error
+        ? `<p class="why bad">${esc(e.integration_error)}</p>` : ""}
       <div class="pr" id="pr-row" style="display:none"></div>
       ${e.url ? `<div class="live-link">
         <span class="dot ok"></span>

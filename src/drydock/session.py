@@ -903,10 +903,10 @@ class Session:
             "run.summary",
             done=0,
             total=0,
-            cost=round(self.run.cost, 2),
             engine=self.engine,
             remembered=len(self.memory.notes),
             read_only=True,
+            **self.run.what_happened(),
         )
         self.feed.close()
 
@@ -927,9 +927,9 @@ class Session:
                 "run.summary",
                 done=sum(1 for r in self.run.results if r.outcome.value == "done"),
                 total=len(self.run.plan.items) if self.run.plan else 0,
-                cost=round(self.run.cost, 2),
                 engine=self.engine,
                 remembered=len(self.memory.notes),
+                **self.run.what_happened(),
             )
             self.feed.close()
 
@@ -1014,10 +1014,14 @@ class Session:
             "run.summary",
             done=landed,
             total=len(self.run.plan.items),
-            cost=round(self.run.cost, 2),
             engine=self.engine,
             remembered=len(self.memory.notes),
             url=link,
+            # The record, so the window does not have to infer any of it.
+            # The branch name in particular was being rebuilt in the
+            # browser out of the session key, with the `-resumed` suffix
+            # trimmed by hand - a guess at something that is written down.
+            **self.run.what_happened(),
         )
         self._say_where_the_time_went()
         self._publish(landed, link)
