@@ -165,7 +165,21 @@ class TestWhatItIsAndIsNotAllowedToDo:
 
         source = inspect.getsource(start.begin)
         assert 'tools="Read Glob Grep Bash"' in source
-        assert "Edit Write NotebookEdit" in source
+        assert "Edit NotebookEdit" in source
+
+    def test_write_is_not_refused_outright(self):
+        """The engine delivers a structured answer by appending
+        `Write(.drydock-out.json)` to what is allowed. Refusing `Write`
+        leaves a worker that can read and run things and has nowhere to
+        put what it found - it span for three minutes before anyone
+        noticed. Every other station refuses `Edit` and leaves this alone."""
+        import inspect
+
+        refused = (
+            inspect.getsource(start.begin).split('without="')[1].split('"')[0].split()
+        )
+        assert "Write" not in refused
+        assert "Edit" in refused
 
     def test_the_gates_are_not_folded_in(self):
         """The whole point of what is kept. Four stations merge; the four

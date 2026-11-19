@@ -291,9 +291,16 @@ def begin(
             '"verify_with": "tests", "needs": [], "worth_looking_at": false, '
             '"removes_tests": false}]}',
             on_event=on_event,
-            # It reads and it announces its phases. It does not write.
+            # It reads and it announces its phases. `Write` is not in the
+            # refused list, and must not be: the engine delivers a
+            # structured answer by appending `Write(.drydock-out.json)` to
+            # what is allowed, so refusing Write outright leaves a worker
+            # that can read and run things and cannot say what it found.
+            # Watched happen - it span for three minutes with nowhere to
+            # put its answer. Every other station here refuses `Edit` and
+            # leaves `Write` alone for the same reason.
             tools="Read Glob Grep Bash",
-            without="Edit Write NotebookEdit WebFetch WebSearch Task",
+            without="Edit NotebookEdit WebFetch WebSearch Task",
         )
         return _said(found), _Spend(dollars, turns)
 
