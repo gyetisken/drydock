@@ -143,6 +143,12 @@ class Run(BaseModel):
                             for check in result.checks
                         ],
                         "note": result.note,
+                        # Kept, and said against it. An item that was
+                        # allowed to stay with something true written
+                        # against it is not the same as a clean one, and
+                        # a summary that cannot tell them apart is the
+                        # thing this whole record exists to avoid.
+                        "outstanding": result.outstanding,
                     }
                 )
             else:

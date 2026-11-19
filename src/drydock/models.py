@@ -149,3 +149,10 @@ class ItemResult(BaseModel):
     commit: str | None = None
     verified_commit: str | None = None
     tests_run: int = 0
+    # Something true that was said against this item and did not stop it.
+    # The critic's last word, when it was the only thing wrong: an item
+    # that builds, holds its test count, comes through the inspector
+    # clean and does what the item said is kept even if it looks wrong,
+    # because the weakest of the four claims is not worth six items
+    # nobody attempted - and it is written down, because it is still true.
+    outstanding: str = ""

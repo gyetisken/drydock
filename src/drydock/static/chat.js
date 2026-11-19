@@ -171,6 +171,10 @@ function whatLanded(e) {
         ${it.verified === false
           ? `<span class="fact flat">not verified on the branch</span>` : ""}
       </div>
+      ${it.outstanding ? `<div class="landed-facts">
+          <span class="fact bad">kept, with this against it</span>
+          <span class="why">${esc(it.outstanding)}</span>
+        </div>` : ""}
       ${(it.files || []).length
         ? `<div class="landed-files">${
              it.files.map(f => `<code>${esc(f)}</code>`).join(" ")

@@ -79,7 +79,10 @@ class Fake:
         monkeypatch.setattr(orchestrate, "detect", lambda path: _Chain())
         monkeypatch.setattr(orchestrate, "verify", lambda *a, **k: _Passed())
         monkeypatch.setattr(orchestrate, "look", lambda *a, **k: _Clean())
-        monkeypatch.setattr(orchestrate, "_judge", lambda *a, **k: "")
+        # Nothing refused it, and nobody refused it: `_judge` reports both
+        # now, because a refusal from the critic alone on the last attempt
+        # is not worth the same as one from the inspector.
+        monkeypatch.setattr(orchestrate, "_judge", lambda *a, **k: ("", []))
 
     def _work(self, repo, task, item, build, failure="", *a, **k):
         self.briefed.append(failure)

@@ -185,8 +185,8 @@ def _judge(
     model: str,
     on_event,
     on_gate,
-) -> str:
-    """Run the two opinions at once and return the first refusal, if any.
+) -> tuple[str, list[str]]:
+    """Run the two opinions at once and report any refusal, and whose.
 
     They are independent: one reads the change, the other looks at the page.
     Sequencing them was pure waiting. Both still report, and a refusal from
@@ -224,6 +224,11 @@ def _judge(
             jobs["critic"] = pool.submit(_show_it, repo_path, run, item, on_event)
 
     refusals = []
+    # Which gates refused, not only what they said. The two are not worth
+    # the same: one read the diff against the item, the other looked at a
+    # picture - and only one of them can be the sole reason an item that
+    # builds, tests, and reviews clean is thrown away.
+    refused_by = []
     for name, job in jobs.items():
         try:
             answer, spend = job.result()
@@ -238,6 +243,7 @@ def _judge(
                 on_gate(item, name, answer["approved"], answer["reason"])
             if not answer["approved"]:
                 refusals.append(answer["reason"])
+                refused_by.append(name)
         elif answer is not None:
             run.dollars += spend
             if on_gate:
@@ -251,8 +257,9 @@ def _judge(
                 )
             if not answer.approved:
                 refusals.append(answer.reason)
+                refused_by.append(name)
 
-    return _with_the_usual_cause("\n\n".join(refusals))
+    return _with_the_usual_cause("\n\n".join(refusals)), refused_by
 
 
 # Complaints that have cost this crew more than one attempt because the
@@ -496,8 +503,9 @@ def _one_item(
                 on_gate(item, "inspector", report_card.clean, report_card.reason)
             if not report_card.clean:
                 refusal = report_card.reason
+                refused_by = ["inspector"]
             else:
-                refusal = _judge(
+                refusal, refused_by = _judge(
                     here,
                     where,
                     run,
@@ -509,6 +517,40 @@ def _one_item(
                     model,
                     on_event,
                     on_gate,
+                )
+
+        # The one place a judgement may be overruled by arithmetic.
+        #
+        # An item that builds, holds its test count, comes through the
+        # inspector clean and does what the item said - and is refused on
+        # the last attempt only by somebody looking at a picture - used to
+        # be thrown away, and everything waiting on it with it. One run
+        # ended at five of twelve that way: a missing footer took six
+        # items nobody ever attempted.
+        #
+        # The gates are not worth the same and this program says so
+        # everywhere else: measured, then checked, then seen. So on the
+        # last attempt the weakest claim stops being a veto and becomes
+        # what it always was - something true that somebody should know.
+        # It is kept with the item, reported, and reaches `/qa` as well.
+        #
+        # Only the critic, only alone, and only on the last attempt. The
+        # verifier and the inspector are arithmetic and keep their veto
+        # outright; the reviewer read the item against the diff, which is
+        # a stronger claim than a picture.
+        outstanding = ""
+        if (
+            refusal
+            and verdict.passed
+            and refused_by == ["critic"]
+            and attempt >= policy.attempts
+        ):
+            outstanding, refusal = refusal, ""
+            if on_event:
+                on_event(
+                    "critic",
+                    "kept, with what I said against it: this was the last "
+                    "attempt and nothing but the look was wrong",
                 )
 
         if verdict.passed and not refusal:
@@ -523,7 +565,15 @@ def _one_item(
                 attempts=attempt,
                 files_changed=report.get("files_changed", []),
                 checks=[verdict.check],
-                note=verdict.reason if commit else "the worker made no changes",
+                note=(
+                    f"{verdict.reason}\n\nKept with this against it, from the "
+                    f"last look: {outstanding}"
+                    if commit and outstanding
+                    else verdict.reason
+                    if commit
+                    else "the worker made no changes"
+                ),
+                outstanding=outstanding,
                 commit=commit,
             ), commit
 
