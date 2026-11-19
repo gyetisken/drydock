@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <title>drydock</title>
+  <!-- The same mark, with its colours written down. A tab strip can be
+       light or dark and the page cannot tell it which, so `currentColor`
+       here would be black on black half the time. The ground is carried
+       with it instead. -->
+  <rect width="64" height="64" rx="14" fill="#162742"/>
+  <g fill="#ffffff" transform="translate(32 33) scale(.78) translate(-32 -32)">
+    <path fill-rule="evenodd"
+          d="M32 5 57 20.5 32 36 7 20.5Z
+             M22.8 20.8l2-2.1 5.2 4.8 10.3-9.6 2 2.2-12.3 11.4Z"/>
+    <path d="M7 25.5 32 41 57 25.5 57 31.5 32 47 7 31.5Z"/>
+    <path d="M7 36.5 32 52 57 36.5 57 42.5 32 58 7 42.5Z"/>
+  </g>
+</svg>

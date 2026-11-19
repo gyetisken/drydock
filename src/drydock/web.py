@@ -52,19 +52,23 @@ workspace = Workspace().load()
 
 PAGE = """<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>drydock</title><link rel="stylesheet" href="/static/app.css"></head>
+<title>drydock</title>
+<link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/static/app.css"></head>
 <body><div class="app">
 
   <aside>
     <div class="brand">
       <svg class="mark" viewBox="0 0 64 64" aria-hidden="true">
         <rect width="64" height="64" rx="15" fill="var(--markbg)"/>
-        <path d="M15 21 H49 L42 41 H22 Z" fill="none" stroke="var(--accent)"
-          stroke-width="4.2" stroke-linejoin="round"/>
-        <path d="M23 30 l 6.5 7.5 L 46 17" fill="none" stroke="var(--markink)"
-          stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
-        <path d="M26 47 h12" stroke="var(--accent)" stroke-width="3.4"
-          stroke-linecap="round" opacity=".55"/>
+        <g fill="var(--markink)"
+           transform="translate(32 33) scale(.78) translate(-32 -32)">
+          <path fill-rule="evenodd"
+                d="M32 5 57 20.5 32 36 7 20.5Z
+                   M22.8 20.8l2-2.1 5.2 4.8 10.3-9.6 2 2.2-12.3 11.4Z"/>
+          <path d="M7 25.5 32 41 57 25.5 57 31.5 32 47 7 31.5Z"/>
+          <path d="M7 36.5 32 52 57 36.5 57 42.5 32 58 7 42.5Z"/>
+        </g>
       </svg>
       <span class="wordmark"><b>drydock</b><i>starts new projects and changes existing ones</i></span>
     </div>

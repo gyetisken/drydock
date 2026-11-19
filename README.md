@@ -1,4 +1,5 @@
-# drydock
+<p align="center"><img src="brand/wordmark.png" alt="Drydock" width="420"></p>
+
 
 A crew of agents changes a codebase, and proves the result still works.
 
