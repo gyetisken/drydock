@@ -198,3 +198,57 @@ class TestWhatASecondWorkingCopyIsLent:
         repo.drop_worktree(where)
 
         assert (repo.path / "node_modules" / "vitest").is_dir()
+
+
+def test_our_own_pictures_are_in_neither_diff(tmp_path):
+    """The pictures are written into the tree being worked on so the
+    engineer can open them, and they were turning up in the text the gates
+    judge the item on as "Binary files /dev/null and b/.drydock-look/
+    desktop.png differ". Noise in the one place it matters, and more of it
+    the more anybody looks."""
+    repo = make(tmp_path)
+    (tmp_path / "page.html").write_text("<h1>hello</h1>\n")
+    look = tmp_path / Repo.OUR_LOOK
+    look.mkdir()
+    # Big enough that git calls it binary rather than diffing it as text.
+    (look / "desktop.png").write_bytes(b"\x89PNG\r\n\x1a\n" + bytes(range(256)) * 40)
+    (look / "phone.png").write_bytes(b"\x89PNG\r\n\x1a\n" + bytes(range(256)) * 40)
+
+    for diff in (repo.pending(), repo.pending_for_review()):
+        assert "page.html" in diff
+        assert Repo.OUR_LOOK not in diff
+        assert "desktop.png" not in diff
+
+
+def test_the_review_of_a_dirty_tree_leaves_them_out_too(tmp_path):
+    """`/review` reads the same tree while somebody is still looking at
+    it."""
+    repo = make(tmp_path)
+    (tmp_path / "page.html").write_text("<h1>hello</h1>\n")
+    look = tmp_path / Repo.OUR_LOOK
+    look.mkdir()
+    (look / "desktop.png").write_bytes(b"\x89PNG\r\n\x1a\n" + bytes(range(256)) * 40)
+
+    diff, _about = repo.what_changed()
+    assert "page.html" in diff
+    assert "desktop.png" not in diff
+
+
+def test_marking_untracked_files_is_still_undone(tmp_path):
+    """`what_changed` marks untracked paths to read them and has to put
+    them back. The pictures are untracked too."""
+    repo = make(tmp_path)
+    (tmp_path / "page.html").write_text("<h1>hello</h1>\n")
+    (tmp_path / Repo.OUR_LOOK).mkdir()
+    (tmp_path / Repo.OUR_LOOK / "desktop.png").write_bytes(b"\x89PNG\r\n\x1a\n" * 200)
+
+    repo.what_changed()
+
+    staged = subprocess.run(
+        ["git", "diff", "--cached", "--name-only"],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout
+    assert staged.strip() == ""

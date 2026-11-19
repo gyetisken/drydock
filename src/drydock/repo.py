@@ -294,7 +294,9 @@ class Repo:
     def pending_for_review(self) -> str:
         """The uncommitted change, without the parts nobody wrote by hand."""
         self._git("add -A -N")
-        excludes = " ".join(f"':(exclude){name}'" for name in self.GENERATED)
+        excludes = " ".join(
+            f"':(exclude){name}'" for name in (*self.GENERATED, self.OUR_LOOK)
+        )
         return self._git(f"diff --no-color HEAD -- . {excludes}")[1]
 
     def pending(self) -> str:
@@ -304,9 +306,15 @@ class Repo:
         committed, because the decision they are part of is whether it should
         be committed at all. `--no-color` and a fixed context keep the text
         stable enough to be quoted back in a verdict.
+
+        Our own pictures are not part of it. They are written into the tree
+        being worked on so the engineer can open them, and they were
+        arriving in the diff the gates read as lines saying "Binary files
+        /dev/null and b/.drydock-look/desktop.png differ" - noise in the one
+        text an item is judged on, and more of it the more anybody looks.
         """
         self._git("add -A -N")
-        return self._git("diff --no-color HEAD")[1]
+        return self._git(f"diff --no-color HEAD -- . ':(exclude){self.OUR_LOOK}'")[1]
 
     def show(self, commit: str) -> str:
         """What one commit changed, as a diff.
@@ -377,7 +385,9 @@ class Repo:
         if untracked:
             self._git("add -N -- " + " ".join(_quote(p) for p in untracked))
         try:
-            excludes = " ".join(f"':(exclude){name}'" for name in self.GENERATED)
+            excludes = " ".join(
+                f"':(exclude){name}'" for name in (*self.GENERATED, self.OUR_LOOK)
+            )
             return self._asked(f"diff --no-color HEAD -- . {excludes}")
         finally:
             if untracked:

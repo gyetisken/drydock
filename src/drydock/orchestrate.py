@@ -10,6 +10,7 @@ a failing test does not converge on a fix; it converges on whatever makes the
 test stop complaining, and the second attempt is where that starts.
 """
 
+import contextlib
 import os
 import re
 import tempfile
@@ -56,6 +57,20 @@ def _changes_the_view(diff: str) -> bool:
     return any(
         SEEN.search(path) for path in re.findall(r"^\+\+\+ b/(.+)$", diff, re.MULTILINE)
     )
+
+
+def _no_longer_serving(where: Path) -> None:
+    """Stop whatever preview was started for this tree, if any.
+
+    Never raises. A server that will not die is not a reason to leave a
+    worktree behind, and the worktree is the thing that has to go.
+    """
+    from . import preview
+
+    # OSError covers a process that has already gone and a roster file
+    # that cannot be read; the rest of `stop` suppresses its own.
+    with contextlib.suppress(OSError):
+        preview.stop(where)
 
 
 def _show_it(repo_path: Path, run, item, on_event):
@@ -738,6 +753,13 @@ def _work_a_wave(
         return out
     finally:
         for where in trees.values():
+            # The server first, then the directory it was serving. A
+            # preview started in a worktree outlived it: the tree was
+            # removed and the dev server carried on, holding a deleted
+            # directory, still on its port, still written down in the
+            # roster - so the next look at that project found a preview
+            # that answers and serves whatever it last built.
+            _no_longer_serving(where)
             repo.drop_worktree(where)
 
 
