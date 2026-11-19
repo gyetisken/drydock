@@ -611,6 +611,12 @@ class StartJob(BaseModel):
     # How much ceremony this job gets: fast, balanced or deep. Empty means
     # whatever this person has set, which starts as balanced.
     profile: str = ""
+    # How long this run may take, in minutes. Zero, the default, is no
+    # deadline. When it is set the run ends at that point whatever it is
+    # doing: the workers are stopped and nothing else is started, rather
+    # than the request being noted and acted on whenever the current item
+    # happens to finish.
+    minutes: float = 0.0
 
 
 class Reading(BaseModel):
@@ -690,6 +696,7 @@ def start(body: StartJob) -> JSONResponse:
         command.stop_after,
         standing,
         body.profile,
+        body.minutes,
     )
     key = next(k for k, v in workspace.sessions.items() if v is session)
     return JSONResponse({"ok": True, "key": key})
@@ -927,7 +934,7 @@ def item_diff(run_id: str, item_id: int) -> dict:
 
 
 @app.post("/api/resume/{run_id}")
-def resume(run_id: str) -> JSONResponse:
+def resume(run_id: str, minutes: float = 0.0) -> JSONResponse:
     """Carry on a plan that was interrupted."""
     try:
         run = Run.load(run_id)
@@ -969,7 +976,9 @@ def resume(run_id: str) -> JSONResponse:
         )
 
     try:
-        session = Session.resume(run, engine=run.engine, model=run.model)
+        session = Session.resume(
+            run, engine=run.engine, model=run.model, within_minutes=minutes
+        )
     except GitError as exc:
         return JSONResponse({"ok": False, "reason": str(exc)}, status_code=409)
     workspace.sessions[key] = session

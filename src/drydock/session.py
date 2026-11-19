@@ -84,6 +84,9 @@ class Session:
         # the only thing that makes the raise arguable.
         floor: str = "",
         policy: Policy | None = None,
+        # How long this run is allowed, in minutes. Zero is no deadline,
+        # which is the default and what every run had until now.
+        within_minutes: float = 0.0,
     ) -> None:
         self.feed = Feed()
         self.feed.also(self._write_log)
@@ -109,6 +112,7 @@ class Session:
         # Set by `ends_in`, cancelled when the run finishes. None when
         # nobody gave this run a deadline, which is the default.
         self._clock: threading.Timer | None = None
+        self.within_minutes = max(0.0, float(within_minutes or 0.0))
         self.memory = Memory.about(repo)
         # Some knowledge belongs to the kind of thing being built rather than
         # to the command somebody typed. Nobody types /new and then remembers
@@ -120,6 +124,10 @@ class Session:
         self._thread: threading.Thread | None = None
 
     def start(self, auto_run: bool = False) -> None:
+        # The clock before the thread. Everything that can start a worker
+        # happens inside `_work`, so arming it here is the only ordering
+        # where a deadline cannot be beaten by the first station.
+        self.ends_in(self.within_minutes)
         self._thread = threading.Thread(
             target=self._work, args=(auto_run,), daemon=True
         )
@@ -1663,7 +1671,13 @@ class Session:
             self._clock = None
 
     @classmethod
-    def resume(cls, run: Run, engine: str = "claude", model: str = "opus") -> "Session":
+    def resume(
+        cls,
+        run: Run,
+        engine: str = "claude",
+        model: str = "opus",
+        within_minutes: float = 0.0,
+    ) -> "Session":
         """Pick a saved run back up where it stopped.
 
         A job takes twenty minutes and the thread it runs on does not survive
@@ -1712,6 +1726,11 @@ class Session:
             budget=run.budget,
             engine=engine or run.engine,
             model=model or run.model,
+            # A resumed run gets its own deadline rather than the one the
+            # interrupted run was given: the time it already spent is gone
+            # and cannot be refunded, and carrying the old number forward
+            # would stop it at the same place every time it was resumed.
+            within_minutes=within_minutes,
         )
         session.run = run
 

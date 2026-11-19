@@ -214,6 +214,7 @@ class Workspace:
         stop_after: str = "planner",
         standing: str = "",
         profile: str = "",
+        within_minutes: float = 0.0,
     ) -> Session:
         # What was asked for, or what this person has set, or the default.
         from .policy import at_least, floor_for, of
@@ -238,6 +239,7 @@ class Workspace:
                 floor_for(task).floor,
             ),
             floor=floor_for(task).why,
+            within_minutes=within_minutes,
         )
         session.start(auto_run=False)
         # The session has an id only once its run exists, so it is keyed by the

@@ -7,12 +7,14 @@ drydock show
 
 import argparse
 import textwrap
+import threading
 from pathlib import Path
 
 from dotenv import load_dotenv
 
 from .analyst import baseline, survey
 from .detect import detect
+from .engines import stop_workers
 from .orchestrate import execute
 from .planner import plan
 from .run import Run, event_printer
@@ -159,9 +161,34 @@ def _cmd_run(args) -> int:
         else:
             print(f"    -> {MARK.get(phase, phase)}")
 
-    run = execute(
-        run, stop_after=args.items, on_event=event_printer("      "), on_item=on_item
-    )
+    # A deadline, when one was asked for. The same two halves the
+    # application uses: the workers of this run are ended, and the flag
+    # stops anything else being started - a retry, a restart of a worker
+    # that was just terminated, a split, the next wave.
+    out_of_time = {"yes": False}
+    clock = None
+    if getattr(args, "minutes", 0):
+
+        def times_up() -> None:
+            out_of_time["yes"] = True
+            stopped = stop_workers(Path(run.repo))
+            print(f"\n  the {args.minutes:g} minutes are up; {stopped} worker(s) ended")
+
+        clock = threading.Timer(args.minutes * 60, times_up)
+        clock.daemon = True
+        clock.start()
+
+    try:
+        run = execute(
+            run,
+            stop_after=args.items,
+            on_event=event_printer("      "),
+            on_item=on_item,
+            should_stop=lambda: out_of_time["yes"],
+        )
+    finally:
+        if clock is not None:
+            clock.cancel()
 
     print()
     for result in run.results:
@@ -292,6 +319,12 @@ def main() -> None:
     r = sub.add_parser("run", help="work the plan, one item at a time")
     r.add_argument("--run")
     r.add_argument("--items", type=int, help="stop after this many items")
+    r.add_argument(
+        "--minutes",
+        type=float,
+        default=0.0,
+        help="end the run after this many minutes, whatever it is doing",
+    )
     r.set_defaults(func=_cmd_run)
 
     t = sub.add_parser("app", help="open the application")
