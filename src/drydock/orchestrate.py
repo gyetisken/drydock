@@ -59,6 +59,19 @@ def _changes_the_view(diff: str) -> bool:
     )
 
 
+def _worth_a_look(item) -> bool:
+    """Whether this item renders something anybody will look at.
+
+    The planner's own answer when it gave one. When it did not, the item's
+    files decide: the diff cannot, because this is asked before the work
+    exists. The same regex the gates use afterwards, so an item the
+    engineer was allowed to look at is an item the critic will look at.
+    """
+    if item.worth_looking_at is not None:
+        return bool(item.worth_looking_at)
+    return any(SEEN.search(name) for name in item.files)
+
+
 def _no_longer_serving(where: Path) -> None:
     """Stop whatever preview was started for this tree, if any.
 
@@ -418,6 +431,12 @@ def _one_item(
                 model=model,
                 direction=run.direction,
                 policy=policy,
+                # Only an item that renders something, and bounded per
+                # item rather than per tree: items run one after another
+                # in the same directory, so a tally kept by directory
+                # would let the first item spend the last one's looks.
+                can_look=_worth_a_look(item),
+                look_key=f"{run.id}-item{item.id}",
             )
         except BudgetExceeded as stop:
             here.discard()

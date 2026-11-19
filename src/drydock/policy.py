@@ -75,6 +75,14 @@ class Policy:
     # the two commands are the same thing.
     build_as_well: bool = True
 
+    # How many times the engineer may start the project and look at its own
+    # page while working one item. Bounded because each look is a browser
+    # launch inside the worker's clock - roughly half a minute - and because
+    # a worker that can look without limit will look instead of finishing.
+    # This buys nothing on an item nobody will look at, so it is only ever
+    # offered on one the planner marked as worth looking at.
+    self_looks: int = 3
+
     @property
     def say(self) -> str:
         """One line, for the record and for whoever is watching."""
@@ -88,6 +96,11 @@ class Policy:
             f"{self.attempts} attempts each, "
             f"{'the diff is read' if self.read_the_diff else 'no diff review'}, "
             f"{looks}"
+            + (
+                f", the engineer may look at its own {self.self_looks} times"
+                if self.self_looks
+                else ", the engineer does not look at its own"
+            )
         )
 
 
@@ -105,6 +118,7 @@ PROFILES = {
         attempts=2,
         read_the_diff=False,
         look_at_it=AT_THE_END,
+        self_looks=2,
     ),
     # What this program did before there were profiles. Kept identical on
     # purpose: a default that changes under somebody is not a default.

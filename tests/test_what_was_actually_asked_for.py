@@ -176,7 +176,7 @@ def _prompt_given(monkeypatch, retry_of: str) -> str:
         def __init__(self, **_):
             pass
 
-        def work(self, repo, system, prompt, build_command, on_event=None):
+        def work(self, repo, system, prompt, build_command, on_event=None, **_):
             seen["prompt"] = prompt
             return engineer.EngineResult(
                 done=True, summary="", files_changed=[], noticed=[], turns=1

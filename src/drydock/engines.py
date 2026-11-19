@@ -20,6 +20,7 @@ decides whether the code is allowed to stay.
 
 import json
 import os
+import shlex
 import shutil
 import signal
 import subprocess
@@ -90,7 +91,15 @@ BOOTSTRAP = (
 )
 
 
-def _shell_rule(build_command: str) -> str:
+# The one command that lets a worker see what it just built. Not a shell
+# and not a browser: it starts the project the way the project says it
+# starts, measures the page, writes two pictures into the tree and prints
+# what it found. The path it is given is validated as a path - no scheme,
+# no host, no port - so there is nowhere for it to go but this project.
+LOOK = "drydock-look"
+
+
+def _shell_rule(build_command: str, can_look: bool = False) -> str:
     """Which shell commands the worker may run.
 
     Once a project has a build command the worker is held to it, which is as
@@ -100,8 +109,34 @@ def _shell_rule(build_command: str) -> str:
     """
     tool = build_command.split()[0] if build_command.strip() else ""
     if tool:
-        return f"Bash({tool} *)"
-    return " ".join(f"Bash({name} *)" for name in BOOTSTRAP)
+        allowed = [f"Bash({tool} *)"]
+    else:
+        allowed = [f"Bash({name} *)" for name in BOOTSTRAP]
+    if can_look:
+        # Both forms: it is useful with no argument at all, which is the
+        # home page, and with one path.
+        allowed += [f"Bash({LOOK})", f"Bash({LOOK} *)"]
+    return " ".join(allowed)
+
+
+# A two-line script rather than a console entry point, because drydock is
+# as often a checkout as an installation and `drydock-look` has to work the
+# same either way. Written outside every repository: it is ours, and a tool
+# that appears in somebody's project is a file they have to explain.
+def _put_the_tool_somewhere(env: dict) -> Path:
+    """Write the look command where a worker can run it, and return its dir."""
+    home = Path(os.environ.get("DRYDOCK_HOME") or Path.home() / ".drydock")
+    where = home / "bin"
+    where.mkdir(parents=True, exist_ok=True)
+    tool = where / LOOK
+    # This interpreter, not whatever `python3` resolves to on the worker's
+    # path. PYTHONPATH is already set below for the confinement hook, which
+    # is what makes the import work from a checkout.
+    wanted = f'#!/bin/sh\nexec {shlex.quote(sys.executable)} -m drydock.look "$@"\n'
+    if not tool.exists() or tool.read_text() != wanted:
+        tool.write_text(wanted)
+    tool.chmod(0o755)
+    return where
 
 
 # Every worker currently running, so they can be stopped.
@@ -346,7 +381,7 @@ def _but_not_the_answer(without: str) -> str:
     return " ".join(t for t in without.split() if t != "Write")
 
 
-def _confinement(repo: Path) -> tuple[str, dict]:
+def _confinement(repo: Path, look_key: str = "", looks: int = 0) -> tuple[str, dict]:
     """Settings and environment that keep the worker inside one repository.
 
     Claude Code has a real filesystem and no reason of its own to stay
@@ -383,6 +418,15 @@ def _confinement(repo: Path) -> tuple[str, dict]:
     # even when this is running from a checkout rather than an installation.
     here = str(Path(__file__).resolve().parent.parent)
     env["PYTHONPATH"] = here + os.pathsep + env.get("PYTHONPATH", "")
+    if looks > 0 and look_key:
+        # The budget travels in the environment rather than in the prompt,
+        # because the prompt is something the worker can argue with. The
+        # tally itself is kept under the drydock home, outside what the
+        # worker's file tools may touch, and it is keyed by run and item so
+        # that items sharing a tree cannot spend each other's looks.
+        env["PATH"] = str(_put_the_tool_somewhere(env)) + os.pathsep + env["PATH"]
+        env["DRYDOCK_LOOK_KEY"] = look_key
+        env["DRYDOCK_LOOK_LIMIT"] = str(looks)
     return settings, env
 
 
@@ -415,6 +459,8 @@ class ClaudeCodeEngine:
         prompt: str,
         build_command: str,
         on_event=None,
+        look_key: str = "",
+        looks: int = 0,
     ) -> EngineResult:
         binary = _claude_binary()
         report_file = repo / ".drydock-report.json"
@@ -468,11 +514,12 @@ class ClaudeCodeEngine:
             # Bounded on purpose: it may read, edit and run the project's own
             # build, and nothing else. Without this it has a shell.
             "--allowedTools",
-            "Read Edit Write Glob Grep " + _shell_rule(build_command),
+            "Read Edit Write Glob Grep "
+            + _shell_rule(build_command, can_look=looks > 0 and bool(look_key)),
             "--append-system-prompt",
             system,
         ]
-        settings, env = _confinement(repo)
+        settings, env = _confinement(repo, look_key=look_key, looks=looks)
         command[1:1] = ["--settings", settings]
 
         process = subprocess.Popen(

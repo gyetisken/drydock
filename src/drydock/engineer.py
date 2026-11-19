@@ -14,6 +14,7 @@ from pathlib import Path
 from .agent import API_MODEL, CHEAP_ENGINEER, JUDGEMENT, Agent, Tool, for_work
 from .engines import ClaudeCodeEngine, EngineResult
 from .models import Item
+from .repo import OUR_LOOK
 from .skills import Skill, briefing
 from .tools import write_tools
 
@@ -60,6 +61,41 @@ instead.
 
 Finishing means writing the report. An item that was done perfectly and never
 reported is an item that is thrown away, so leave yourself the turn."""
+
+# Said to the engineer only when it has the tool, so that a worker without
+# it is never told about something it cannot run.
+#
+# The last paragraph is the important one. A worker that has looked at its
+# own page is not a worker that has been checked, and the moment this reads
+# as a check the gates become a formality - which is the opposite of the
+# reason it exists. Looking is how work that nobody has seen stops being
+# handed on; it decides nothing.
+LOOKING = """
+
+Looking at what you have built.
+
+This item renders something a person will look at, and you can look at it
+yourself before you finish. Run:
+
+    drydock-look            the home page
+    drydock-look /menu      another page of the same project
+
+It starts the project the way the project says it starts, measures the
+page, and writes pictures of it at two widths into `{look}/`. Open every
+picture it names with Read. The measurements are facts; the pictures are
+the only way you actually see the thing you wrote.
+
+Then fix what you found and look again. You have {looks} of these for
+this item, so spend the first one once there is something to see rather
+than on an empty page.
+
+If it says NOT LOOKED, nothing was rendered and nothing about the page has
+been established. Say that in your report. Describing a page you have not
+seen, or reporting that you checked it, is worse than not looking.
+
+This is not a check that counts. What you write is still built, its suite
+still run, its diff still read, and the page still measured and looked at
+by somebody who is not you. None of them is told that you looked."""
 
 PROMPT = """Repository: {repo}
 Build: {build_command}
@@ -153,6 +189,8 @@ def work(
     model: str = "opus",
     direction: str = "",
     policy=None,
+    can_look: bool = False,
+    look_key: str = "",
 ) -> tuple[dict, object]:
     prompt = PROMPT.format(
         repo=repo.name,
@@ -198,6 +236,14 @@ def work(
     # and another ten minutes of the same mistake costs far more than the
     # difference.
     typing = model if retry_of else for_work(model)
+    # Looking is the subscription engine's only. The API path has no shell
+    # at all by design, so there is nothing there to run the tool with -
+    # and claiming the capability where it cannot exist is the kind of
+    # silent difference this program keeps being bitten by.
+    looks = policy.self_looks if (can_look and engine == "claude") else 0
+    if not look_key:
+        looks = 0
+    briefed = LOOKING.format(look=OUR_LOOK, looks=looks) if looks else ""
     if typing != model and on_event:
         # Visible, every time, in the feed and in the run log. A routing
         # decision nobody can see is the bug this replaced.
@@ -223,10 +269,12 @@ def work(
             minutes=policy.retry_minutes if retry_of else policy.minutes,
         ).work(
             repo,
-            SYSTEM + briefing(skills or [], "engineer") + direction,
+            SYSTEM + briefing(skills or [], "engineer") + briefed + direction,
             prompt,
             build_command,
             on_event,
+            look_key=look_key,
+            looks=looks,
         )
         return (
             {
