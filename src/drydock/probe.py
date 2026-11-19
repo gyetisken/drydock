@@ -415,6 +415,46 @@ class Looked:
         failure a screenshot catches easily and a test suite never does."""
         return self.ran and self.words < 3 and self.visible < 5
 
+    def breaking(self) -> list[str]:
+        """The findings that mean this page is not working.
+
+        Kept apart from the rest because of where they are used. During a
+        run these send an item back, and sending one back costs an attempt
+        - so only the things that mean the page does not work belong here:
+        a script that threw, something that did not load, nothing rendered
+        at all.
+
+        Contrast, a control with no name, a missing viewport tag are all
+        real and none of them is this item being broken. They are reported
+        and handed to whoever looks next, rather than spending an attempt.
+        """
+        if not self.ran:
+            return []
+        said = []
+        for why in self.thrown:
+            said.append(f"a script threw on load: {why.splitlines()[0][:120]}")
+        for f in self.failed:
+            said.append(
+                f"a {f.get('what', 'request')} did not load "
+                f"({f.get('why', 'unknown')}){_at(f.get('url'))}"
+            )
+        if self.blank:
+            said.append(
+                f"the page is blank: {self.words} words and "
+                f"{self.visible} elements rendered into the body"
+            )
+        named = " ".join(str(f.get("url", "")) for f in self.failed)
+        for src in self.images:
+            if src.split("/")[-1] and src.split("/")[-1] in named:
+                continue
+            said.append(f"an image did not load: {src[:80]}")
+        return list(dict.fromkeys(said))
+
+    def worth_saying(self) -> list[str]:
+        """Everything else - true, and not worth an attempt on its own."""
+        breaking = set(self.breaking())
+        return [f for f in self.findings() if f not in breaking]
+
     def findings(self) -> list[str]:
         """Everything wrong with it, said once each."""
         if not self.ran:

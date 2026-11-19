@@ -15,6 +15,7 @@ import re
 from concurrent.futures import Future, ThreadPoolExecutor
 from pathlib import Path
 
+from . import probe
 from .agent import BudgetExceeded
 from .critic import Verdict as Seen
 from .critic import look as look_at_it
@@ -111,9 +112,32 @@ def _show_it(repo_path: Path, run, item, on_event):
             on_event("critic", does_not_fit.splitlines()[0])
         return Seen(looked=True, approved=False, reason=does_not_fit, noticed=[]), 0.0
 
+    # And everything else the browser already knows, for the same reason
+    # and at the same price. A page that renders one line of text and two
+    # thousand pixels of empty ground is not a matter of taste, and it was
+    # being discovered by photographing it and asking somebody - which
+    # costs a model call, arrives late, and tells the engineer "most of
+    # what this item owns is not on the page" when it could have been told
+    # "the body has three words in it and the stylesheet 404s".
+    #
+    # Only what means the page is not working sends an item back, because
+    # sending one back spends an attempt. The rest is handed to whoever
+    # looks next, so they do not have to find it.
+    seen = probe.look(live.url, 390)
+    if seen.ran:
+        breaking = seen.breaking()
+        if breaking:
+            said = "; ".join(breaking[:4])
+            if on_event:
+                on_event("critic", breaking[0])
+            return Seen(looked=True, approved=False, reason=said, noticed=[]), 0.0
+        noticed = seen.worth_saying()
+    else:
+        noticed = []
+
     with tempfile.TemporaryDirectory(prefix="drydock-look-") as scratch:
         try:
-            return look_at_it(
+            verdict, spend = look_at_it(
                 live.url,
                 run.direction,
                 # Everything the item says about itself. The critic is being
@@ -124,6 +148,12 @@ def _show_it(repo_path: Path, run, item, on_event):
                 model=run.model,
                 on_event=on_event,
             )
+            # What was measured goes on the record beside what was seen,
+            # so a contrast failure or a control with no name reaches
+            # somebody without having cost the item an attempt.
+            if verdict is not None and noticed:
+                verdict.noticed = list(verdict.noticed) + noticed
+            return verdict, spend
         except Exception as exc:  # noqa: BLE001 - a failed look is not a failed item
             if on_event:
                 on_event("critic", f"could not look at it: {exc}")

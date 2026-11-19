@@ -252,7 +252,26 @@ class TestWhatTheCriticIsAllowedToJudge:
 
     def test_a_page_is_still_judged(self, project, monkeypatch):
         """The check must not become a way of never judging anything."""
-        url = project({"/": (b"<h1>hello</h1>", "text/html", 200)})
+        # A page with something on it. The first version of this served
+        # `<h1>hello</h1>`, which is one word and one element - and once
+        # the measurement ran before the critic, that is a blank page and
+        # was refused before anybody looked at it. Correctly.
+        url = project(
+            {
+                "/": (
+                    (
+                        b"<!doctype html><html><head><title>A page</title>"
+                        b'<meta name="viewport" content="width=device-width">'
+                        b"</head><body><h1>A real page</h1><p>With a paragraph on "
+                        b"it, and enough words in that paragraph that nobody would "
+                        b"mistake the whole thing for an empty document.</p>"
+                        b"<p>And a second one, for good measure.</p></body></html>"
+                    ),
+                    "text/html",
+                    200,
+                )
+            }
+        )
         orchestrate, said = self.a_run(monkeypatch, url)
         reached = []
         monkeypatch.setattr(
@@ -338,3 +357,88 @@ class TestAPlainPageCanBeLookedAt:
             time.sleep(0.1)
 
         assert not what_it_serves(live.url).is_a_page
+
+
+class TestMeasuringBeforeLooking:
+    """A page that renders one line of text and two thousand pixels of
+    empty ground is not a matter of taste. It was being discovered by
+    photographing it and asking somebody - a model call, arriving late,
+    telling the engineer "most of what this item owns is not on the page"
+    when it could have been told "the body has three words in it".
+    """
+
+    def test_a_page_with_nothing_on_it_never_reaches_the_critic(
+        self, project, monkeypatch
+    ):
+        url = project(
+            {"/": (b"<!doctype html><html><body></body></html>", "text/html", 200)}
+        )
+        orchestrate, said = self.a_run(monkeypatch, url)
+        looked = []
+        monkeypatch.setattr(
+            orchestrate,
+            "look_at_it",
+            lambda *a, **k: looked.append(1) or (None, 0.0),
+        )
+        monkeypatch.setattr(
+            orchestrate, "why_it_does_not_fit", lambda url, on_event=None: ""
+        )
+
+        seen, _ = self.show(orchestrate, said)
+
+        assert looked == [], "it was photographed and judged anyway"
+        assert seen is not None and not seen.approved
+        assert "blank" in seen.reason
+
+    def test_what_is_wrong_but_not_broken_does_not_spend_an_attempt(
+        self, project, monkeypatch
+    ):
+        """Contrast, a control with no name, a missing viewport tag: all
+        real, none of them this item being broken. They are handed to
+        whoever looks next instead."""
+        url = project(
+            {
+                "/": (
+                    (
+                        b"<!doctype html><html><head><title>t</title></head><body>"
+                        b"<h1>A page with a blemish</h1><p>Plenty of words here so "
+                        b"that it is not blank by any measure at all.</p>"
+                        b"<button></button></body></html>"
+                    ),
+                    "text/html",
+                    200,
+                )
+            }
+        )
+        orchestrate, said = self.a_run(monkeypatch, url)
+        monkeypatch.setattr(
+            orchestrate, "why_it_does_not_fit", lambda url, on_event=None: ""
+        )
+        monkeypatch.setattr(
+            orchestrate,
+            "look_at_it",
+            lambda *a, **k: (
+                Seen(looked=True, approved=True, reason="fine", noticed=[]),
+                0.0,
+            ),
+        )
+
+        seen, _ = self.show(orchestrate, said)
+
+        assert seen.approved, "a blemish is not a reason to send an item back"
+        assert any("has no name" in n for n in seen.noticed), seen.noticed
+
+    def a_run(self, monkeypatch, url, command="npm run start"):
+        from drydock import orchestrate, preview
+
+        live = SimpleNamespace(url=url, command=command)
+        monkeypatch.setattr(preview, "running", lambda repo: live)
+        return orchestrate, []
+
+    def show(self, orchestrate, said):
+        return orchestrate._show_it(
+            Path("/nowhere"),
+            SimpleNamespace(direction="", model="opus"),
+            SimpleNamespace(plain="a page", title="a page", as_asked=lambda: ""),
+            lambda who, text: said.append((who, text)),
+        )
