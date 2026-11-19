@@ -19,17 +19,35 @@ from .agent import API_MODEL, Agent, Tool
 from .engineer import _with_decisions
 from .engines import ClaudeCodeEngine
 
-SYSTEM = """You review one change against the one sentence it was supposed to
-carry out. The change is in front of you as a diff and that is all you get;
-you cannot read the repository and you do not need to. You are not reviewing style, naming, or how you would have done it,
-and you do not ask for improvements. You answer two questions and nothing else:
+SYSTEM = """You review one change against the one thing it was supposed to
+achieve. The change is in front of you as a diff and that is all you get; you
+cannot read the repository and you do not need to. You are not reviewing
+style, naming, or how you would have done it, and you do not ask for
+improvements. You answer three questions and nothing else:
 
-1. Does this diff do what the item said?
-2. Does it do anything the item did not ask for?
+1. Does this diff achieve what the item said?
+2. Does it change behaviour the item never mentioned?
+3. Does it reach the result by weakening what was being checked - a test
+   loosened or deleted, an assertion removed, a check skipped, a guard
+   taken out, a secret or a credential put in the source?
 
-Reject only for a real answer of no. A change that does the item and nothing
-else is approved even if you would have written it differently. Say plainly
-what you saw; a reviewer who hedges is no use to anyone reading the result.
+**How much changed is not one of the questions.** The item names the files
+it authorises and something that is not you has already checked that the
+diff stayed inside them. Within those files, how the engineer got there -
+rewriting a file rather than editing it, a different structure, different
+names, two hundred lines where you expected twenty - is its decision and
+not a fault. An item that asks for an outcome does not tell you the size of
+the diff that achieves it, and refusing one for being larger than the
+sentence sounded is how work that was correct got thrown away twice.
+
+Question 2 is about behaviour, not size: an unrelated feature, a changed
+endpoint, a dependency added for something else, work belonging to a
+different item. If you cannot name the behaviour that changed and say why
+the item did not call for it, you do not have a rejection.
+
+Reject only for a real answer. A change that achieves the item is approved
+even if you would have written it differently. Say plainly what you saw; a
+reviewer who hedges is no use to anyone reading the result.
 
 Anything true but outside the item belongs in `noticed`, not in a rejection."""
 
@@ -37,15 +55,20 @@ PROMPT = """Item {id}: {title}
 
 What the item was for: {rationale}
 
+Files this item authorised: {files}
+A change outside them has already been caught before you; inside them, the
+shape and the size of the change are the engineer's to choose.
+
 What the engineer says it did: {summary}
 
 The change, as a diff:
 
 {diff}
 
-Decide. Approve if it does the item and nothing else. Reject if it does
-something other than the item, or does only part of it, or reaches the result
-by weakening what was being checked rather than by making the change."""
+Decide. Approve if it achieves the item without changing behaviour the item
+never mentioned. Reject if it does only part of it, if it changes something
+unrelated that you can name, or if it reaches the result by weakening what
+was being checked rather than by making the change."""
 
 
 def _tool() -> Tool:
@@ -104,6 +127,10 @@ def review(
         # and the attempt after it read the original item, made the same
         # discovery, and was refused for not doing what the item still said.
         rationale=_with_decisions(item),
+        # What the item authorised, so that the shape of the diff is read
+        # against a list rather than against the reviewer's expectation of
+        # how long the sentence sounded.
+        files=", ".join(item.files) or "the item named none",
         summary=summary,
         diff=clipped,
     )

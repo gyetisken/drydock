@@ -581,7 +581,15 @@ def _one_item(
         refusal = ""
         if verdict.passed:
             diff = here.pending()
-            report_card = look(diff, allow_removals=item.removes_tests, repo=where)
+            report_card = look(
+                diff,
+                allow_removals=item.removes_tests,
+                repo=where,
+                # Scope, as a fact about which files were touched. The
+                # reviewer used to be asked this and could not answer it:
+                # it is handed a diff and no repository.
+                files=item.files,
+            )
             if on_gate:
                 on_gate(item, "inspector", report_card.clean, report_card.reason)
             if not report_card.clean:

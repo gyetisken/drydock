@@ -14,6 +14,7 @@ arithmetic, like the test count, and arithmetic does not negotiate.
 
 import re
 from dataclasses import dataclass, field
+from fnmatch import fnmatch
 from pathlib import Path
 
 # A test, in every language anyone here is likely to be holding. These are
@@ -153,6 +154,40 @@ class Report:
         return "; ".join(f.detail for f in self.findings)
 
 
+def _outside(diff: str, files: list[str]) -> list[str]:
+    """Paths this diff touches that the item did not name.
+
+    Scope as arithmetic. It was a question put to a model that could not
+    answer it: the reviewer is handed a diff and no repository, and asked
+    whether the change does "anything the item did not ask for". With an
+    item that named the implementation, the size of the diff was
+    predictable from the item's own words. With an item that names an
+    outcome - "it reads on a phone" - it is not, and a stylesheet rewritten
+    inside the file the item authorised was refused twice for being two
+    hundred lines.
+
+    Which files were touched is a fact and this reads it. How much changed
+    inside them is the engineer's business.
+    """
+    named = [f for f in (files or []) if f.strip()]
+    if not named:
+        # An item that named no files authorised nothing in particular, so
+        # there is nothing to measure against and silence is the honest
+        # answer. The reviewer still reads the change.
+        return []
+    strayed = []
+    for touched in _added_files(diff):
+        if touched == "/dev/null":
+            continue
+        if any(fnmatch(touched, pattern) or touched == pattern for pattern in named):
+            continue
+        # A directory named as a file authorises what is under it.
+        if any(touched.startswith(pattern.rstrip("/") + "/") for pattern in named):
+            continue
+        strayed.append(touched)
+    return sorted(dict.fromkeys(strayed))
+
+
 def _added_files(diff: str) -> list[str]:
     return re.findall(r"^\+\+\+ b/(.+)$", diff, flags=re.MULTILINE)
 
@@ -227,7 +262,11 @@ def check_assets(repo: Path, added: list[str]) -> list[Finding]:
 
 
 def look(
-    diff: str, *, allow_removals: bool = False, repo: Path | None = None
+    diff: str,
+    *,
+    allow_removals: bool = False,
+    repo: Path | None = None,
+    files: list[str] | None = None,
 ) -> Report:
     """Read a unified diff and report what should stop it from standing.
 
@@ -235,8 +274,24 @@ def look(
     tests - a duplicate suite being dropped, a module being removed. It has to
     be asked for by the item, so that losing tests is always a decision
     somebody wrote down rather than something that happened.
+
+    `files` is what the item said it would touch. Given them, a diff that
+    reaches a file nobody authorised is reported here, where it is a fact,
+    rather than guessed at by a reviewer reading prose.
     """
     findings: list[Finding] = []
+    strayed = _outside(diff, files or [])
+    if strayed:
+        findings.append(
+            Finding(
+                "outside the item",
+                "this change touches "
+                + ", ".join(strayed[:6])
+                + (f" and {len(strayed) - 6} more" if len(strayed) > 6 else "")
+                + ", which the item did not name. The item said: "
+                + ", ".join(files or []),
+            )
+        )
     removed = [
         ln[1:] for ln in diff.splitlines() if ln.startswith("-") and ln[1:3] != "--"
     ]
