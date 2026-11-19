@@ -137,3 +137,60 @@ class TestItReachesSomebody:
         assert drawn.startswith("it.outstanding ?"), (
             "it has to be conditional, or every item carries the line"
         )
+
+
+class TestApprovingARunThatWasStopped:
+    """A plan can arrive after somebody asked the run to stop: the worker
+    writing it does not stop mid-sentence. Approving one then started
+    work on a run whose worktrees were being taken away underneath it,
+    and came back as `IndexError: list index out of range`.
+    """
+
+    def test_it_is_refused_and_says_why(self):
+        import inspect
+
+        from drydock import web
+
+        source = inspect.getsource(web.approve)
+        assert "session.stopping" in source
+        assert "this run was stopped" in source
+
+    def test_the_refusal_comes_before_the_work(self):
+        import inspect
+
+        from drydock import web
+
+        source = inspect.getsource(web.approve)
+        assert source.index("session.stopping") < source.index("session.approve()")
+
+
+class TestAskingGitForSomethingItHasNot:
+    def test_a_repository_with_no_commits_has_no_head(self, tmp_path):
+        """`splitlines()[0]` was an IndexError the moment git said
+        nothing, and reading the output without its exit code returned
+        "fatal: Needed a single revision" as though it were a hash."""
+        import subprocess
+
+        from drydock.repo import Repo
+
+        subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
+
+        said = Repo(tmp_path).head()
+
+        assert said == ""
+        assert "fatal" not in said
+
+    def test_a_repository_with_one_still_has_one(self, tmp_path):
+        import subprocess
+
+        from drydock.repo import Repo
+
+        for args in (
+            ["init", "-q"],
+            ["config", "user.email", "t@t"],
+            ["config", "user.name", "t"],
+            ["commit", "-q", "--allow-empty", "-m", "x"],
+        ):
+            subprocess.run(["git", "-C", str(tmp_path), *args], check=True)
+
+        assert len(Repo(tmp_path).head()) >= 7

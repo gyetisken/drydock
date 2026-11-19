@@ -55,7 +55,19 @@ class Repo:
         return run(f"git {args}", self.path, timeout=120)
 
     def head(self) -> str:
-        return self._git("rev-parse --short HEAD")[1].strip().splitlines()[0]
+        """The commit this repository is on, or nothing.
+
+        `splitlines()[0]` on its own is an IndexError the moment git says
+        nothing - a repository with no commits, a worktree that has been
+        taken away under a stopped run - and an IndexError is the least
+        readable way to be told either of those.
+        """
+        # The exit code, not just the output. Without it a repository with
+        # no commits returns "fatal: Needed a single revision" and every
+        # caller treats that sentence as a commit hash - which is the same
+        # bug as reading git's refusal as a diff, found twice today.
+        said = self._asked("rev-parse --short HEAD").splitlines()
+        return said[0] if said else ""
 
     def is_clean(self) -> bool:
         return not self._git("status --porcelain")[1].strip()

@@ -1018,5 +1018,15 @@ def approve(key: str) -> dict:
     session = workspace.session_for(key)
     if session is None or session.run is None or session.run.plan is None:
         return {"ok": False, "reason": "there is no plan to approve yet"}
+    # A plan can arrive after somebody asked the run to stop: the worker
+    # writing it does not stop mid-sentence. Approving one then starts
+    # work on a run whose worktrees are being taken away underneath it,
+    # which came back as `IndexError: list index out of range`.
+    if session.stopping:
+        return {
+            "ok": False,
+            "reason": "this run was stopped. Its plan is still here - start "
+            "it again and it will be approved from the beginning.",
+        }
     session.approve()
     return {"ok": True}

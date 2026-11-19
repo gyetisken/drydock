@@ -612,6 +612,29 @@ class Session:
         # direct a look, and to decide afterwards whether what came back
         # in that field is one.
         wanted_a_look = looked_at and not remembered
+
+        # And a mark, drawn beside the reading rather than after it. This
+        # was written when the four stations were still the default and
+        # was never called from here - so every job that went down this
+        # path built a site with no mark at all, and the capability sat in
+        # the module being dead code.
+        #
+        # It is drawn whenever anybody is going to look at the result, not
+        # only when a look is being directed: a project that already has a
+        # direction and no mark still has no mark.
+        drawing = None
+        if looked_at and not (self.repo / "brand" / "logo.svg").exists():
+            drawing = ThreadPoolExecutor(max_workers=1).submit(
+                draw_mark,
+                self.repo,
+                self.task,
+                self.skills,
+                self._agent_event("Designer"),
+                budget=self.run.left if self.budget else 0.0,
+                engine=self.engine,
+                model=self.model,
+            )
+
         started, usage = begin(
             self.repo,
             self.task,
@@ -656,6 +679,34 @@ class Session:
             self.memory.direct(directed)
             self.memory.save()
             self.feed.emit("look", idea=directed[:400])
+        # The mark, before anything is planned against it: the briefing
+        # tells the engineers it is there, and the item loop refuses a
+        # dirty tree, so it has to be committed by now or not written.
+        if drawing is not None:
+            try:
+                drawn, spent = drawing.result()
+                self._spent(spent, "Designer")
+                if write_logo(self.repo, drawn):
+                    self.run.direction += look_briefing(
+                        {
+                            "logo_svg": drawn.get("logo_svg"),
+                            "logo_reasoning": drawn.get("logo_reasoning"),
+                        }
+                    )
+                    self.feed.emit(
+                        "agent.state",
+                        agent="Designer",
+                        state="done",
+                        note="the mark is drawn and committed",
+                    )
+            except Exception as exc:  # noqa: BLE001 - a mark is not the job
+                self.feed.emit(
+                    "agent.state",
+                    agent="Designer",
+                    state="done",
+                    note=f"no mark was drawn: {exc}",
+                )
+
         self.run.plan = started.plan
         self.run.save()
 
