@@ -143,10 +143,10 @@ class TestTheMachineryDoesNotShowThrough:
     def test_the_run_says_whether_it_is_chatting(self):
         from pathlib import Path
 
-        session = (
-            Path(answer.__file__).parent / "session.py"
-        ).read_text()
-        started = session[session.index('"run.started",', session.index("def _answer(")) :]
+        session = (Path(answer.__file__).parent / "session.py").read_text()
+        started = session[
+            session.index('"run.started",', session.index("def _answer(")) :
+        ]
         started = started[: started.index(")")]
 
         assert "chatting=chatting" in started
@@ -156,9 +156,7 @@ class TestTheMachineryDoesNotShowThrough:
         fine and sends nothing."""
         from pathlib import Path
 
-        session = (
-            Path(answer.__file__).parent / "session.py"
-        ).read_text()
+        session = (Path(answer.__file__).parent / "session.py").read_text()
         answering = session[session.index("def _answer(") :]
         answering = answering[: answering.index("\n    def ")]
 
@@ -169,16 +167,10 @@ class TestTheMachineryDoesNotShowThrough:
     def test_the_window_shows_neither(self):
         from pathlib import Path
 
-        chat = (
-            Path(answer.__file__).parent / "static" / "chat.js"
-        ).read_text()
+        chat = (Path(answer.__file__).parent / "static" / "chat.js").read_text()
         started = chat[chat.index('"run.started": (e) =>') :]
         started = started[: started.index("\n  },")]
 
         assert "if (e.chatting) return;" in started
-        assert started.index("if (e.chatting) return;") < started.index(
-            "Looking at"
-        )
-        assert started.index("if (e.chatting) return;") < started.index(
-            "live.el.tools"
-        )
+        assert started.index("if (e.chatting) return;") < started.index("Looking at")
+        assert started.index("if (e.chatting) return;") < started.index("live.el.tools")
