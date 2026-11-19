@@ -127,3 +127,58 @@ class TestAQuestionTheCodeCannotAnswer:
         assert "How are the tests run here" in answer.SYSTEM or (
             "how are the tests run here" in answer.SYSTEM.lower()
         )
+
+
+class TestTheMachineryDoesNotShowThrough:
+    """Under a hello the window printed "Looking at drydock-demo ·" and a
+    drawer of three steps - a file write, the answer, and "worker
+    finished". All true, all internal, and none of it part of saying good
+    morning.
+
+    The same two are worth having when a question is answered out of a
+    codebase, so what changes is not the window but whether this job is
+    one of those.
+    """
+
+    def test_the_run_says_whether_it_is_chatting(self):
+        from pathlib import Path
+
+        session = (
+            Path(answer.__file__).parent / "session.py"
+        ).read_text()
+        started = session[session.index('"run.started",', session.index("def _answer(")) :]
+        started = started[: started.index(")")]
+
+        assert "chatting=chatting" in started
+
+    def test_it_is_worked_out_before_it_is_sent(self):
+        """It was computed after the event that carries it, which reads
+        fine and sends nothing."""
+        from pathlib import Path
+
+        session = (
+            Path(answer.__file__).parent / "session.py"
+        ).read_text()
+        answering = session[session.index("def _answer(") :]
+        answering = answering[: answering.index("\n    def ")]
+
+        assert answering.index("chatting = is_small_talk") < answering.index(
+            '"run.started"'
+        )
+
+    def test_the_window_shows_neither(self):
+        from pathlib import Path
+
+        chat = (
+            Path(answer.__file__).parent / "static" / "chat.js"
+        ).read_text()
+        started = chat[chat.index('"run.started": (e) =>') :]
+        started = started[: started.index("\n  },")]
+
+        assert "if (e.chatting) return;" in started
+        assert started.index("if (e.chatting) return;") < started.index(
+            "Looking at"
+        )
+        assert started.index("if (e.chatting) return;") < started.index(
+            "live.el.tools"
+        )

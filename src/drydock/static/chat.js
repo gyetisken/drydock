@@ -354,6 +354,11 @@ const on = {
       }
     });
     drawOffice();
+    // Somebody said hello. Which repository is being looked at, and the
+    // drawer of steps taken, are both worth having when a question is
+    // answered out of a codebase - and neither is worth having under a
+    // hello, where they are the machinery showing through.
+    if (e.chatting) return;
     say("crew", `<div class="body"><p>Looking at <b>${esc(e.repo)}</b> ·
       ${esc(e.toolchain)}${e.skills.length ? ` · skill <code>${esc(e.skills[0])}</code>` : ""}</p></div>`);
     // Hidden until there is something to put in it: a job that uses no tools

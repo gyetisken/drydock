@@ -743,6 +743,7 @@ class Session:
         self.run = Run.start(self.repo, self.task, [])
         self.run.engine = self.engine
         self.run.model = self.model
+        chatting = is_small_talk(self.task)
         self.feed.emit(
             "run.started",
             repo=self.repo.name,
@@ -750,8 +751,14 @@ class Session:
             skills=[],
             toolchain="",
             stages=["ask"],
+            # Somebody said hello. The window has a line about which
+            # repository is being looked at and a drawer of the steps
+            # taken, and both are worth having when a question is being
+            # answered out of a codebase. Neither is worth having here,
+            # and three internal steps under a hello is the machinery
+            # showing through the thing it is supposed to be doing.
+            chatting=chatting,
         )
-        chatting = is_small_talk(self.task)
         self.feed.emit(
             "agent.state",
             agent="Analyst",
