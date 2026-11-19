@@ -4,7 +4,7 @@ Read and follow [`AGENTS.md`](./AGENTS.md) as the source of truth for Drydock's 
 
 ## Your assignment
 
-You are the **primary implementation agent**. Codex/ChatGPT provides independent technical review. The human owner sets goals, approves scope, and decides whether to merge. The product is an open-source, general-purpose AI coding harness, with a reliable CLI first and a desktop app later; do not narrow its architecture around the Nero or LUMI test projects.
+You are the **primary implementation agent**. There is no independent reviewer: Codex/ChatGPT held that role until 18 November 2026 and no longer does. The human owner sets goals, approves scope, reads the evidence, and decides whether to merge. The product is an open-source, general-purpose AI coding harness, with a reliable CLI first and a desktop app later; do not narrow its architecture around the Nero or LUMI test projects.
 
 ## Before implementation
 
@@ -35,7 +35,9 @@ When implementation is ready, provide a draft PR with:
 - Time/usage estimates versus actual measurements (when available)
 - Risks, limitations, and rollback instructions
 
-Then **stop** for Codex review. Address only actionable, approved blocking findings. Limit review/fix cycles to two without renewed owner approval. Do not merge automatically.
+Then **stop** and hand it to the owner. Address only actionable, approved blocking findings. Limit review/fix cycles to two without renewed owner approval. Do not merge automatically.
+
+Nobody else reads the diff, so the evidence in the handoff is the review. State what was measured, what was not, and what you are uncertain about — the omissions are the part that matters now.
 
 ## Finish-line report
 

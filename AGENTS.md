@@ -15,7 +15,7 @@ This is also an engineering portfolio project for Applied AI / AI Infrastructure
 3. **Bounded execution.** Set concrete time, attempt, and usage budgets for costly runs. Distinguish an enforced hard limit from an estimate or monitoring-only limit. Stop after the agreed limit; do not enter autonomous fix/test/retry loops.
 4. **Evidence over claims.** Separate implemented, unit-tested, integration-tested, and demonstrated live capabilities. Report exact test commands, outcomes, commit IDs, and material limitations. Never describe mocked tests as end-to-end proof.
 5. **Small changes.** Fix one evidenced blocker at a time. Do not add agents, abstractions, broad refactors, or performance optimizations without a specific problem and approval.
-6. **Independent review.** Implementation and review should be separated. Prefer small branches, draft PRs, explicit acceptance criteria, independent review, and owner-approved merge.
+6. **Review is separate from implementation.** Prefer small branches, draft PRs, explicit acceptance criteria, and owner-approved merge. The reviewer is the owner; the agent that wrote the change does not get to decide that it may stay.
 7. **Safe test execution.** Deterministic CI tests must run without a Claude CLI installation, model credentials, network access, or paid LLM calls unless explicitly marked opt-in. Do not mask failures with unconditional skips or fake success.
 8. **Honest security posture.** Unless isolation has been independently demonstrated, treat Drydock as a trusted-repository development tool, not a sandbox safe for hostile repositories or arbitrary untrusted code.
 9. **Keep docs accurate.** README, CLI usage, tests, CI, run reports, and PR evidence must match observable behavior.
@@ -38,7 +38,9 @@ Do not treat phases as permission to implement new work automatically. Ask the o
 
 - **Owner:** defines product goals, approves meaningful scope changes and merges.
 - **Claude Code:** primary implementation agent; works in an approved branch/worktree; runs appropriate checks; supplies a draft PR with evidence.
-- **Codex/ChatGPT:** independent reviewer/advisor; reads diff and verification evidence, identifies actionable issues, and distinguishes blockers from optional suggestions. Review is read-only unless the owner separately assigns implementation.
+- **Independent reviewer:** none at present. Codex/ChatGPT held this role until 18 November 2026 and no longer does; the owner reads the diff and the evidence himself and decides. Everything the handoff asks for still applies — the evidence is what makes the decision possible, not a courtesy to a reviewer who is gone.
+
+With no second reader, the separation between the thing that writes a change and the thing that says it may stay rests entirely on the deterministic gates and on tests. Write the test that would fail if the change were wrong.
 - Use Git branches and PR comments as the durable collaboration record; do not assume the agents can automatically message each other.
 - Maximum **two** fix/review cycles per task without renewed owner approval.
 - Do not concurrently edit the same worktree. Do not automatically merge or launch new benchmarks.
@@ -52,7 +54,7 @@ Do not treat phases as permission to implement new work automatically. Ask the o
 - [ ] Git operations validated; no user edits lost
 - [ ] Costs/time/attempts and limits reported accurately
 - [ ] Risks, unresolved issues, and rollback path stated
-- [ ] Independent review findings addressed or explicitly deferred with owner approval
+- [ ] Owner's findings addressed or explicitly deferred with the owner's approval
 
 ## Decision and communication style
 
