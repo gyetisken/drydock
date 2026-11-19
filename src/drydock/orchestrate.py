@@ -59,6 +59,27 @@ def _changes_the_view(diff: str) -> bool:
     )
 
 
+def _stopping(should_stop) -> bool:
+    """Whether this run has been told to stop, asked wherever work starts.
+
+    This used to be consulted in exactly one place - the top of the wave
+    loop - which meant a stop request arrived and then waited for
+    everything already in flight. With two attempts of eighteen minutes
+    and two revivals of twelve, one item could run for the better part of
+    an hour after somebody pressed stop, and a deadline built on it was
+    not a deadline.
+    """
+    try:
+        return bool(should_stop and should_stop())
+    except Exception:  # noqa: BLE001 - a broken callback must not strand a run
+        return False
+
+
+def _stopped_here(item, attempt: int, why: str):
+    """The result for work that was not done because the run was stopping."""
+    return ItemResult(item=item, outcome=Outcome.BLOCKED, attempts=attempt, note=why)
+
+
 def _worth_a_look(item) -> bool:
     """Whether this item renders something anybody will look at.
 
@@ -368,6 +389,7 @@ def _one_item(
     per_item: float,
     on_event,
     on_gate,
+    should_stop=None,
 ):
     """Work one item to a verdict, in `where`, and return what happened.
 
@@ -418,6 +440,15 @@ def _one_item(
     settled = ""
 
     while attempt <= policy.attempts:
+        # Before a worker is started, not after it has finished. Starting
+        # one costs the whole of its clock whatever happens to the result.
+        if _stopping(should_stop):
+            here.discard()
+            return _stopped_here(
+                item,
+                attempt - 1,
+                "the run was stopped before this attempt started",
+            ), None
         try:
             report, usage = work(
                 where,
@@ -453,6 +484,17 @@ def _one_item(
         # It was killed rather than finishing. Nothing it wrote is trusted,
         # but nothing about the item has been learned either, so this is not
         # an attempt and the right response is to try the same item again.
+        # A worker that was taken away while the run is stopping was taken
+        # away on purpose. Restarting it is how an external kill became a
+        # way of extending the run rather than ending it: the signal was
+        # read as "this attempt does not count", and another twelve
+        # minutes began.
+        if report.get("died") and _stopping(should_stop):
+            here.discard()
+            return _stopped_here(
+                item, attempt, "the run was stopped while this was running"
+            ), None
+
         if report.get("died") and revived < REVIVALS:
             revived += 1
             here.discard()
@@ -545,6 +587,15 @@ def _one_item(
             if not report_card.clean:
                 refusal = report_card.reason
                 refused_by = ["inspector"]
+            elif _stopping(should_stop):
+                # The build ran and the inspector read the diff - both are
+                # code and both are free. The two opinions are model calls,
+                # and spending them on work that is about to be thrown
+                # away is the cost this check exists to avoid.
+                here.discard()
+                return _stopped_here(
+                    item, attempt, "the run was stopped before this was reviewed"
+                ), None
             else:
                 refusal, refused_by = _judge(
                     here,
@@ -696,6 +747,7 @@ def _work_a_wave(
     per_item: float,
     on_event,
     on_gate,
+    should_stop=None,
 ) -> dict:
     """Work every item in a wave, then bring the ones that landed home.
 
@@ -724,6 +776,7 @@ def _work_a_wave(
             per_item,
             on_event,
             on_gate,
+            should_stop,
         )
         return {items[0].id: _accept_candidate(repo, run, result, at, base)}
 
@@ -747,6 +800,7 @@ def _work_a_wave(
                     per_item,
                     on_event,
                     on_gate,
+                    should_stop,
                 )
                 for item in items
             }
@@ -872,7 +926,7 @@ def execute(
         )
         if not wave.items:
             continue
-        if should_stop and should_stop():
+        if _stopping(should_stop):
             if on_item:
                 on_item(wave.items[0], "stopped")
             break
@@ -904,6 +958,7 @@ def execute(
                 per_item,
                 on_event,
                 on_gate,
+                should_stop,
             )
         except GitError as exc:
             run.integration_error = str(exc)
@@ -928,7 +983,9 @@ def execute(
                 # intervention this program has evidence for is exactly
                 # this one: the same site went from one item of five
                 # landing to six of seven when its largest was split.
-                pieces = _split_it(run, item, result, engine, model, on_event, on_gate)
+                pieces = not _stopping(should_stop) and _split_it(
+                    run, item, result, engine, model, on_event, on_gate
+                )
                 if pieces:
                     continue
                 failed.add(item.id)

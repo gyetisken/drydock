@@ -286,6 +286,23 @@ def _alive(pid: int) -> bool:
     return bool(state) and not state.startswith("Z")
 
 
+def _belongs_to(where: str, repo: Path) -> bool:
+    """Whether a worker working in `where` belongs to a run in `repo`.
+
+    Not just the repository path. A wave works each item in a worktree
+    under drydock's own directory, named after the repository, so matching
+    only `str(repo)` found the workers of a single-item run and none of a
+    parallel one - which is how stopping a run left three engineers
+    writing into worktrees it was about to remove.
+    """
+    if not where:
+        return False
+    if where == str(repo):
+        return True
+    home = Path(os.environ.get("DRYDOCK_HOME") or Path.home() / ".drydock")
+    return where.startswith(str(home / "worktrees" / f"{repo.name}-"))
+
+
 def _orphans(repo: Path | None) -> list[int]:
     """Workers written down by a process that is no longer here.
 
@@ -308,7 +325,7 @@ def _orphans(repo: Path | None) -> list[int]:
             continue
         if pid in ours:
             continue
-        if repo is None or said.get("repo") == str(repo):
+        if repo is None or _belongs_to(str(said.get("repo") or ""), repo):
             found.append(pid)
     return found
 
@@ -325,7 +342,10 @@ def stop_workers(repo: Path | None = None) -> int:
             p
             for p in _WORKERS
             if p.poll() is None
-            and (repo is None or getattr(p, "drydock_repo", None) == str(repo))
+            and (
+                repo is None
+                or _belongs_to(str(getattr(p, "drydock_repo", "") or ""), repo)
+            )
         ]
     for process in targets:
         _asked_to_stop(process, "everything in this repository was stopped")

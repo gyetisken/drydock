@@ -106,6 +106,9 @@ class Session:
         # it is visible in the run record as part of what was asked for.
         self.standing = standing.strip()
         self.stopping = False
+        # Set by `ends_in`, cancelled when the run finishes. None when
+        # nobody gave this run a deadline, which is the default.
+        self._clock: threading.Timer | None = None
         self.memory = Memory.about(repo)
         # Some knowledge belongs to the kind of thing being built rather than
         # to the command somebody typed. Nobody types /new and then remembers
@@ -548,6 +551,8 @@ class Session:
         except Exception as exc:  # noqa: BLE001 - the page has to be told
             self.error = f"{type(exc).__name__}: {exc}"
             self.feed.emit("run.error", detail=self.error)
+        finally:
+            self._stop_the_clock()
 
     def _what_is_already_known(self, commit: str) -> str:
         """What was learned about this repository last time, if anything.
@@ -1600,18 +1605,62 @@ class Session:
             author=who,
         )
 
-    def stop(self) -> None:
-        """Ask the run to stop at the next safe point.
+    def stop(self, now: bool = False) -> None:
+        """Ask the run to stop, or end it.
 
-        Not a kill. The crew is in the middle of an item, and killing it there
-        leaves half an edit on disk with no commit to undo it. The flag is read
-        between items, where the tree is clean.
+        Asked, by default: the flag is read wherever work is about to
+        start - before an attempt, before a restart, before the two
+        opinions, before an item is split, before a wave - so nothing new
+        begins and the worker in flight finishes into a clean tree.
+
+        Told, when `now`: the workers of this run are terminated as well,
+        in the repository and in every worktree it made. Whatever they
+        were writing is uncommitted and is thrown away by the attempt
+        loop, which is the same path a refused item takes. This is what a
+        deadline needs, and it is only honest because of the other half -
+        a terminated worker used to be read as "taken away, try again",
+        so killing one extended the run instead of ending it.
         """
         self.stopping = True
+        killed = stop_workers(self.repo) if now else 0
         self.feed.emit(
             "stopping",
-            note="will stop after the current item, so nothing is left half done",
+            note=(
+                f"stopped: {killed} worker(s) ended"
+                if now
+                else "will stop after the current item, so nothing is left half done"
+            ),
         )
+
+    def ends_in(self, minutes: float) -> None:
+        """End this run after `minutes`, whatever it is doing.
+
+        A timer rather than a clock read at the checkpoints, because the
+        checkpoints are only reached between pieces of work: a worker with
+        twelve minutes on its own clock would carry the run past the
+        deadline and nothing would be asked until it finished. The timer
+        fires on time and ends the workers, and the checkpoints then stop
+        anything else from starting.
+        """
+        if minutes <= 0:
+            return
+        if self._clock is not None:
+            self._clock.cancel()
+        self._clock = threading.Timer(minutes * 60, self._out_of_time)
+        self._clock.daemon = True
+        self._clock.start()
+
+    def _out_of_time(self) -> None:
+        if self.stopping:
+            return
+        self.feed.emit("deadline", note="the time this run was given is up")
+        self.stop(now=True)
+
+    def _stop_the_clock(self) -> None:
+        """Nothing is owed to a timer once the run is over."""
+        if self._clock is not None:
+            self._clock.cancel()
+            self._clock = None
 
     @classmethod
     def resume(cls, run: Run, engine: str = "claude", model: str = "opus") -> "Session":
