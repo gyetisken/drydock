@@ -105,8 +105,21 @@ The item that was just finished, which is the only thing you are judging:
 The page has had this item and everything before it, and nothing after it.
 
 Two images of the page as it renders now are in this directory: desktop.png
-and phone.png. Read both, then answer: of what this item owed, is it on the
-page, and is the page good?"""
+and phone.png. They are all you have, and they are enough: you are here for
+the rendered result, judged against what the person asked for.
+
+The item above may list things that exist only in the source - that the
+hours are table markup rather than a list, that a phone number is an anchor
+with a tel: href, that a test was added. Those are not yours and you cannot
+see them. The build, the suite, the inspector and the reviewer have already
+read the change for exactly that, and they refuse on their own. Do not go
+looking for the files, and do not go looking for a tool that would let you:
+the files are not in this directory, nothing here will reach them, and every
+turn spent trying is a turn not spent on the page. Say what you cannot see,
+and judge what you can.
+
+Read both images, then answer: of what this item owed and you can see, is it
+on the page, and is the page good?"""
 
 
 @dataclass
