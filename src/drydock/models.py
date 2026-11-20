@@ -156,3 +156,11 @@ class ItemResult(BaseModel):
     # because the weakest of the four claims is not worth six items
     # nobody attempted - and it is written down, because it is still true.
     outstanding: str = ""
+    # Everything true that was said about this item and did not stop it:
+    # what the engineer noticed outside its scope, what the reviewer saw
+    # in the diff, what the critic saw on the page. All three stations
+    # produce these and all three were being dropped on the floor - the
+    # reviewer reported that a failure path could hang a request for the
+    # life of the process, and the sentence existed only in a CLI
+    # transcript nobody reads. Each entry says who said it.
+    noticed: list[str] = Field(default_factory=list)

@@ -162,6 +162,39 @@ def _put_the_tool_somewhere(env: dict) -> Path:
     return where
 
 
+def shell_allowance(build_command: str) -> str:
+    """What the engineer may run, said in words rather than as a rule.
+
+    Derived from `_shell_rule` rather than written beside it, because the
+    two drifting apart is how a worker comes to believe something it was
+    allowed to do is forbidden.
+
+    One did. Its first Bash call succeeded, four `node --check` calls were
+    refused with "this command requires approval" - `node` is not the
+    build tool - and it concluded "Bash isn't permitted here" and finished
+    the item without ever running `npm test`, which it was allowed to run
+    the whole time. The refusal never says what is allowed, so the worker
+    can only learn the fence by walking into it.
+    """
+    tool = build_command.split()[0] if build_command.strip() else ""
+    if tool:
+        return (
+            f"Through the shell you may run `{tool}` and nothing else - "
+            f"`{build_command}` is the command this project is built and "
+            f"checked with. Anything else is refused. A refusal is this "
+            f"fence and not a sign that the shell is unavailable: if one "
+            f"command is turned down, `{tool}` still works."
+        )
+    return (
+        "This project has no build command yet, so through the shell you "
+        "may run the tools that bring one into existence - "
+        + ", ".join(f"`{name}`" for name in BOOTSTRAP[:8])
+        + " and a few more like them - and nothing else. Anything else is "
+        "refused. A refusal is that fence and not a sign that the shell is "
+        "unavailable."
+    )
+
+
 # Every worker currently running, so they can be stopped.
 #
 # subprocess.Popen does not tie a child to its parent: killing this

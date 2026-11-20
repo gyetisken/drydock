@@ -177,11 +177,20 @@ class Run(BaseModel):
                         # a summary that cannot tell them apart is the
                         # thing this whole record exists to avoid.
                         "outstanding": result.outstanding,
+                        # Informational, and kept apart from the things
+                        # that stopped anything. Three stations produce
+                        # these and all three were being dropped.
+                        "noticed": list(result.noticed),
                     }
                 )
             else:
                 missed.append(
-                    said | {"outcome": result.outcome.value, "note": result.note}
+                    said
+                    | {
+                        "outcome": result.outcome.value,
+                        "note": result.note,
+                        "noticed": list(result.noticed),
+                    }
                 )
 
         planned = {i.id for i in self.plan.items} if self.plan else set()

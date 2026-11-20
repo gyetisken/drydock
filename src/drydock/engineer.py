@@ -12,7 +12,7 @@ reported, not fixed.
 from pathlib import Path
 
 from .agent import API_MODEL, CHEAP_ENGINEER, JUDGEMENT, Agent, Tool, for_work
-from .engines import ClaudeCodeEngine, EngineResult
+from .engines import ClaudeCodeEngine, EngineResult, shell_allowance
 from .models import Item
 from .repo import OUR_LOOK
 from .skills import Skill, briefing
@@ -128,6 +128,8 @@ by somebody who is not you. None of them is told that you looked."""
 PROMPT = """Repository: {repo}
 Build: {build_command}
 
+{shell}
+
 What is being built, and what it is for. This does not widen your scope -
 the item below is still the whole of what you touch - but it is what the
 finished thing is judged against, so where the item leaves you a choice,
@@ -143,6 +145,24 @@ Your item, which is the entire scope:
 
   files: {files}
   verified by: {verify_with}
+
+What has to be true when this item is done. These are the acceptance
+criteria the plan was approved on, and something that is not you will read
+the change against them:
+
+{criteria}
+
+Three of those four texts can disagree, and when they do it matters which
+one wins. The brief at the top wins over everything. After it, a criterion
+above is a commitment somebody made and is worth more than the item's
+reasoning, which is there to explain rather than to decide.
+
+What you must not do is pick one quietly. If a criterion contradicts the
+brief, build what the brief asked for and say so in your report. If a
+criterion contradicts the item's reasoning - the reasoning leaves you a
+free hand where a criterion pins you, or the other way round - that is not
+yours to resolve: put it in `question`, change nothing, and it will be
+settled and handed back to you.
 
 Make the change, then report."""
 
@@ -223,6 +243,7 @@ def work(
     prompt = PROMPT.format(
         repo=repo.name,
         build_command=build_command,
+        shell=shell_allowance(build_command),
         task=task,
         id=item.id,
         title=item.title,
@@ -233,6 +254,12 @@ def work(
         rationale=_with_decisions(item),
         files=", ".join(item.files),
         verify_with=item.verify_with,
+        # The acceptance criteria, which used to be written and then shown
+        # to nobody. A reviewer approved a change that failed one of them
+        # because neither station had ever been handed them: the criteria
+        # live in `plain` and both prompts were built from `rationale`.
+        criteria=(item.plain or "").strip()
+        or "  (the plan recorded none for this item)",
     )
     if retry_of:
         prompt += (

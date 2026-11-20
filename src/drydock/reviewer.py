@@ -55,6 +55,12 @@ PROMPT = """Item {id}: {title}
 
 What the item was for: {rationale}
 
+What had to be true when it was done. These are the acceptance criteria
+the plan was approved on, and checking the change against them is the
+first of your three questions:
+
+{criteria}
+
 Files this item authorised: {files}
 A change outside them has already been caught before you; inside them, the
 shape and the size of the change are the engineer's to choose.
@@ -65,10 +71,17 @@ The change, as a diff:
 
 {diff}
 
+Those texts can disagree with each other. A criterion that contradicts the
+item's reasoning, or either of them contradicting what the person asked
+for, is a fault in the plan rather than in this change - put it in
+`noticed`, say which two disagree and how, and judge the change against
+what the person asked for. Do not quietly pick one and review against it.
+
 Decide. Approve if it achieves the item without changing behaviour the item
-never mentioned. Reject if it does only part of it, if it changes something
-unrelated that you can name, or if it reaches the result by weakening what
-was being checked rather than by making the change."""
+never mentioned. Reject if it does only part of it - including a criterion
+above that the change does not meet - if it changes something unrelated
+that you can name, or if it reaches the result by weakening what was being
+checked rather than by making the change."""
 
 
 def _tool() -> Tool:
@@ -131,6 +144,11 @@ def review(
         # against a list rather than against the reviewer's expectation of
         # how long the sentence sounded.
         files=", ".join(item.files) or "the item named none",
+        # What the item actually promised. A change that failed one of
+        # these was approved because the prompt was built from `rationale`
+        # and the criteria live in `plain`, which nothing passed on.
+        criteria=(item.plain or "").strip()
+        or "  (the plan recorded none for this item)",
         summary=summary,
         diff=clipped,
     )

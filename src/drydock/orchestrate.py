@@ -291,6 +291,11 @@ def _judge(
     # from refusals because they are not the item's fault and retrying
     # the engineer would not change them.
     unverified: list[str] = []
+    # Everything true that a gate said and did not refuse over. Kept
+    # because it was being discarded: the reviewer's `noticed` reached
+    # nothing at all, and the critic's was merged into a verdict that
+    # nobody read it from.
+    noticed: list[str] = []
     # Which gates refused, not only what they said. The two are not worth
     # the same: one read the diff against the item, the other looked at a
     # picture - and only one of them can be the sole reason an item that
@@ -308,6 +313,7 @@ def _judge(
             run.spend(spend)
             if on_gate:
                 on_gate(item, name, answer["approved"], answer["reason"])
+            noticed += [f"reviewer: {w}" for w in (answer.get("noticed") or [])]
             if not answer["approved"]:
                 refusals.append(answer["reason"])
                 refused_by.append(name)
@@ -322,6 +328,9 @@ def _judge(
                     if answer.looked
                     else "not looked at: " + answer.reason,
                 )
+            noticed += [
+                f"critic: {w}" for w in (getattr(answer, "noticed", None) or [])
+            ]
             if not answer.verified:
                 # The check was required, was attempted, and did not
                 # finish. Not a refusal - there is nothing for the
@@ -331,7 +340,7 @@ def _judge(
                 refusals.append(answer.reason)
                 refused_by.append(name)
 
-    return _with_the_usual_cause("\n\n".join(refusals)), refused_by, unverified
+    return _with_the_usual_cause("\n\n".join(refusals)), refused_by, unverified, noticed
 
 
 # Complaints that have cost this crew more than one attempt because the
@@ -599,6 +608,10 @@ def _one_item(
 
         refusal = ""
         unverified: list[str] = []
+        # The engineer's own, first: what it saw outside its scope and
+        # left alone, which is the thing the scope rule asks it to report
+        # rather than fix.
+        noticed = [f"engineer: {w}" for w in (report.get("noticed") or [])]
         if verdict.passed:
             diff = here.pending()
             report_card = look(
@@ -625,7 +638,7 @@ def _one_item(
                     item, attempt, "the run was stopped before this was reviewed"
                 ), None
             else:
-                refusal, refused_by, unverified = _judge(
+                refusal, refused_by, unverified, from_gates = _judge(
                     here,
                     where,
                     run,
@@ -638,6 +651,7 @@ def _one_item(
                     on_event,
                     on_gate,
                 )
+                noticed += from_gates
 
         # The one place a judgement may be overruled by arithmetic.
         #
@@ -692,6 +706,7 @@ def _one_item(
                     "visual verification could not be completed, so this was "
                     "not delivered: " + "; ".join(unverified)
                 ),
+                noticed=noticed,
             ), None
 
         if verdict.passed and not refusal:
@@ -715,6 +730,11 @@ def _one_item(
                     else "the worker made no changes"
                 ),
                 outstanding=outstanding,
+                # Said by somebody and true, whether or not it stopped
+                # anything. The run record is where it has to live: a
+                # finding kept in a worker's transcript is a finding
+                # nobody will ever read.
+                noticed=noticed,
                 commit=commit,
             ), commit
 

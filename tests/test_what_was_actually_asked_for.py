@@ -152,12 +152,14 @@ class TestWhoIsHandedIt:
         prompt = engineer.PROMPT.format(
             repo="ca-serena",
             build_command="npm run build",
+            shell="you may run npm",
             task=f"{BRIEF}\n\n{FOLLOW_UP}",
             id=7,
             title="Add src/views/home.js",
             rationale="r",
             files="src/views/home.js",
             verify_with="tests",
+            criteria="the page carries the six things",
         )
         assert BRIEF in prompt
         assert "the item below is still the whole of what you touch" in prompt

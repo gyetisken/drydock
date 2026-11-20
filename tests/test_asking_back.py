@@ -82,7 +82,7 @@ class Fake:
         # Nothing refused it, and nobody refused it: `_judge` reports both
         # now, because a refusal from the critic alone on the last attempt
         # is not worth the same as one from the inspector.
-        monkeypatch.setattr(orchestrate, "_judge", lambda *a, **k: ("", [], []))
+        monkeypatch.setattr(orchestrate, "_judge", lambda *a, **k: ("", [], [], []))
 
     def _work(self, repo, task, item, build, failure="", *a, **k):
         self.briefed.append(failure)

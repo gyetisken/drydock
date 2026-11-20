@@ -57,7 +57,7 @@ class Crew:
         # unverified: `_judge` reports all three. A refusal from the critic
         # alone on the last attempt is not worth the same as one from the
         # inspector, and a check that could not finish is neither.
-        monkeypatch.setattr(orchestrate, "_judge", lambda *a, **k: ("", [], []))
+        monkeypatch.setattr(orchestrate, "_judge", lambda *a, **k: ("", [], [], []))
         monkeypatch.setattr(orchestrate, "_work_a_wave", self._wave)
         # Splitting a failed item asks the planner, which is a model call.
         # These tests are about what happens to the rest of the plan, so
