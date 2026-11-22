@@ -17,7 +17,7 @@ import tempfile
 from concurrent.futures import Future, ThreadPoolExecutor
 from pathlib import Path
 
-from . import probe
+from . import blame, probe
 from .agent import BudgetExceeded
 from .critic import Verdict as Seen
 from .critic import look as look_at_it
@@ -225,14 +225,18 @@ def _show_it(repo_path: Path, run, item, on_event):
         # None meant "nothing to report", which is what a clean page
         # looks like from here, so an item shipped with the only station
         # that can see never having been heard from. See critic.Verdict.
-        if on_event:
-            on_event("critic", f"could not look at it: {exc}")
+        #
+        # And said with its kind and its line, because `{exc}` alone
+        # cannot tell a browser that is not installed from an
+        # `AttributeError` of ours - and only one of those is somebody's
+        # to fix. See blame.
+        said = blame.report("critic", exc, on_event, note="could not look at it")
         return Seen(
             looked=True,
             approved=False,
-            reason=f"could not look at it: {exc}",
+            reason=said,
             noticed=[],
-            failed=f"could not look at it: {exc}",
+            failed=said,
         ), 0.0
 
 
@@ -305,8 +309,15 @@ def _judge(
         try:
             answer, spend = job.result()
         except Exception as exc:  # noqa: BLE001 - one gate failing is not the item failing
-            if on_event:
-                on_event(name, f"could not finish: {exc}")
+            # Said, and then counted. This used to say it and `continue`,
+            # which meant a gate that died left no trace in the result:
+            # the item was judged on whatever gates survived and could be
+            # approved with a required check missing. A check that was
+            # asked for and did not happen is `unverified` - the same
+            # thing a lost verdict is - and that stops the delivery.
+            unverified.append(
+                f"{name}: " + blame.report(name, exc, on_event, note="could not finish")
+            )
             continue
 
         if name == "reviewer":
@@ -335,7 +346,7 @@ def _judge(
                 # The check was required, was attempted, and did not
                 # finish. Not a refusal - there is nothing for the
                 # engineer to fix - and not an approval either.
-                unverified.append(answer.failed)
+                unverified.append(f"{name}: {answer.failed}")
             elif not answer.approved:
                 refusals.append(answer.reason)
                 refused_by.append(name)
@@ -384,6 +395,21 @@ USUAL_CAUSE = (
         ),
     ),
 )
+
+
+#: The desks a line of `unverified` or `noticed` can be attributed to.
+#: Anything else is not a station and must not be shown as one.
+GATES = ("verifier", "inspector", "reviewer", "critic")
+
+
+def _station_of(line: str, fallback: str = "critic") -> str:
+    """Which station a `station: what it said` line came from.
+
+    The fallback is the critic because it is the only gate that was ever
+    reported here, and a line written before the tagging existed is its.
+    """
+    who = line.split(":", 1)[0].strip().lower()
+    return who if who in GATES else fallback
 
 
 def _with_the_usual_cause(refusal: str) -> str:
@@ -695,16 +721,21 @@ def _one_item(
         # agree on, and the item is reported as unverified with the real
         # error under the station that hit it.
         if verdict.passed and unverified:
+            # Under whoever hit it. Hardcoded "critic" here was right
+            # while the critic was the only gate that could report one,
+            # and became a lie the moment a gate that died anywhere else
+            # started arriving as unverified too.
+            said = "; ".join(unverified)
             if on_gate:
-                on_gate(item, "critic", False, "; ".join(unverified))
+                on_gate(item, _station_of(unverified[0]), False, said)
             here.discard()
             return ItemResult(
                 item=item,
                 outcome=Outcome.BLOCKED,
                 attempts=attempt,
                 note=(
-                    "visual verification could not be completed, so this was "
-                    "not delivered: " + "; ".join(unverified)
+                    "a required check could not be completed, so this was "
+                    "not delivered: " + said
                 ),
                 noticed=noticed,
             ), None
@@ -877,11 +908,16 @@ def _work_a_wave(
             try:
                 done[item.id] = jobs[item.id].result()
             except Exception as exc:  # noqa: BLE001 - one item failing is not the wave failing
+                # "the worker stopped: ..." reads as the worker's doing,
+                # and for a killed process it is. For a `TypeError` of
+                # ours it is not, and that one is nobody's to find unless
+                # the traceback is printed and the line is named.
                 done[item.id] = (
                     ItemResult(
                         item=item,
                         outcome=Outcome.BLOCKED,
-                        note=f"the worker stopped: {exc}",
+                        note="the worker stopped: "
+                        + blame.report("engineer", exc, on_event),
                     ),
                     None,
                 )

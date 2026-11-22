@@ -225,15 +225,16 @@ class TestTheGateReportsIt:
         handler = source[
             source.index("except Exception as exc:  # noqa: BLE001 - the run") :
         ]
-        assert "return Seen(" in handler[:700]
-        assert "failed=" in handler[:700]
+        assert "return Seen(" in handler[:1100]
+        assert "failed=" in handler[:1100]
 
     def test_judge_keeps_errors_apart_from_refusals(self):
         import inspect as _i
 
         source = _i.getsource(orchestrate._judge)
         assert "if not answer.verified:" in source
-        assert "unverified.append(answer.failed)" in source
+        # Tagged with who, since the reviewer can now report one too.
+        assert 'unverified.append(f"{name}: {answer.failed}")' in source
         assert source.index("if not answer.verified:") < source.index(
             "elif not answer.approved:"
         )
@@ -253,7 +254,10 @@ class TestDeliveryIsPrevented:
         block = source[source.index("if verdict.passed and unverified:") :]
         assert "here.discard()" in block[:900]
         assert "Outcome.BLOCKED" in block[:900]
-        assert "visual verification could not be completed" in block[:900]
+        # Was "visual verification", which was true while the critic
+        # was the only gate that could report one. See
+        # test_a_bug_of_ours_is_not_a_quiet_one.
+        assert "a required check could not be completed" in block[:900]
 
     def test_it_is_decided_before_the_commit(self):
         import inspect as _i
@@ -273,12 +277,16 @@ class TestDeliveryIsPrevented:
         assert "return ItemResult(" in block
         assert "attempt + 1" not in block
 
-    def test_the_error_is_reported_under_the_critic(self):
+    def test_the_error_is_reported_under_the_station_that_hit_it(self):
+        """The critic while it was the only gate that could report one,
+        and now whichever gate did. See
+        test_a_bug_of_ours_is_not_a_quiet_one."""
         import inspect as _i
 
         source = _i.getsource(orchestrate._one_item)
         block = source[source.index("if verdict.passed and unverified:") :][:900]
-        assert 'on_gate(item, "critic", False' in block
+        assert "on_gate(item, _station_of(unverified[0]), False" in block
+        assert orchestrate._station_of("anything untagged") == "critic"
 
 
 class TestNothingElseMoved:

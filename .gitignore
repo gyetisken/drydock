@@ -1,4 +1,3 @@
-
 __pycache__/
 .env
 .venv
@@ -11,3 +10,8 @@ build/
 dist/
 runs/
 wheels/
+# Benchmarks are run against repositories made here. They are somebody
+# else's git, and `git add -A` has committed two of them as gitlinks.
+.DS_Store
+/TestProject/
+/newWebsiteProject/

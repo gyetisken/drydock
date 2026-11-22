@@ -125,7 +125,7 @@ class TestTheyAreKeptApartFromFailures:
 
     def test_unverified_is_still_its_own_thing(self):
         source = inspect.getsource(orchestrate._judge)
-        assert "unverified.append(answer.failed)" in source
+        assert 'unverified.append(f"{name}: {answer.failed}")' in source
 
 
 class TestTheRunRecordReportsThem:
@@ -181,7 +181,7 @@ class TestEverythingThatStopsThingsStillStops:
 
     def test_an_unverified_check_still_blocks_delivery(self):
         source = inspect.getsource(orchestrate._one_item)
-        assert "visual verification could not be completed" in source
+        assert "a required check could not be completed" in source
 
     def test_a_failed_item_is_still_discarded(self):
         assert "here.discard()" in inspect.getsource(orchestrate._one_item)

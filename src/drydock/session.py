@@ -68,6 +68,20 @@ STEP = {
 }
 
 
+#: Who the loop names when it says something, and whose desk that is. The
+#: loop talks in lowercase station names; the office is keyed by the desk.
+#: Anything unrecognised is the engineer's, because the engineer is what
+#: the loop mostly is.
+DESKS = {
+    "critic": "Critic",
+    "reviewer": "Reviewer",
+    "inspector": "Inspector",
+    "verifier": "Verifier",
+    "planner": "Planner",
+    "engineer": "Engineer",
+}
+
+
 class Session:
     def __init__(
         self,
@@ -165,6 +179,26 @@ class Session:
             # its first argument, so a field called kind collides with it.
             first = text.strip().splitlines()[0] if text.strip() else ""
             self.feed.emit("agent.tool", agent=who, what=what, detail=first[:200])
+
+        return report
+
+    def _station_event(self):
+        """Route what the loop says to the desk that said it.
+
+        `execute` was given one closure bound to the Engineer, so every
+        line it emitted was the Engineer's: the critic failing to start a
+        browser, a reviewer dying mid-diff, a bug of ours in the gate
+        loop. All of it landed on the Engineer's desk, in the tool log,
+        under a station name only the drawer ever showed - so the Critic
+        could be the station that failed and its desk sat idle and clean.
+
+        The loop already names who is talking in its first argument. It
+        is only ever used as the tool name. Used as the desk as well, the
+        failure appears where somebody would go looking for it.
+        """
+
+        def report(what: str, text: str) -> None:
+            self._agent_event(DESKS.get(what.strip().lower(), "Engineer"))(what, text)
 
         return report
 
@@ -1457,7 +1491,7 @@ class Session:
             engine=self.engine,
             model=self.model,
             skills=self.skills,
-            on_event=self._agent_event("Engineer"),
+            on_event=self._station_event(),
             on_item=on_item,
             should_stop=lambda: self.stopping,
             policy=self.policy,
