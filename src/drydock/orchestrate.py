@@ -956,7 +956,7 @@ def execute(
     run: Run,
     stop_after: int | None = None,
     per_item: float = 2.5,
-    engine: str = "api",
+    engine: str = "claude",
     model: str = "opus",
     skills=None,
     on_event=None,

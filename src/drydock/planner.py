@@ -385,7 +385,7 @@ def plan(
     skills: list[Skill] | None = None,
     on_event=None,
     budget: float = 0.0,
-    engine: str = "api",
+    engine: str = "claude",
     model: str = "opus",
     shape: str = "",
     policy=None,
@@ -534,7 +534,7 @@ def answer(
     item,
     question: str,
     direction: str = "",
-    engine: str = "api",
+    engine: str = "claude",
     model: str = "opus",
     on_event=None,
 ) -> tuple[str, object]:
@@ -639,7 +639,7 @@ def split(
     what_happened: str,
     direction: str = "",
     next_id: int = 0,
-    engine: str = "api",
+    engine: str = "claude",
     model: str = "opus",
     on_event=None,
 ) -> tuple[list[Item], object]:

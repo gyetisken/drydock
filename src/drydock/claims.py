@@ -196,7 +196,7 @@ def check(
     pressed=None,
     on_event=None,
     budget: float = 0.0,
-    engine: str = "api",
+    engine: str = "claude",
     model: str = "opus",
 ) -> tuple[Report, object]:
     """Hold each claim against what the page actually says."""

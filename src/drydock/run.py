@@ -21,7 +21,7 @@ class Run(BaseModel):
     task: str
     started: str
     skills: list[str] = Field(default_factory=list)
-    engine: str = "api"
+    engine: str = "claude"
     model: str = "opus"
     # The original request this work is answering, which is not always what
     # was typed this time. `task` is this instruction; a second job in the

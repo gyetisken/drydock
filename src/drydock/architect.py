@@ -112,7 +112,7 @@ def design(
     skills: list[Skill] | None = None,
     on_event=None,
     budget: float = 0.0,
-    engine: str = "api",
+    engine: str = "claude",
     model: str = "opus",
 ) -> tuple[dict, object]:
     existing = [p.name for p in repo.iterdir() if p.name != ".git"][:12]

@@ -89,7 +89,7 @@ class Session:
         task: str,
         skills: list[Skill],
         budget: float = 0.0,
-        engine: str = "api",
+        engine: str = "claude",
         model: str = "opus",
         stop_after: str = "planner",
         standing: str = "",

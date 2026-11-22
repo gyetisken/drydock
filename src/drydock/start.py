@@ -478,7 +478,7 @@ def begin(
     skills: list[Skill] | None = None,
     on_event=None,
     budget: float = 0.0,
-    engine: str = "api",
+    engine: str = "claude",
     model: str = "opus",
 ) -> tuple[Start, object]:
     """Read, decide and plan, in one call."""

@@ -167,7 +167,7 @@ def read_it(
     counted: list[str],
     on_event=None,
     budget: float = 0.0,
-    engine: str = "api",
+    engine: str = "claude",
     model: str = "opus",
 ) -> tuple[Reading, object]:
     """Read a diff and report. Changes nothing, ever."""

@@ -54,13 +54,16 @@ class TestWhereANewProjectGoes:
         assert where == where_projects_go() / "gkhntest"
         assert where != Path.cwd() / "gkhntest"
 
-    def test_it_is_outside_this_repository(self):
+    def test_it_is_outside_this_repository(self, monkeypatch):
+        monkeypatch.delenv("DRYDOCK_PROJECTS", raising=False)
         here = Path(__file__).resolve().parent.parent
         assert not where_projects_go().is_relative_to(here)
 
-    def test_it_is_somewhere_a_person_can_find(self):
+    def test_it_is_somewhere_a_person_can_find(self, monkeypatch):
         """Not under a dotfile. These are somebody's repositories and
-        they have to be openable in a file manager."""
+        they have to be openable in a file manager. Asked without the
+        suite's own override, which points it at a temporary directory."""
+        monkeypatch.delenv("DRYDOCK_PROJECTS", raising=False)
         home = where_projects_go()
         assert not home.name.startswith(".")
         assert home.parent == Path.home()

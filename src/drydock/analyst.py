@@ -106,7 +106,7 @@ def survey(
     on_event=None,
     max_turns: int = 20,
     budget: float = 0.0,
-    engine: str = "api",
+    engine: str = "claude",
     memory: Memory | None = None,
     commit: str = "",
     model: str = "opus",

@@ -74,6 +74,26 @@ def for_work(model: str) -> str:
 MODEL = JUDGEMENT
 
 
+class OnTheSubscription(RuntimeError):
+    """Something tried to spend money through the API.
+
+    The owner of this program has a Claude subscription, and work done
+    through the CLI is covered by it. Work done through an API key is
+    billed per token on top of a plan that is already paid for, which is
+    a bill nobody asked for and the reason this now refuses rather than
+    quietly costs.
+
+    The refusal is here, at the one place an API client is built, rather
+    than at each of the ten stations that could reach it. A guard spread
+    over ten files is a guard with nine places to forget.
+
+    The station code around it is left alone on purpose. Deleting the
+    branch from ten modules is a separate change with its own diff, and
+    an exception on the line that opens the connection is what actually
+    stops the spending.
+    """
+
+
 class BudgetExceeded(RuntimeError):
     """Raised when a run has spent what it was allowed to spend."""
 
@@ -159,7 +179,12 @@ class Agent:
         and its arguments are the return value. That is how an agent hands back
         something typed instead of a paragraph that has to be parsed.
         """
-        client = anthropic.Anthropic()
+        raise OnTheSubscription(
+            "this crew runs on a Claude subscription, not on an API key. "
+            f"{self.name} tried to reach the API directly. Pass "
+            'engine="claude", which is the default everywhere.'
+        )
+        client = anthropic.Anthropic()  # unreachable; see OnTheSubscription
         tools = [t.spec() for t in self.tools]
         by_name = {t.name: t for t in self.tools}
         if final_tool:

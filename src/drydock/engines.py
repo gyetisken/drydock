@@ -59,11 +59,27 @@ class MalformedAnswer(RuntimeError):
 
 
 def _claude_binary() -> str:
+    """The worker command, or a refusal saying why there is not one.
+
+    `DRYDOCK_NO_WORKERS` is the test suite's. Every station used to
+    default to the API engine, so a test that built a Session and let it
+    run reached a code path that needed a key and failed fast. Making
+    the subscription the default made that same path spawn a real
+    worker: one run of the suite drew a logo, with a real model, for
+    real money, inside a test whose fixture believed it had stubbed
+    everything. AGENTS.md says the deterministic tests run without a
+    Claude installation, credentials, a network or a paid call, and
+    before this there was nothing enforcing it but care.
+    """
+    if os.environ.get("DRYDOCK_NO_WORKERS"):
+        raise EngineUnavailable(
+            "DRYDOCK_NO_WORKERS is set, so no worker may be started. A test "
+            "reached a real model call: stub the station instead."
+        )
     binary = shutil.which("claude")
     if not binary:
         raise EngineUnavailable(
-            "the `claude` command is not on PATH. Install Claude Code and "
-            "sign in, or use the API engine with a key."
+            "the `claude` command is not on PATH. Install Claude Code and sign in."
         )
     return binary
 

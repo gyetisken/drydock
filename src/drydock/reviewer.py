@@ -136,7 +136,7 @@ def review(
     item,
     diff: str,
     summary: str,
-    engine: str = "api",
+    engine: str = "claude",
     model: str = "opus",
     on_event=None,
     brief: str = "",

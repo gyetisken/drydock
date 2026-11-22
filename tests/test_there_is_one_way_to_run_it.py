@@ -66,25 +66,27 @@ class TestItAlwaysRunsAsTheAccount:
         assert "drydock.engine" not in said
 
 
-class TestTheOtherEngineStillExists:
-    def test_the_api_still_takes_one(self):
-        """Something with nobody signed in still needs to say how it
-        runs. The window is not that; removing the field would have been
-        a different change."""
-        assert "engine" in StartJob.model_fields
-        assert StartJob(project="/x", command="/do a", engine="api").engine == "api"
+class TestTheOtherEngineIsGone:
+    """It outlived the picker by a few commits and then went too. See
+    test_nothing_reaches_the_api."""
+
+    def test_the_api_engine_is_refused_rather_than_offered(self):
+        import pytest
+
+        with pytest.raises(ValueError, match="subscription"):
+            StartJob(project="/x", command="/do a", engine="api")
 
     def test_the_account_is_what_it_assumes_when_nothing_says(self):
         assert StartJob(project="/x", command="/do a").engine == "claude"
 
-    def test_the_server_still_reports_both(self):
+    def test_the_server_reports_one(self):
         said = TestClient(app).get("/api/state").json()
-        assert [e["id"] for e in said["engines"]] == ["claude", "api"]
+        assert [e["id"] for e in said["engines"]] == ["claude"]
 
-    def test_only_the_api_engine_is_given_a_budget(self):
-        """A subscription is not billed per token, so a dollar cap on it
-        is a number with nothing behind it."""
-        assert '0.0 if body.engine == "claude" else body.budget' in PAGE
+    def test_the_budget_line_went_with_it(self):
+        """A dollar cap existed for the engine that spends dollars. A
+        subscription is not billed per token."""
+        assert "ANTHROPIC_API_KEY" not in PAGE
 
 
 class TestItSaysWhenItCannotRun:

@@ -28,6 +28,10 @@ def test_worker_configuration_does_not_require_claude_on_path(tmp_path, monkeypa
 def test_launch_requires_claude_before_touching_the_repository(
     tmp_path, monkeypatch, method, argument, filename
 ):
+    # The suite's own lock comes off for this one: what is being checked
+    # is the other refusal, the one a person gets when Claude Code is not
+    # installed. See tests/conftest.py.
+    monkeypatch.delenv("DRYDOCK_NO_WORKERS", raising=False)
     monkeypatch.setenv("PATH", str(tmp_path))
     scratch_file = tmp_path / filename
     scratch_file.write_text("existing file")
@@ -35,6 +39,17 @@ def test_launch_requires_claude_before_touching_the_repository(
     with pytest.raises(EngineUnavailable, match="claude.*not on PATH"):
         getattr(engine, method)(tmp_path, "system", "task", argument)
     assert scratch_file.read_text() == "existing file"
+
+
+def test_the_suite_cannot_start_a_real_worker(tmp_path, monkeypatch):
+    """One run of this suite drew a logo with a real model, inside a
+    test whose fixture believed it had stubbed every station. Care was
+    the only thing stopping it; now there is a lock."""
+    import shutil
+
+    monkeypatch.setattr(shutil, "which", lambda _: "/usr/local/bin/claude")
+    with pytest.raises(EngineUnavailable, match="DRYDOCK_NO_WORKERS"):
+        ClaudeCodeEngine().structured(tmp_path, "system", "task", "{}")
 
 
 def test_a_project_with_a_build_command_is_held_to_it():

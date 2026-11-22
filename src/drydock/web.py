@@ -12,7 +12,7 @@ from pathlib import Path
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 from . import crew, intent, preview, publish, version
 from .commands import available, match
@@ -458,8 +458,15 @@ def usage() -> dict:
 
 
 def _engines() -> list[dict]:
-    """Which ways of running the crew are actually available here."""
-    import os
+    """How the crew runs. There is one way and it is the subscription.
+
+    There were two: the Claude Code CLI signed in as whoever is at the
+    machine, and an API key billed per token. The second was removed
+    because it bills on top of a plan that is already paid for - see
+    `agent.OnTheSubscription`. It is still reported, so that a window
+    built against the older shape does not break and so that somebody
+    looking at the list can see it was not forgotten.
+    """
     import shutil
 
     return [
@@ -470,14 +477,6 @@ def _engines() -> list[dict]:
             "detail": "runs through Claude Code, signed in as you",
             "ready": bool(shutil.which("claude")),
             "why": "Claude Code is not installed on this machine",
-        },
-        {
-            "id": "api",
-            "short": "API key",
-            "label": "An API key",
-            "detail": "billed per token, with a hard budget per run",
-            "ready": bool(os.environ.get("ANTHROPIC_API_KEY")),
-            "why": "ANTHROPIC_API_KEY is not set",
         },
     ]
 
@@ -621,6 +620,24 @@ class StartJob(BaseModel):
     # which is how a four-item website stopped after three.
     budget: float = 4.0
     engine: str = "claude"
+
+    @field_validator("engine")
+    @classmethod
+    def _only_the_subscription(cls, said: str) -> str:
+        """Nothing but the subscription, said at the edge.
+
+        The window cannot ask for anything else and neither can anybody
+        posting to this by hand. Refused here rather than accepted and
+        then refused deep inside a worker, where the run has already
+        started and the person is watching a spinner.
+        """
+        if (said or "claude").strip() != "claude":
+            raise ValueError(
+                "this crew runs on a Claude subscription; the API engine "
+                "was removed because it bills on top of a paid plan"
+            )
+        return "claude"
+
     model: str = "opus"
     # How much ceremony this job gets: fast, balanced or deep. Empty means
     # whatever this person has set, which starts as balanced.

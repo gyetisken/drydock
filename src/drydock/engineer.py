@@ -241,7 +241,7 @@ def work(
     skills: list[Skill] | None = None,
     on_event=None,
     budget: float = 0.0,
-    engine: str = "api",
+    engine: str = "claude",
     model: str = "opus",
     direction: str = "",
     policy=None,

@@ -252,7 +252,7 @@ def decide(
     skills: list[Skill] | None = None,
     on_event=None,
     budget: float = 0.0,
-    engine: str = "api",
+    engine: str = "claude",
     model: str = "opus",
 ) -> tuple[dict, object]:
     prompt = PROMPT.format(task=task, shape=shape or "")
@@ -342,7 +342,7 @@ def draw_mark(
     skills: list[Skill] | None = None,
     on_event=None,
     budget: float = 0.0,
-    engine: str = "api",
+    engine: str = "claude",
     model: str = "opus",
 ) -> tuple[dict, object]:
     """Draw the mark, knowing nothing about the palette and needing to know
