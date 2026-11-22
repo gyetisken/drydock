@@ -782,3 +782,23 @@ body.split .composer .cwrap { max-width:none }
 .finding i { font-style:italic; color:var(--faint) }
 .finding.seen { border-left-color:var(--warn) }
 .finding.seen b { color:var(--warn) }
+
+/* Which drydock is running. Quiet when it matches the repository, loud
+   when it does not: a server two commits behind looks exactly like one
+   that is current, and that has cost whole benchmark runs. */
+.version {
+  margin: 0 12px 10px;
+  padding: 7px 9px;
+  border-radius: 7px;
+  background: var(--panel, rgba(127, 127, 127, .07));
+  font-size: 11px;
+  line-height: 1.45;
+}
+.version b { display: block; font-weight: 600; font-variant-numeric: tabular-nums; }
+.version i { display: block; font-style: normal; opacity: .65; }
+.version.stale {
+  background: color-mix(in srgb, var(--bad, #b4531f) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--bad, #b4531f) 38%, transparent);
+}
+.version.stale b { color: var(--bad, #b4531f); }
+.version.stale i { opacity: .85; }

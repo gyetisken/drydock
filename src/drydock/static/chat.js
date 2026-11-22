@@ -1141,6 +1141,7 @@ async function refresh() {
   S.projects = full.projects;
   S.commands = full.commands; S.runs = full.runs;
   S.engines = full.engines; S.models = full.models; S.crew = full.crew || [];
+  drawVersion(full.version);
   S.model = localStorage.getItem("drydock.model") || S.model;
   const saved = localStorage.getItem("drydock.engine");
   if (saved && S.engines.some(e => e.id === saved && e.ready)) S.engine = saved;
@@ -1152,6 +1153,24 @@ async function refresh() {
     return;
   }
   drawSide();
+}
+
+// Which drydock is running. A server keeps the code it was started with,
+// so a fix that is in the repository and not in this process does not
+// exist for the run in front of you - and until this, nothing said so.
+// Four separate mistakes in one afternoon came from exactly that.
+function drawVersion(v) {
+  const box = $("version");
+  if (!box) return;
+  if (!v || !v.known) { box.hidden = true; return; }
+  box.hidden = false;
+  box.className = v.stale ? "version stale" : "version";
+  box.innerHTML = v.stale
+    ? `<b>running ${esc(v.short)}</b>
+       <i>the repository is on ${esc((v.on_disk || "").slice(0, 7))} &mdash;
+          this server is older. Restart it to pick the newer code up;
+          a run in flight keeps the code it started with.</i>`
+    : `<b>${esc(v.short)}</b><i>up to date with the repository</i>`;
 }
 
 /* ---------- model and engine pickers ---------- */

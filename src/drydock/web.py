@@ -14,7 +14,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import crew, intent, preview, publish
+from . import crew, intent, preview, publish, version
 from .commands import available, match
 from .engines import stop_workers
 from .pace import events_in
@@ -74,6 +74,8 @@ PAGE = """<!doctype html><html lang="en"><head><meta charset="utf-8">
     </div>
 
     <button class="sidebar-toggle" id="collapse" title="hide the sidebar (&#8984;B)">&#8249;</button>
+
+    <div class="version" id="version" hidden></div>
 
     <div class="side-h">Projects <button id="plus" title="add a repository">+</button></div>
     <div class="addbox" id="addbox">
@@ -482,6 +484,10 @@ def state() -> dict:
     # Read once and hand out per project, rather than once per project.
     history = workspace.history(limit=400)
     return {
+        # Which Drydock this is. A server keeps the code it started with,
+        # so a fix that is in the repository and not in this process is a
+        # fix that does not exist for the run in front of you.
+        "version": version.status(),
         "projects": [
             {
                 "path": str(p.path),
