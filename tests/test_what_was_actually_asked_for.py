@@ -154,6 +154,7 @@ class TestWhoIsHandedIt:
 
     def test_the_engineer_prompt_carries_it(self):
         prompt = engineer.PROMPT.format(
+            known="",
             repo="ca-serena",
             build_command="npm run build",
             shell="you may run npm",

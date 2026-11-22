@@ -84,7 +84,7 @@ class Fake:
         # is not worth the same as one from the inspector.
         monkeypatch.setattr(orchestrate, "_judge", lambda *a, **k: ("", [], [], []))
 
-    def _work(self, repo, task, item, build, failure="", *a, **k):
+    def _work(self, repo, task, item, build, known="", failure="", *a, **k):
         self.briefed.append(failure)
         return (self.reports.pop(0) if self.reports else gave_up()), None
 

@@ -152,6 +152,7 @@ class TestStoppingEndsTheItem:
             task="t",
             brief="t",
             as_briefed="t",
+            handoff="",
             direction="",
             model="opus",
             skills_loaded=[],

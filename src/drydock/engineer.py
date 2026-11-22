@@ -130,6 +130,8 @@ Build: {build_command}
 
 {shell}
 
+{known}
+
 What is being built, and what it is for. This does not widen your scope -
 the item below is still the whole of what you touch - but it is what the
 finished thing is judged against, so where the item leaves you a choice,
@@ -237,6 +239,7 @@ def work(
     task: str,
     item: Item,
     build_command: str,
+    known: str = "",
     retry_of: str = "",
     skills: list[Skill] | None = None,
     on_event=None,
@@ -252,6 +255,11 @@ def work(
         repo=repo.name,
         build_command=build_command,
         shell=shell_allowance(build_command),
+        # What the start of the run already found out. It was written
+        # onto the record and read by nothing, so every engineer worked
+        # out the language, the test command and the shape of the
+        # project again - once per item, five times on a five-item plan.
+        known=known.strip(),
         task=task,
         id=item.id,
         title=item.title,

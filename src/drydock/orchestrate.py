@@ -519,6 +519,7 @@ def _one_item(
                 run.as_briefed,
                 item,
                 detect(where).build_command,
+                run.handoff,
                 failure,
                 run.skills_loaded,
                 on_event,

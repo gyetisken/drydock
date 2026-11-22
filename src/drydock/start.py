@@ -111,6 +111,40 @@ Several items are right when the pieces can fail on their own and can be
 worked on at the same time - different files, different data, different
 endpoints. That is what the range is for.
 
+**Count the dependencies before you believe your own split.** If every
+item needs the first one, you have not written five items; you have
+written one item and four of its paragraphs, and each paragraph will
+now cost a full round of building, testing, diff-reading and reviewing.
+A plan whose own summary says the first item "lays the spine" is that
+plan. Measured on a one-page site: six items took twenty-six minutes
+and nine dollars, one item took ten minutes and three, and the single
+item produced the better page.
+
+**An item nobody asked for is not an item.** The criteria come in two
+groups below, and an item whose "From what was asked" group is empty -
+"nothing specific, this is all decided here" - is a feature you
+invented, given the same weight as the thing the person wanted. Either
+it belongs inside an item they did ask for, or it does not exist. A
+thing you decided may shape **how** an item is done. It may not be
+**why** an item exists.
+
+Watched happen, and the reason this paragraph is here: "a website for
+an Italian restaurant called LUMI" became five items, of which the
+second was a timezone and daylight-saving module with its own test
+suite, because the brief had decided the page should say whether the
+door is open right now. Two of the remaining items then depended on it.
+Nobody asked for live opening hours, and the first item alone ran for
+longer than the whole job should have taken.
+
+**The least machinery that answers the request.** A server, a build
+step, a data layer, a module computing something at runtime - each is a
+thing to write, test, review and keep working, and each needs the
+request to have asked for it. A page of text and a stylesheet is a
+complete answer to "build me a website" and is the right answer until
+something in the request says otherwise. If you are about to plan
+infrastructure, say in the item's reasoning which words in the request
+made it necessary. If you cannot point at any, do not plan it.
+
 **Say which of it is theirs and which of it is yours.** An item's
 criteria get read as requirements by everything downstream, so a reading
 you invented is enforced exactly as hard as a price the person named.

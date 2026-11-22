@@ -283,7 +283,11 @@ PLAN_SCHEMA = {
                             "downstream refuses work for departing from "
                             "it. Keeping them apart is what stops your "
                             "reading being enforced as though the person "
-                            "had asked for it."
+                            "had asked for it.\n\n"
+                            "An item whose 'From what was asked' group "
+                            "is empty is a feature you invented. Either "
+                            "it belongs inside an item they did ask "
+                            "for, or it does not exist."
                         ),
                     },
                     "rationale": {

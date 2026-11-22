@@ -141,6 +141,57 @@ class Run(BaseModel):
         )
 
     @property
+    def handoff(self) -> str:
+        """What the start of this run already found out, said once.
+
+        The reading, the toolchain and the commands were worked out by
+        somebody with the repository open, written onto `inventory` -
+        and read by nothing but the command line's own printout. So
+        every engineer began by working out the language, the test
+        command and the shape of the project again, once per item, and
+        a five-item plan paid for that discovery five times.
+
+        Short on purpose. This is a handoff, not a briefing: the facts
+        that stop somebody re-deriving them, and nothing that would
+        read as instructions. What the item is for still comes from the
+        item.
+
+        Said as of the start of the run, and said to be checkable. A
+        fact about a tree is only a fact until something changes it,
+        and the first item of a greenfield job changes most of them.
+        """
+        chain = self.inventory
+        if chain is None:
+            return ""
+        lines = []
+        if chain.build_tool:
+            lines.append(f"- Built with: {chain.build_tool}")
+        if chain.language and chain.language != "unknown":
+            lines.append(f"- Language: {chain.language}")
+        if chain.build_command:
+            lines.append(f"- Run it with: `{chain.build_command}`")
+        if chain.test_command:
+            lines.append(f"- Test it with: `{chain.test_command}`")
+        for said in chain.findings[:5]:
+            lines.append(f"- Found: {said.strip()[:300]}")
+        for said in chain.risks[:3]:
+            lines.append(f"- Watch: {said.strip()[:300]}")
+        if not lines:
+            return ""
+        return (
+            "What was already worked out about this repository, when this "
+            "run started. It is here so you do not spend your turns "
+            "finding it again:\n\n"
+            + "\n".join(lines)
+            + "\n\nIt was read once, at the start. If what you see "
+            "disagrees with it - a command that does not exist, a file "
+            "that moved, a version that is not what it says - then what "
+            "you see is right and this is stale. Check anything you are "
+            "about to rely on and are not sure of; this replaces the "
+            "routine look around, not your judgement."
+        )
+
+    @property
     def path(self) -> Path:
         return Path("runs") / f"{self.id}.json"
 

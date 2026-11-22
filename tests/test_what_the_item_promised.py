@@ -72,6 +72,7 @@ class TestTheEngineerGetsThem:
 
     def test_an_item_with_none_says_so_rather_than_showing_a_blank(self):
         built = engineer.PROMPT.format(
+            known="",
             repo="r",
             build_command="npm test",
             shell="s",
