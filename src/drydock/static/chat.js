@@ -696,6 +696,18 @@ const on = {
   "stopping": (e) => {
     say("crew", `<div class="body"><p>Stopping. ${esc(e.note)}</p></div>`, "dim");
   },
+  // The run was given a clock and the clock ran out. Said in its own
+  // right rather than as another stop, because "it was stopped" and
+  // "it ran out of time" are different things to read afterwards: one
+  // was somebody's decision and the other was the bound they set.
+  "deadline": (e) => {
+    say("crew", `<div class="body deadline">
+      <p><b>Time is up.</b> ${esc(e.note)}</p>
+      <p class="why">The workers of this run have been ended and nothing
+         further will start. What landed before this is committed and
+         stays; the item in flight was thrown away unfinished.</p>
+    </div>`, "dim");
+  },
   // An answer, not a job. No plan, no items, no branch.
   "answer": (e) => {
     say("crew", `<div class="body answer">${marked(e.text)}${
@@ -1180,6 +1192,7 @@ async function refresh() {
   if (saved && S.engines.some(e => e.id === saved && e.ready)) S.engine = saved;
   else S.engine = (S.engines.find(e => e.ready) || S.engines[0]).id;
   drawPicks();
+  drawDeadline();
   if (!S.project && S.projects.length) {
     drawSide();
     openProject(S.projects[0].path);
@@ -1204,6 +1217,31 @@ function drawVersion(v) {
           this server is older. Restart it to pick the newer code up;
           a run in flight keeps the code it started with.</i>`
     : `<b>${esc(v.short)}</b><i>up to date with the repository</i>`;
+}
+
+// How long this run may take. Empty is no deadline and is the default:
+// the mechanism existed for two days with nothing able to ask for it, so
+// every run was unbounded and the only way to end one on time was a
+// person watching the clock.
+//
+// It is remembered like the model and the engine, because somebody who
+// wants a bound usually wants it again.
+function deadlineAsked() {
+  const box = $("minutes");
+  const asked = Number(box && box.value);
+  return Number.isFinite(asked) && asked > 0 ? asked : 0;
+}
+
+function drawDeadline() {
+  const box = $("minutes");
+  if (!box) return;
+  box.value = localStorage.getItem("drydock.minutes") || "";
+  box.addEventListener("change", () => {
+    const asked = deadlineAsked();
+    if (asked) localStorage.setItem("drydock.minutes", String(asked));
+    else localStorage.removeItem("drydock.minutes");
+    box.value = asked || "";
+  });
 }
 
 /* ---------- model and engine pickers ---------- */
@@ -1764,6 +1802,10 @@ async function send() {
     method: "POST", headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       project: S.project, command: text, engine: S.engine, model: S.model,
+      // Zero is no deadline, which is what an empty box means. The server
+      // reads anything <= 0 the same way, so a bad number cannot read as
+      // a deadline that has already expired.
+      minutes: deadlineAsked(),
     }),
   });
   const body = await res.json();

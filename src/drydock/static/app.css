@@ -826,3 +826,9 @@ body.split .composer .cwrap { max-width:none }
 }
 .noticed-one .fact { flex: none; }
 .noticed-one .why { opacity: .8; }
+
+/* The run was given a clock and the clock ran out. Marked, because
+   "it was stopped" and "it ran out of time" read differently after the
+   fact: one was a decision, the other was the bound somebody set. */
+.body.deadline { border-left: 3px solid var(--bad, #b4531f); padding-left: 10px; }
+.body.deadline b { color: var(--bad, #b4531f); }
