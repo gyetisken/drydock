@@ -173,7 +173,7 @@ class TestTheEngineerDecides:
         for kept in (
             "The item you are given is the entire scope",
             "Do not touch the verification",
-            "Do not verify your own work",
+            "Running the full suite yourself afterwards",
         ):
             assert kept in engineer.SYSTEM, kept
 

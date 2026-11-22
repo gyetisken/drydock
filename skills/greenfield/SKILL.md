@@ -70,9 +70,13 @@ that nobody mistakes an unfinished thing for a finished one.
 
 ## Engineer
 
-Write the test in the same item as the code, and make it fail before making it
-pass. A test written after the fact tends to assert what the code does rather
-than what it was supposed to do.
+Write the test in the same item as the code, and write it before the code it
+covers - then run that one test and watch it fail. A test written after the
+fact tends to assert what the code does rather than what it was supposed to
+do, and one that has never failed has not been shown to test anything.
+
+That is the one test, not the suite. Running the whole suite afterwards to
+show it passes is somebody else's job and is done for you either way.
 
 Keep the first version small enough that it works. Something that does one
 thing end to end is a foundation; a half-built thing with six features is a
@@ -101,6 +105,12 @@ that works and report the choice rather than burying it.
 The bar is that the tests exist, that they run, and that they pass. All three:
 a suite that passes because it contains nothing is the failure this skill is
 written to prevent.
+
+The bar is not a number. A page of markup and styling earns a few checks on
+what it must contain and must not invent; a service that takes money or
+holds a session earns the edge cases, because that is where it goes wrong
+quietly. Judge it by what could plausibly break, and say in the report what
+you decided was not worth testing and why.
 
 Watch the count from the first item onwards. It should only ever go up.
 

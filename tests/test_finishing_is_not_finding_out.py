@@ -45,7 +45,11 @@ SYSTEM = flat(engineer.SYSTEM)
 
 class TestTheFinishingPhaseIsNamed:
     def test_it_says_finishing_is_not_for_finding_out(self):
-        assert "Finishing is not a phase for finding out" in SYSTEM
+        # Reworded: the old heading collided with "Run things to find
+        # out, not to prove", which encourages exactly what this one
+        # forbade. Same rule, said about the end rather than about
+        # finding out. See test_what_is_worth_testing.
+        assert "At the end, you already know what you know" in SYSTEM
 
     def test_it_names_searching_the_source_for_your_own_work(self):
         assert "searching the source for a tag you wrote yourself" in SYSTEM
@@ -79,8 +83,10 @@ class TestWhatIsStillEncouraged:
 
     def test_compiling_as_it_goes(self):
         assert "compiling as you go" in SYSTEM
-        assert "Compile as you go" in engineer.SYSTEM
-        assert "Compile while you work" in engineer.SYSTEM
+        # Said once now, inside the paragraph that separates finding out
+        # from proving. It used to be said twice, two paragraphs apart.
+        assert SYSTEM.count("compile as you go") == 1
+        assert "Compile while you work" not in SYSTEM
 
     def test_they_are_marked_as_worth_the_turns(self):
         assert "are worth the turns" in SYSTEM
@@ -149,7 +155,11 @@ class TestTheGatesAreUntouched:
 
     def test_the_old_rule_about_the_suite_is_still_there(self):
         """This adds to it; it does not replace it."""
-        assert "Do not verify your own work, and do not prove it" in engineer.SYSTEM
+        # Split in two, because the skill below it asks for a failing
+        # test and the old sentence forbade running one at all.
+        said = " ".join(engineer.SYSTEM.split())
+        assert "Run things to find out, not to prove" in said
+        assert "Running the full suite yourself afterwards to show that it" in said
 
     def test_the_report_is_still_the_last_thing(self):
         assert "Finishing means writing the report" in engineer.SYSTEM

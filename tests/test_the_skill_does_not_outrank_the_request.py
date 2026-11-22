@@ -95,7 +95,10 @@ class TestWhatWasWorthKeepingWasKept:
     def test_the_engineer_guidance_is_untouched(self):
         assert "Never improvise an asset" in FLAT
         assert "Do not invent requirements" in FLAT
-        assert "make it fail before making it pass" in FLAT
+        # Reworded so it asks for the one test rather than the suite:
+        # the engineer's own instructions forbid running the suite to
+        # prove anything. See test_what_is_worth_testing.
+        assert "run that one test and watch it fail" in FLAT
 
     def test_the_verification_bar_is_untouched(self):
         assert "a suite that passes because it contains nothing" in FLAT
