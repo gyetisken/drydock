@@ -75,6 +75,32 @@ def _stopping(should_stop) -> bool:
         return False
 
 
+def _the_same_refusal(now: str, before: str) -> bool:
+    """Whether a refusal says what the last one said.
+
+    Compared as words rather than as characters, because the same
+    complaint about the same files can be wrapped differently and
+    listed in a different order. Not a pattern and not a keyword: it
+    knows nothing about what any particular refusal is about, which is
+    the point - a rule that recognised `server.js` would recognise
+    nothing else.
+    """
+
+    def words(said: str) -> frozenset:
+        # Punctuation off the ends, because `server.js,` and `server.js`
+        # are the same complaint and a comma is where the line wrapped.
+        return frozenset(
+            word
+            for word in (w.strip(".,;:()[]`'\"") for w in (said or "").lower().split())
+            if word
+        )
+
+    here, there = words(now), words(before)
+    if not here or not there:
+        return False
+    return len(here & there) >= 0.9 * len(here | there)
+
+
 def _stopped_here(item, attempt: int, why: str):
     """The result for work that was not done because the run was stopping."""
     return ItemResult(item=item, outcome=Outcome.BLOCKED, attempts=attempt, note=why)
@@ -778,7 +804,52 @@ def _one_item(
             ), commit
 
         why = refusal or verdict.reason
+
+        # The same refusal twice is not an engineer that failed twice.
+        #
+        # An item can be written so that it cannot be done: criteria
+        # that need a file the item did not authorise. The engineer
+        # meets the criteria, the inspector refuses the file - rightly,
+        # it is not guessing - and the second attempt walks into the
+        # same wall, because nothing about the item changed between
+        # them. Watched: both attempts of one run refused for the same
+        # unauthorised file, eighteen minutes of engineering for a
+        # verdict that was decided when the item was written.
+        #
+        # Measured rather than matched. Two refusals, by the station
+        # that reads files rather than opinions, saying the same thing:
+        # that is a defect in the plan and another attempt cannot fix
+        # it. It stops here and says so, instead of spending one.
+        if (
+            attempt < policy.attempts
+            and refused_by == ["inspector"]
+            and _the_same_refusal(why, failure)
+        ):
+            kept = here.checkpoint(f"item {item.id}: {item.title}")
+            here.discard()
+            return ItemResult(
+                item=item,
+                outcome=Outcome.BLOCKED,
+                attempts=attempt,
+                checks=[verdict.check],
+                note=(
+                    "this item cannot be done as written, so a second "
+                    "attempt was not spent on it. The same check refused "
+                    "the same thing twice and nothing about the item "
+                    "changed in between, which makes it the plan's fault "
+                    "rather than the engineer's. What it said:\n\n"
+                    f"{why}\n\n"
+                    "The item's criteria ask for something its file list "
+                    "does not allow. Change one of them and run it again."
+                ),
+                noticed=noticed,
+                checkpoint=kept,
+            ), None
+
         if attempt == 2:
+            # Before it goes, so it can be looked at afterwards. The work
+            # is still thrown away; a refused item has to cost nothing.
+            kept = here.checkpoint(f"item {item.id}: {item.title}")
             here.discard()
             return ItemResult(
                 item=item,
@@ -786,6 +857,8 @@ def _one_item(
                 attempts=2,
                 checks=[verdict.check],
                 note=why,
+                noticed=noticed,
+                checkpoint=kept,
             ), None
 
         failure = why if refusal else f"{verdict.reason}\n\n{verdict.check.detail}"

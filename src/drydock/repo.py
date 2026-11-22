@@ -287,6 +287,48 @@ class Repo:
             gone.append(self.OUR_LOOK)
         return gone
 
+    def checkpoint(self, why: str = "") -> str:
+        """Write the uncommitted work into the object database, unreferenced.
+
+        Call it immediately before discarding. `write-tree` and
+        `commit-tree` make a commit object that no branch points at:
+        nothing in the worktree moves, no ref changes, and `git show
+        <hash>` reads the whole of it back afterwards.
+
+        This exists because of one run. A site that worked, with
+        sixteen passing tests, was discarded after two refusals and was
+        gone - every file untracked, so nothing had ever entered the
+        object database, and `git fsck` found one empty blob. Throwing
+        the work away was right; a refused item costs nothing and that
+        is what makes the rollback affordable. What was wrong is that
+        nobody could look at it afterwards.
+
+        `git stash create` is the obvious tool and is the wrong one: it
+        keeps tracked modifications and drops untracked files, which on
+        a greenfield item is all of them.
+
+        The index is staged to do it, which is safe only because the
+        discard that follows resets it. Our own leftovers are excluded
+        so a checkpoint is the work and not the pictures of it.
+
+        Never raises. A checkpoint that fails must not stop a discard.
+        """
+        if not self.changed_files():
+            return ""
+        keep = f"':(exclude){_quote(self.OUR_LOOK)}'"
+        if self._git(f"add -A -- . {keep}")[0]:
+            return ""
+        code, tree = self._git("write-tree")
+        tree = tree.strip()
+        if code or not tree:
+            return ""
+        head = self.head()
+        parent = f"-p {_quote(head)}" if head else ""
+        message = _quote(why.strip()[:200] or "work discarded by drydock")
+        code, made = self._git(f"commit-tree {_quote(tree)} {parent} -m {message}")
+        made = made.strip()
+        return made if code == 0 and made else ""
+
     def discard(self) -> None:
         """Throw away uncommitted work. The undo button for a failed item.
 

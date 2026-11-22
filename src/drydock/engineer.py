@@ -174,6 +174,25 @@ free hand where a criterion pins you, or the other way round - that is not
 yours to resolve: put it in `question`, change nothing, and it will be
 settled and handed back to you.
 
+**Whole first, then better.** Get every part of the item working and
+verified - the files written, the command running, the suite passing -
+before you improve any of it. Then one pass of improvement over what is
+there, and report.
+
+That order is not a style preference, it is what makes the work
+survivable. An item that is complete and plain can be committed; an
+item that is three-quarters built and beautifully typeset in the parts
+that exist is thrown away whole when the clock runs out, and so is
+everything it would have become. Measured on one run: twelve minutes
+on a one-page site, ending in a run of eight consecutive edits to the
+stylesheet, and nothing delivered.
+
+One pass. When the item's criteria are met and the page is not wrong,
+it is finished - "could be nicer" is not a defect, and another look at
+something that already reads is a turn spent on the thing you have
+already done rather than on the thing you have not. Something that is
+not you will look at the result and say if it is wrong.
+
 Make the change, then report."""
 
 

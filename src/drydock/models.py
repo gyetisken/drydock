@@ -164,3 +164,11 @@ class ItemResult(BaseModel):
     # life of the process, and the sentence existed only in a CLI
     # transcript nobody reads. Each entry says who said it.
     noticed: list[str] = Field(default_factory=list)
+    # Where the work went when it was thrown away. A refused item costs
+    # nothing precisely because its work is discarded, and that is what
+    # makes the rollback affordable - but one run discarded a site that
+    # worked, with sixteen passing tests, and it was gone: every file
+    # untracked, so nothing had ever reached the object database. The
+    # throwing away was right. Being unable to look at it afterwards
+    # was not. `git show <this>` reads the whole of it back.
+    checkpoint: str = ""
