@@ -802,3 +802,27 @@ body.split .composer .cwrap { max-width:none }
 }
 .version.stale b { color: var(--bad, #b4531f); }
 .version.stale i { opacity: .85; }
+
+/* Findings that stopped nothing. Folded away by default because a run
+   can produce a dozen and none of them refused anything - but present,
+   because every one of them is true and used to be discarded. Visibly
+   not an error: no red, and the summary says so. */
+.noticed { margin-top: 7px; font-size: 11px; }
+.noticed > summary {
+  cursor: pointer;
+  opacity: .6;
+  list-style: none;
+  padding: 2px 0;
+}
+.noticed > summary::-webkit-details-marker { display: none; }
+.noticed > summary::before { content: "▸ "; }
+.noticed[open] > summary::before { content: "▾ "; }
+.noticed > summary:hover { opacity: .9; }
+.noticed-one {
+  display: flex;
+  gap: 7px;
+  align-items: baseline;
+  padding: 4px 0 4px 14px;
+}
+.noticed-one .fact { flex: none; }
+.noticed-one .why { opacity: .8; }

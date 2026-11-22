@@ -175,12 +175,44 @@ function whatLanded(e) {
           <span class="fact bad">kept, with this against it</span>
           <span class="why">${esc(it.outstanding)}</span>
         </div>` : ""}
+      ${noticedBy(it)}
       ${(it.files || []).length
         ? `<div class="landed-files">${
              it.files.map(f => `<code>${esc(f)}</code>`).join(" ")
            }</div>`
         : `<div class="landed-files flat">files not recorded</div>`}
     </div>`).join("")}</div>`;
+}
+
+// What the stations said and did not stop anything over.
+//
+// Three of them produce these - the engineer reports what it saw outside
+// its scope, the reviewer what it read in the diff, the critic what it
+// saw on the page - and all three used to be dropped on the floor. One
+// reviewer wrote that a failure path could hang a request for the life
+// of the process, approved the item correctly because the path is
+// unreachable today, and the sentence existed only in a transcript
+// nobody opens.
+//
+// They are shown apart from the things that refused, and apart from
+// `outstanding`, which is a judgement an item was kept despite. These
+// stopped nothing: they are true and somebody should know.
+function noticedBy(it) {
+  const said = it.noticed || [];
+  if (!said.length) return "";
+  return `<details class="noticed">
+    <summary>${said.length} finding${said.length > 1 ? "s" : ""},
+      which stopped nothing</summary>
+    ${said.map(line => {
+      const at = line.indexOf(": ");
+      const who = at > 0 ? line.slice(0, at) : "";
+      const what = at > 0 ? line.slice(at + 2) : line;
+      return `<div class="noticed-one">
+        ${who ? `<span class="fact flat">${esc(who)}</span>` : ""}
+        <span class="why">${esc(what)}</span>
+      </div>`;
+    }).join("")}
+  </details>`;
 }
 
 // What was planned and is not here. Named, with the reason that was
@@ -195,6 +227,7 @@ function whatDidNot(e) {
       <span class="missed-plain">${esc(it.plain)}</span>
       <span class="fact flat">${esc(it.outcome)}</span>
       ${it.note ? `<div class="why">${esc(it.note)}</div>` : ""}
+      ${noticedBy(it)}
     </div>`).join("")}
   </div>`;
 }
