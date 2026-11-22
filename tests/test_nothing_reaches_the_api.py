@@ -175,7 +175,7 @@ class TestTheListSaysThereIsOne:
 
     def test_the_window_still_sends_the_subscription(self):
         js = Path("src/drydock/static/chat.js").read_text()
-        assert 'engine: "claude", model: "opus" }' in js
+        assert 'engine: "claude", model: "opus",' in js
 
 
 class TestWhatWasDeliberatelyNotDone:

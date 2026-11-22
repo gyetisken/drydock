@@ -48,7 +48,7 @@ class TestThePickerIsGone:
 
 class TestItAlwaysRunsAsTheAccount:
     def test_the_window_sends_claude(self):
-        assert 'engine: "claude", model: "opus" }' in JS
+        assert 'engine: "claude", model: "opus",' in JS
         assert "engine: S.engine" in JS
 
     def test_nothing_can_change_it(self):

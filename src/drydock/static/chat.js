@@ -3,7 +3,9 @@
 // event from the server, so nothing here can claim progress that was not made.
 
 const S = { projects: [], commands: [], runs: [], project: null, key: null, menu: -1,
-  engines: [], models: [], engine: "claude", model: "opus" };
+  engines: [], models: [], engine: "claude", model: "opus",
+  // Whether stop has already been asked once for the run in flight.
+  stopAsked: false };
 // There is one way to run the crew and it is not a question anybody was
 // answering. `api` still exists for anything headless - the CLI takes
 // `--engine`, and CI has no account to be signed in as - but the window
@@ -1192,11 +1194,15 @@ let ticker = null;
 
 function running(on, what) {
   S.running = on;
+  // A fresh run has not been asked to stop, whatever the last one did.
+  if (!on) { S.stopAsked = false; $("go").disabled = false; }
   Keys.awake(on);
   $("running").style.display = on ? "" : "none";
   $("go-icon").innerHTML = on ? "&#9632;" : "&#8593;";
   $("go").className = on ? "go stopping" : "go";
-  $("go").title = on ? "stop after the current item" : "send";
+  $("go").title = on
+    ? (S.stopAsked ? "ending it now" : "stop after the current item")
+    : "send";
   if (what) $("running-what").textContent = what;
   if (on && !ticker) {
     S.since = Date.now();
@@ -2003,10 +2009,23 @@ $("cancel").onclick = () => { $("addbox").classList.remove("open"); $("newpath")
 $("newpath").onkeydown = (e) => { if (e.key === "Enter") $("add").click(); };
 $("newpath").addEventListener("input", whereTo);
 
+// Two presses, because there are two honest answers and only one of
+// them was on offer. The first lets the worker finish into a clean tree,
+// which is what you want almost always. The second ends it.
+//
+// The button used to disable itself on the first press, so somebody who
+// meant "stop" and got "stopping after the current item" had no way to
+// say it again and watched an engineer run for its full twelve minutes.
+// That is the whole of why pressing stop looked like it did nothing.
 async function halt() {
-  running(true, "stopping after this item");
-  $("go").disabled = true;
-  await fetch("/api/stop/" + S.key, { method: "POST" });
+  const now = S.stopAsked;
+  S.stopAsked = true;
+  running(true, now
+    ? "ending the workers now"
+    : "stopping after this item — press again to end it now");
+  $("go").title = now ? "ending it now" : "press again to end it now";
+  if (now) $("go").disabled = true;
+  await fetch(`/api/stop/${S.key}${now ? "?now=true" : ""}`, { method: "POST" });
 }
 
 $("go").onclick = () => (S.running ? halt() : send());

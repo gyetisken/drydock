@@ -1017,12 +1017,25 @@ def resume(run_id: str, minutes: float = 0.0) -> JSONResponse:
 
 
 @app.post("/api/stop/{key}")
-def stop(key: str) -> dict:
+def stop(key: str, now: bool = False) -> dict:
+    """Ask a run to stop, or end it.
+
+    Asked, by default: nothing new starts and the worker in flight
+    finishes into a clean tree. That is the kind thing to do and it was
+    the only thing on offer, which made the button a lie - an engineer
+    has twelve minutes for an attempt, so "stop" could mean twelve
+    minutes of watching nothing stop, with the button already disabled
+    and no way to say it again.
+
+    Told, with `now`: the workers are ended, which is what the deadline
+    already does. The item in flight is thrown away unfinished, by the
+    same path a refused item takes.
+    """
     session = workspace.session_for(key)
     if session is None:
         return {"ok": False, "reason": "no such run"}
-    session.stop()
-    return {"ok": True}
+    session.stop(now=now)
+    return {"ok": True, "now": now}
 
 
 @app.get("/api/stream/{key}")
