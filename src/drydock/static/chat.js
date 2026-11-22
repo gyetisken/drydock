@@ -4,6 +4,11 @@
 
 const S = { projects: [], commands: [], runs: [], project: null, key: null, menu: -1,
   engines: [], models: [], engine: "claude", model: "opus" };
+// There is one way to run the crew and it is not a question anybody was
+// answering. `api` still exists for anything headless - the CLI takes
+// `--engine`, and CI has no account to be signed in as - but the window
+// is a person at their own machine, signed in, and the picker only ever
+// offered them a way to start paying per token by mistake.
 window.S = S;
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, c =>
@@ -1188,10 +1193,11 @@ async function refresh() {
   S.engines = full.engines; S.models = full.models; S.crew = full.crew || [];
   drawVersion(full.version);
   S.model = localStorage.getItem("drydock.model") || S.model;
-  const saved = localStorage.getItem("drydock.engine");
-  if (saved && S.engines.some(e => e.id === saved && e.ready)) S.engine = saved;
-  else S.engine = (S.engines.find(e => e.ready) || S.engines[0]).id;
+  // Whatever was picked before the picker went. Nothing reads it now, and
+  // leaving it would have it look like a choice that is still in force.
+  localStorage.removeItem("drydock.engine");
   drawPicks();
+  drawEngine();
   drawDeadline();
   if (!S.project && S.projects.length) {
     drawSide();
@@ -1224,7 +1230,7 @@ function drawVersion(v) {
 // every run was unbounded and the only way to end one on time was a
 // person watching the clock.
 //
-// It is remembered like the model and the engine, because somebody who
+// It is remembered like the model, because somebody who
 // wants a bound usually wants it again.
 function deadlineAsked() {
   const box = $("minutes");
@@ -1244,17 +1250,27 @@ function drawDeadline() {
   });
 }
 
-/* ---------- model and engine pickers ---------- */
+/* ---------- the model picker ---------- */
 
-// Two choices, kept apart because they answer different questions: which
-// account pays for the work, and how hard the model should think about it.
-// Both are remembered, because nobody wants to re-pick them every session.
+// One choice now: how hard the model should think. It is remembered,
+// because nobody wants to re-pick it every session.
 
 function drawPicks() {
   const m = S.models.find(x => x.id === S.model) || S.models[0];
-  const e = S.engines.find(x => x.id === S.engine) || S.engines[0];
   if (m) { S.model = m.id; $("model-label").textContent = m.label; }
-  if (e) { S.engine = e.id; $("engine-label").textContent = e.short || e.label; }
+}
+
+// Not a choice, but still worth saying when it is not there. The window
+// always runs as the signed-in account; if Claude Code is not installed
+// then nothing will run at all, and finding that out after pressing send
+// is finding it out too late.
+function drawEngine() {
+  const hint = $("hint");
+  if (!hint) return;
+  const claude = (S.engines || []).find(e => e.id === "claude");
+  if (!claude || claude.ready) { hint.textContent = ""; hint.className = "hint"; return; }
+  hint.textContent = claude.why + ". Nothing will run until it is.";
+  hint.className = "hint bad";
 }
 
 function popup(id, rows, onpick) {
@@ -1281,7 +1297,6 @@ function popup(id, rows, onpick) {
 
 function save() {
   localStorage.setItem("drydock.model", S.model);
-  localStorage.setItem("drydock.engine", S.engine);
 }
 
 $("pick-model").onclick = (ev) => {
@@ -1289,14 +1304,6 @@ $("pick-model").onclick = (ev) => {
   popup("pop-model", S.models.map(m => ({
     id: m.id, label: m.label, note: m.note, on: m.id === S.model,
   })), id => (S.model = id));
-};
-
-$("pick-engine").onclick = (ev) => {
-  ev.stopPropagation();
-  popup("pop-engine", S.engines.map(e => ({
-    id: e.id, label: e.label, on: e.id === S.engine,
-    disabled: !e.ready, note: e.ready ? e.detail : e.why,
-  })), id => (S.engine = id));
 };
 
 document.addEventListener("click", () =>

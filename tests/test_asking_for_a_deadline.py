@@ -44,9 +44,10 @@ class TestTheBoxExists:
         assert 'min="1"' in box
 
     def test_it_sits_with_the_other_choices(self):
-        """Model, engine and now how long. The same row, because they
-        are the three things you pick before sending."""
-        assert PAGE.index('id="pick-engine"') < PAGE.index('id="minutes"')
+        """The model and now how long. The same row, because they are
+        what you pick before sending. The engine picker was the third
+        and is gone - see test_there_is_one_way_to_run_it."""
+        assert PAGE.index('id="pick-model"') < PAGE.index('id="minutes"')
         assert PAGE.index('id="minutes"') < PAGE.index('id="go"')
 
     def test_it_says_what_it_does(self):
