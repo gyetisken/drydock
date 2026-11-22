@@ -26,57 +26,47 @@ interface, what counts as done. Those are the findings here.
 
 ## Plan
 
-The first item is the skeleton that proves the loop works: project file, one
-trivial function, one test for it, and a command that runs the test and passes.
-Nothing after this is verifiable until that exists.
+How the work is cut up is not this skill's to decide. The planning rules
+you were given already say it - one item when the job is one cohesive
+piece, several when the pieces can genuinely fail on their own and be
+worked on at the same time - and they outrank anything here. What
+follows is what is particular about building from nothing, not a
+different way of splitting.
 
-**The .gitignore belongs in that first item, before anything is installed.**
-A package manager run in a repository with no ignore file puts every
-downloaded dependency into the first commit - tens of thousands of files
-nobody wrote, in a history where they cannot be reviewed and cannot be
-removed without rewriting it. The ignore file costs one line in the item that
-is being written anyway, and it has to exist before the install, not after.
+**Tests arrive with the code that they test, in the same item.** A plan
+that puts the tests in a later item reaches that item with nothing to
+test against and no way back. Whatever the first item is, it ends with a
+command that runs a suite and passes.
+
+**The .gitignore belongs in the first item, before anything is
+installed.** A package manager run in a repository with no ignore file
+puts every downloaded dependency into the first commit - tens of
+thousands of files nobody wrote, in a history where they cannot be
+reviewed and cannot be removed without rewriting it. It costs one line
+in the item being written anyway, and it has to exist before the
+install, not after.
 
 **Every page exists for somebody with a question. Answer the question.**
-This is the failure that passes every test and is still wrong, and it is
-worth more attention than any of the others, because nothing in the
-verification can catch it.
+This is the failure that passes every test and is still wrong, and
+nothing in the verification can catch it.
 
-A restaurant site showed "Closed now. Opens next on Tuesday at 17:00" and
-nothing else about hours. The logic was correct, the test asserted it, and it
-is useless: somebody reading a restaurant's website at eleven at night wants
-to know when it is open, and was told only that it is not open at eleven at
-night. The live line is worth having. It is worth having *next to the week*,
-never instead of it.
-
-The shape of that mistake is general. A status derived from data is an
-addition to the data, not a replacement for it. "3 unread" does not replace
-the list. "Last updated 2 hours ago" does not replace the content. Whenever
-an item renders something computed, ask what the visitor came for, and make
+A status derived from data is an addition to the data, never a
+replacement for it. "3 unread" does not replace the list. "Last updated
+2 hours ago" does not replace the content. Whenever something rendered
+is computed rather than written, ask what the visitor came for and make
 sure the page still contains it.
 
-**Compose the page out of pieces that different items can own.** The page
-itself is one item: the shell, the layout, and the order things appear in.
-Everything after it is a component and the data behind it, imported into
-that page. This is ordinary good structure, and it has a second effect
-here - items that own separate files are worked on at the same time, and
-items that all edit one page are not.
+That is a rule about not *removing* what somebody came for. It is not a
+licence to add machinery: if the request did not ask for something
+computed, the plainest page that answers the question is the answer, and
+a thing recomputed at runtime is a thing to write, test, review and keep
+working.
 
-Then one feature per item, each with its test in the same item - and group
-features that would be written in one sitting. The skeleton, the data and
-the first page that renders it is one item, not three. Documentation and
-deploy configuration go with the last piece of work rather than becoming
-items of their own.
+Order by what other things depend on: the data shapes before the logic
+that uses them, the logic before the interface that exposes it.
 
-Then one feature per item, each with its test in the same item. A plan that
-puts the tests in a later item will reach that item with nothing to test
-against and no way back.
-
-Order by what other things depend on. The data shapes before the logic that
-uses them, the logic before the interface that exposes it.
-
-Leave deployment, packaging and documentation to the end, and say so, so that
-nobody mistakes an unfinished thing for a finished one.
+Leave deployment, packaging and documentation to the end, and say so, so
+that nobody mistakes an unfinished thing for a finished one.
 
 ## Engineer
 

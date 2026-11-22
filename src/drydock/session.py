@@ -25,7 +25,7 @@ from .crew import GATE_STATION
 from .critic import what_looks_wrong
 from .designer import as_briefing as look_briefing
 from .designer import decide, draw_mark, write_logo
-from .detect import detect
+from .detect import detect, installed
 from .engines import stop_workers
 from .events import Feed
 from .inspect import look
@@ -596,19 +596,32 @@ class Session:
         finally:
             self._stop_the_clock()
 
-    def _what_is_already_known(self, commit: str) -> str:
-        """What was learned about this repository last time, if anything.
+    def _what_is_already_known(self, commit: str, empty: bool = False) -> str:
+        """What is already known, so nobody goes and asks for it again.
 
-        The four stations each rediscovered this; one worker should be
-        handed it. Only notes against the commit it is looking at - a fact
-        about a tree that has since changed is not a fact.
+        What this repository taught the last job, and - only when there
+        is nothing here to read it from - what is installed on this
+        machine. A planner choosing a stack for an empty folder spent
+        three round trips and about twenty seconds learning two version
+        numbers; this process reads them in half a second. A planner
+        reading a repository that declares its own toolchain is not told,
+        because there it decides nothing.
+
+        Only notes against the commit it is looking at: a fact about a
+        tree that has since changed is not a fact.
         """
+        said = []
         notes = self.memory.knows(commit)
-        if not notes:
-            return ""
-        return "What this repository taught the last job here:\n" + "\n".join(
-            f"- {n}" for n in notes[:20]
-        )
+        if notes:
+            said.append(
+                "What this repository taught the last job here:\n"
+                + "\n".join(f"- {n}" for n in notes[:20])
+            )
+        if empty:
+            here = installed()
+            if here:
+                said.append(here)
+        return "\n\n".join(said)
 
     def _begin_it(
         self, empty: bool, b, chain, auto_run: bool, commit: str = ""
@@ -700,7 +713,7 @@ class Session:
             self.run.brief,
             empty=empty,
             looked_at=wanted_a_look,
-            known=self._what_is_already_known(commit),
+            known=self._what_is_already_known(commit, empty=empty),
             skills=self.skills,
             on_event=report,
             budget=self.run.left if self.budget else 0.0,

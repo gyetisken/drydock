@@ -918,7 +918,18 @@ class ClaudeCodeEngine:
         instruction = (
             f"{prompt}\n\nWrite your answer to .drydock-out.json in the repository "
             f"root as exactly this JSON and nothing else:\n{shape}\n"
-            "Write no other file and change nothing else."
+            "Write no other file and change nothing else.\n"
+            # Watched on one run: the worker wrote the file, then ran
+            # `node -e "JSON.parse(...)"` on it, then `git status` to
+            # check it had left nothing else behind. Careful, and two
+            # round trips spent on checks this program already does -
+            # the file is parsed here and a malformed one is handed
+            # back once to be written again, and a stray file is swept
+            # before anything is committed.
+            "The file is read and checked by the program that asked for "
+            "it, and you are handed it back to redo if it will not "
+            "parse, so do not spend a turn validating it yourself or "
+            "checking what the tree looks like afterwards."
         )
         # `tools` is the allowance; `without` is the refusal. Both are needed,
         # because naming the allowed tools only pre-approves them - it does

@@ -122,9 +122,28 @@ def briefing(skills: list[Skill], role: str) -> str:
     if not parts:
         return ""
     return (
-        "\n\nThe following is packaged knowledge about this kind of work. It was "
-        "written by someone who has done it before and it is more reliable than "
-        "what you would reconstruct from the repository alone. It does not "
-        "override what you actually read: where they disagree, the repository "
-        "wins and the disagreement is worth reporting.\n\n" + "\n\n".join(parts)
+        "\n\nThe following is packaged knowledge about this kind of work. It "
+        "was written by someone who has done it before and it is more "
+        "reliable than what you would reconstruct from the repository "
+        "alone.\n\n"
+        # The ranking, said out loud. A skill used to be ranked above
+        # everything except the repository, which put a document written
+        # months ago for nobody in particular above the sentence somebody
+        # typed this morning. The greenfield skill told the planner to
+        # make a skeleton item and one item per feature, and to give a
+        # restaurant a live open-or-closed line; the request said none of
+        # it, and a run built all of it.
+        "**Where it disagrees with something, here is what wins.** What "
+        "the person asked for comes first and is never overridden - not "
+        "by this, not by anything. Then the instructions above this "
+        "block, which are how this crew works and what it may not do. "
+        "Then what you actually read in the repository, which is a fact "
+        "about this job where a skill is a generalisation about jobs "
+        "like it. This block is last.\n\n"
+        "So a skill may tell you how to do something well. It may not "
+        "add an item, a feature or a requirement that the person did not "
+        "ask for, and it may not change how the work is cut up when the "
+        "instructions above have already said. Where it disagrees with "
+        "any of them, follow them and say in your answer that the two "
+        "disagreed.\n\n" + "\n\n".join(parts)
     )

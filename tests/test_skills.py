@@ -46,11 +46,18 @@ class TestGuidance:
         text = briefing([load(s) for s in installed], "plan")
         assert "migration" in text
 
-    def test_briefing_says_the_repository_wins(self, installed):
-        """A skill is prior knowledge, not an override. If an agent trusts the
-        skill over what it reads, a skill that is slightly out of date turns
-        into a confident wrong answer."""
-        assert "the repository wins" in briefing([load(installed[0])], "survey")
+    def test_briefing_ranks_the_skill_last(self, installed):
+        """A skill is prior knowledge, not an override. If an agent
+        trusts the skill over what it reads, a skill that is slightly
+        out of date turns into a confident wrong answer - and if it
+        trusts it over the request, a document written months ago for
+        nobody in particular outranks the sentence somebody typed this
+        morning. Both happened. See
+        test_the_skill_does_not_outrank_the_request."""
+        said = " ".join(briefing([load(installed[0])], "survey").split())
+        assert "What the person asked for comes first" in said
+        assert "This block is last" in said
+        assert "a fact about this job where a skill is a generalisation" in said
 
 
 class TestApplicability:

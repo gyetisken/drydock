@@ -124,6 +124,11 @@ TRICKS = (
     ("\r", "a newline"),
 )
 
+# `2>&1` and `2>/dev/null` (and the `1>` forms of the same). Neither can
+# put a byte anywhere a person could read it afterwards, and both are in
+# every second shell command somebody writes.
+_HARMLESS_STDERR = re.compile(r"\s*\d?>\s*(?:&\s*\d|/dev/null\b)")
+
 # Chaining is allowed and each link is checked on its own. `npm run build
 # && npm test` is one honest thing somebody does, and refusing it buys
 # nothing: both halves still have to be commands this crew may run, with
@@ -226,6 +231,15 @@ def _shell_offence(command: str, root: Path) -> str | None:
     # would still have been a day of wondering why nothing could read
     # anything.
     root = root.resolve()
+
+    # Sending stderr somewhere harmless is not a redirection anybody
+    # needs stopping, and refusing it cost a measured round trip: a
+    # planner probing `node --version 2>&1; npm --version 2>&1` was
+    # refused and ran the same probe again without it, two seconds
+    # later. Both of these write nowhere - one to the same stream, one
+    # to the null device - so they are taken out before the check and
+    # the rest of the line is judged as it would have been.
+    said = _HARMLESS_STDERR.sub(" ", said)
 
     for mark, what in TRICKS:
         if mark in said:

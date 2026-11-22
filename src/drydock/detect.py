@@ -5,6 +5,8 @@ would add latency, cost and a chance of being wrong to a question that has one
 answer.
 """
 
+import contextlib
+import shutil
 from dataclasses import dataclass, replace
 from pathlib import Path
 
@@ -135,3 +137,57 @@ def is_empty(chain: Toolchain) -> bool:
 
 def count(repo: Path, glob: str) -> int:
     return sum(1 for _ in repo.glob(glob))
+
+
+# What a planner would otherwise find out by running three commands and
+# waiting for each. Measured on one run: `node --version 2>&1; npm
+# --version 2>&1`, then the same probe again without the redirection
+# because the fence refused the first, then `python3 --version` - three
+# round trips and about twenty seconds to learn two version numbers that
+# this process can read in under a tenth of a second.
+#
+# Only what decides something. A planner choosing a stack for an empty
+# folder needs to know what is installed; one reading a repository that
+# already declares its toolchain does not, and is not told.
+RUNTIMES = (
+    ("node", "node --version"),
+    ("npm", "npm --version"),
+    ("python3", "python3 --version"),
+    ("uv", "uv --version"),
+    ("go", "go version"),
+    ("cargo", "cargo --version"),
+    ("java", "java -version"),
+)
+
+
+def installed(timeout: int = 4) -> str:
+    """The runtimes on this machine and their versions, as a short list.
+
+    Never raises and never waits long. A probe that hangs is worse than
+    a planner finding out for itself, so each one is given seconds and
+    anything that does not answer is simply not mentioned.
+    """
+    from .shell import run
+
+    here = Path.cwd()
+    found = []
+    for name, command in RUNTIMES:
+        if not shutil.which(name):
+            continue
+        # A probe that fails is a probe that tells us nothing, which is
+        # exactly where this started. It is never a reason to stop.
+        code, out = -1, ""
+        with contextlib.suppress(Exception):
+            code, out = run(command, here, timeout=timeout)
+        said = (out or "").strip().splitlines()
+        if code == 0 and said:
+            found.append(f"{name} {said[0].strip()}")
+    if not found:
+        return ""
+    return (
+        "What is installed on this machine, read before you were started "
+        "so you do not spend turns asking: "
+        + ", ".join(found)
+        + ". Anything not listed is not installed. If you need to know "
+        "something else about the environment, go and find out."
+    )
