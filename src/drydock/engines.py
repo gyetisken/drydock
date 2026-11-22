@@ -108,6 +108,16 @@ class EngineResult:
 # things that bring a project into existence - not a shell. Nothing here
 # fetches from the network except a package manager doing its job, and
 # nothing here deletes.
+# Credentials that would take a worker off the subscription. Removed
+# from the environment it runs in rather than trusted to be absent.
+AUTH_THAT_IS_NOT_OURS = (
+    "ANTHROPIC_API_KEY",
+    "ANTHROPIC_AUTH_TOKEN",
+    "ANTHROPIC_BASE_URL",
+    "CLAUDE_CODE_USE_BEDROCK",
+    "CLAUDE_CODE_USE_VERTEX",
+)
+
 # Which settings files a worker may load. Project and local are the two
 # that walk up the directory tree; "user" is the person's own and is kept
 # because it is theirs and is not a surprise to them.
@@ -510,6 +520,17 @@ def _confinement(repo: Path, look_key: str = "", looks: int = 0) -> tuple[str, d
         }
     )
     env = dict(os.environ)
+    # The subscription, and nothing competing with it. Claude Code takes
+    # an API key in the environment as the auth source and drops the
+    # claude.ai login - and then, with connectors disabled, exits 1
+    # without writing an answer. Every station reported
+    # `EngineUnavailable: the worker stopped without writing an answer`
+    # and the real sentence was four lines further down in the same
+    # message. A key in the operator's shell should not decide how this
+    # authenticates, and now it cannot: the API engine is gone, so
+    # nothing downstream has a use for the key either.
+    for name in AUTH_THAT_IS_NOT_OURS:
+        env.pop(name, None)
     env["DRYDOCK_ROOT"] = str(repo.resolve())
     # The hook runs as its own process and has to be able to import drydock
     # even when this is running from a checkout rather than an installation.

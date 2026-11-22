@@ -108,6 +108,62 @@ class TestTheEdgeRefusesIt:
         assert StartJob(project="/x", command="/do a", engine="").engine == "claude"
 
 
+class TestAKeyInTheShellCannotHijackAWorker:
+    """Found by a live run that failed, not by reading.
+
+    Claude Code takes an API key in the environment as the auth source
+    and drops the claude.ai login. With connectors then disabled it
+    exits 1 without writing an answer, and every station reports
+    `EngineUnavailable: the worker stopped without writing an answer` -
+    with the real sentence four lines further down the same message.
+    """
+
+    def _env(self, monkeypatch, tmp_path, **set_these):
+        from drydock.engines import _confinement
+
+        for name, value in set_these.items():
+            monkeypatch.setenv(name, value)
+        return _confinement(tmp_path)[1]
+
+    def test_the_key_does_not_reach_the_worker(self, monkeypatch, tmp_path):
+        env = self._env(monkeypatch, tmp_path, ANTHROPIC_API_KEY="sk-whatever")
+        assert "ANTHROPIC_API_KEY" not in env
+
+    def test_nor_does_anything_else_that_would_redirect_it(self, monkeypatch, tmp_path):
+        env = self._env(
+            monkeypatch,
+            tmp_path,
+            ANTHROPIC_AUTH_TOKEN="t",
+            ANTHROPIC_BASE_URL="http://elsewhere",
+            CLAUDE_CODE_USE_BEDROCK="1",
+            CLAUDE_CODE_USE_VERTEX="1",
+        )
+        for name in (
+            "ANTHROPIC_AUTH_TOKEN",
+            "ANTHROPIC_BASE_URL",
+            "CLAUDE_CODE_USE_BEDROCK",
+            "CLAUDE_CODE_USE_VERTEX",
+        ):
+            assert name not in env, name
+
+    def test_this_process_keeps_its_own_environment(self, monkeypatch, tmp_path):
+        """Removed from the copy handed to the worker, not from here."""
+        import os
+
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-whatever")
+        self._env(monkeypatch, tmp_path)
+        assert os.environ.get("ANTHROPIC_API_KEY") == "sk-whatever"
+
+    def test_everything_else_is_still_passed_through(self, monkeypatch, tmp_path):
+        env = self._env(monkeypatch, tmp_path, SOME_UNRELATED_THING="keep me")
+        assert env["SOME_UNRELATED_THING"] == "keep me"
+        assert env["DRYDOCK_ROOT"] == str(tmp_path.resolve())
+
+    def test_both_ways_of_running_a_worker_use_the_same_environment(self):
+        source = Path("src/drydock/engines.py").read_text()
+        assert source.count("settings, env = _confinement(") == 2
+
+
 class TestTheListSaysThereIsOne:
     def test_only_the_subscription_is_offered(self):
         said = TestClient(app).get("/api/state").json()
