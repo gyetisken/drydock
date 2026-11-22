@@ -23,7 +23,7 @@ from .run import Run
 from .session import Session
 from .settings import Settings
 from .skills import load as load_skill
-from .workspace import Workspace
+from .workspace import Workspace, where_projects_go
 
 app = FastAPI(title="drydock")
 STATIC = Path(__file__).parent / "static"
@@ -79,7 +79,9 @@ PAGE = """<!doctype html><html lang="en"><head><meta charset="utf-8">
 
     <div class="side-h">Projects <button id="plus" title="add a repository">+</button></div>
     <div class="addbox" id="addbox">
-      <input id="newpath" placeholder="/path/to/a/git/repository" spellcheck="false">
+      <input id="newpath" placeholder="a name, or /path/to/an/existing/repository"
+             spellcheck="false">
+      <div class="hint" id="wherebox"></div>
       <div class="row">
         <button class="btn small" id="add">Add</button>
         <button class="btn small ghost" id="cancel">Cancel</button>
@@ -525,6 +527,7 @@ def state() -> dict:
             for p in workspace.projects
         ],
         "engines": _engines(),
+        "projects_home": str(where_projects_go()),
         "crew": crew.as_rows(),
         "models": MODELS,
         "usage": _usage(),
@@ -572,7 +575,11 @@ def add_project(body: AddProject) -> JSONResponse:
         project = workspace.add_project(Path(body.path))
     except ValueError as exc:
         return JSONResponse({"ok": False, "reason": str(exc)}, status_code=400)
-    return JSONResponse({"ok": True, "name": project.name})
+    # The path as well as the name. A bare name lands in the projects
+    # directory rather than wherever this server was started from, so
+    # where it actually went is something the window has to be told
+    # rather than something it can work out from what was typed.
+    return JSONResponse({"ok": True, "name": project.name, "path": str(project.path)})
 
 
 @app.delete("/api/projects")

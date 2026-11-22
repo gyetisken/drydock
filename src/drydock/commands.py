@@ -8,6 +8,7 @@ A handful are built in, for work that is not a skill: running a task with no
 packaged knowledge behind it, and looking at what is installed.
 """
 
+import re
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -58,8 +59,39 @@ class Command:
         if not self.task_template:
             return answer
         if "{what}" in self.task_template:
-            return self.task_template.format(what=answer.strip())
+            return self.task_template.format(what=_fits(self.task_template, answer))
         return self.task_template
+
+
+def _fits(template: str, answer: str) -> str:
+    """What somebody typed, trimmed to sit inside the sentence around it.
+
+    The templates are sentences with a hole in them - "Build {what}.
+    Tests from the first commit" - and people type whole sentences into
+    the hole. "Build a website for LUMI." came out as "Build Build a
+    website for LUMI.. Tests from the first commit", which is the first
+    thing every station read and the first thing the person saw back.
+
+    Two trims, both only at the seam. The verb the template already
+    supplies is dropped if they typed it again, and the full stop the
+    template already supplies is dropped if they typed that too. Nothing
+    else about what they wrote is touched.
+    """
+    said = (answer or "").strip()
+    if not said:
+        return said
+
+    before, _, after = template.partition("{what}")
+    lead = re.search(r"(\w+)\s+$", before)
+    if lead:
+        word = lead.group(1)
+        head = re.match(rf"{re.escape(word)}\s+(?=\S)", said, re.IGNORECASE)
+        if head:
+            said = said[head.end() :]
+
+    if after[:1] in ".!?" and said[-1:] in ".!?":
+        said = said[:-1].rstrip()
+    return said
 
 
 BUILT_IN = [

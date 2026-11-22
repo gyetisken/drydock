@@ -92,6 +92,11 @@ class EngineResult:
 # things that bring a project into existence - not a shell. Nothing here
 # fetches from the network except a package manager doing its job, and
 # nothing here deletes.
+# Which settings files a worker may load. Project and local are the two
+# that walk up the directory tree; "user" is the person's own and is kept
+# because it is theirs and is not a surprise to them.
+SETTING_SOURCES = ("--setting-sources", "user")
+
 BOOTSTRAP = (
     "npm",
     "npx",
@@ -476,7 +481,7 @@ def _confinement(repo: Path, look_key: str = "", looks: int = 0) -> tuple[str, d
             "hooks": {
                 "PreToolUse": [
                     {
-                        "matcher": "Read|Edit|Write|Glob|Grep|NotebookEdit",
+                        "matcher": "Bash|Read|Edit|Write|Glob|Grep|NotebookEdit",
                         "hooks": [
                             {
                                 "type": "command",
@@ -585,6 +590,19 @@ class ClaudeCodeEngine:
             self.model,
             "--max-turns",
             str(self.max_turns),
+            # Only the person's own settings. Without this, Claude Code
+            # walks up from the working directory and loads every
+            # `CLAUDE.md` it passes, including ones belonging to a
+            # repository that merely happens to contain this project -
+            # and a nested `.git` does not stop the walk, which was
+            # measured rather than assumed. A job about a restaurant
+            # website was being handed drydock's own instructions to its
+            # own implementation agent.
+            #
+            # `--bare` and `--safe-mode` also stop it and also turn hooks
+            # off, which would take the confinement with them. This is
+            # the one that leaves the hook running; that too was measured.
+            *SETTING_SOURCES,
             "--permission-mode",
             "acceptEdits",
             # Bounded on purpose: it may read, edit and run the project's own
@@ -892,6 +910,19 @@ class ClaudeCodeEngine:
             self.model,
             "--max-turns",
             str(self.max_turns),
+            # Only the person's own settings. Without this, Claude Code
+            # walks up from the working directory and loads every
+            # `CLAUDE.md` it passes, including ones belonging to a
+            # repository that merely happens to contain this project -
+            # and a nested `.git` does not stop the walk, which was
+            # measured rather than assumed. A job about a restaurant
+            # website was being handed drydock's own instructions to its
+            # own implementation agent.
+            #
+            # `--bare` and `--safe-mode` also stop it and also turn hooks
+            # off, which would take the confinement with them. This is
+            # the one that leaves the hook running; that too was measured.
+            *SETTING_SOURCES,
             "--permission-mode",
             "acceptEdits",
             "--allowedTools",

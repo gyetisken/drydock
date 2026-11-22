@@ -23,6 +23,35 @@ from .shell import run
 from .skills import Skill
 
 
+def where_projects_go() -> Path:
+    """Where a project goes when somebody gives a name instead of a path.
+
+    Outside this program's own source, and outside its state directory:
+    these are somebody's repositories and they have to be findable in a
+    file manager, not buried under a dotfile.
+    """
+    said = os.environ.get("DRYDOCK_PROJECTS")
+    return Path(said).expanduser() if said else Path.home() / "drydock-projects"
+
+
+def resolve_project(path: Path | str) -> Path:
+    """The folder a person meant, from what they typed.
+
+    Anything with a separator in it, or starting at `~` or `/`, is a path
+    and is taken as one. A bare name is a name, and names go in one place
+    rather than wherever this process happens to be running - which was
+    the whole of the bug: `Path("gkhntest").resolve()` is relative to the
+    current directory, and the current directory of a checkout is the
+    harness's own repository.
+    """
+    said = str(path).strip()
+    if not said:
+        raise ValueError("no folder was given")
+    if said.startswith(("~", "/")) or "/" in said:
+        return Path(said).expanduser().resolve()
+    return (where_projects_go() / said).resolve()
+
+
 def _home() -> Path:
     """Where this keeps its own things, asked every time.
 
@@ -143,8 +172,15 @@ class Workspace:
         away its commit. Telling someone to go and run `git init` themselves is
         asking them to do a thing this can simply do, and the people most
         likely to be stopped by that message are the ones this should work for.
+
+        A name rather than a path lands in `where_projects_go`. It used to
+        land wherever the server happened to be started from, which for a
+        checkout is drydock's own source tree: typing `gkhntest` created
+        `drydock/gkhntest`, a project nested inside the harness, with the
+        harness's `CLAUDE.md` one directory up. A path is still a path and
+        is honoured exactly as given.
         """
-        path = path.expanduser().resolve()
+        path = resolve_project(path)
         path.mkdir(parents=True, exist_ok=True)
 
         if not (path / ".git").is_dir():

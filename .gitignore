@@ -10,8 +10,15 @@ build/
 dist/
 runs/
 wheels/
-# Benchmarks are run against repositories made here. They are somebody
-# else's git, and `git add -A` has committed two of them as gitlinks.
+# Projects made before `add_project` resolved a bare name against the
+# projects directory. A name typed into the window resolved against
+# whatever directory the server was started from, which for a checkout
+# is this repository - so they are here, they are somebody else's git,
+# and `git add -A` has committed two of them as gitlinks.
+# Nothing is moved or deleted here: they are somebody's work, and all
+# this does is stop them being noise in `git status`.
 .DS_Store
 /TestProject/
 /newWebsiteProject/
+/gkhntest/
+/smoketest/

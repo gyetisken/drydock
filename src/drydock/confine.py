@@ -21,11 +21,121 @@ the model, which is Claude Code's documented way for a hook to say no.
 
 import json
 import os
+import re
+import shlex
 import sys
 from pathlib import Path
 
 # The keys a path can arrive under, across the tools worth guarding.
 PATH_KEYS = ("file_path", "path", "notebook_path", "target_file")
+
+# What a worker may run. Read-only inspection, the version probes that
+# decide a toolchain, and the runtimes themselves - a plan for an empty
+# folder is partly a question about what is installed on this machine.
+#
+# `echo` is here because the phases are announced by running one. The
+# runtimes are here because `node --version` is how a planner learns the
+# thing it would otherwise guess, and because a build command is one of
+# these and the engineer has to be able to run it.
+ALLOWED = frozenset(
+    {
+        # Saying something out loud.
+        "echo",
+        "true",
+        "false",
+        # Looking.
+        "ls",
+        "cat",
+        "head",
+        "tail",
+        "wc",
+        "file",
+        "stat",
+        "find",
+        "du",
+        "grep",
+        "rg",
+        "sed",
+        "awk",
+        "sort",
+        "uniq",
+        "cut",
+        "tr",
+        "diff",
+        "basename",
+        "dirname",
+        "realpath",
+        "pwd",
+        "which",
+        "env",
+        "date",
+        # The repository's own history.
+        "git",
+        # Toolchains: version probes, installs, builds, tests.
+        "npm",
+        "npx",
+        "pnpm",
+        "yarn",
+        "bun",
+        "deno",
+        "node",
+        "python",
+        "python3",
+        "pip",
+        "pip3",
+        "uv",
+        "uvx",
+        "pytest",
+        "ruff",
+        "go",
+        "cargo",
+        "rustc",
+        "mvn",
+        "gradle",
+        "dotnet",
+        "make",
+        "ruby",
+        "bundle",
+        "rake",
+        "php",
+        "composer",
+        "swift",
+        "java",
+        # This program's own tool, when a worker is allowed to look.
+        "drydock-look",
+    }
+)
+
+# Ways a command can mean something other than what it reads as. None of
+# these can be checked by reading the words: `$(cat /etc/passwd)` has no
+# path in it until the shell has already run something, and `> ../x`
+# writes somewhere this never looked. Refused outright rather than
+# parsed, because a guard that reasons about them is a guard nobody can
+# check by reading it.
+TRICKS = (
+    ("$(", "a command substitution"),
+    ("`", "a command substitution"),
+    ("${", "a shell expansion"),
+    ("<(", "a process substitution"),
+    (">(", "a process substitution"),
+    (">", "a redirection"),
+    ("<", "a redirection"),
+    ("\n", "a newline"),
+    ("\r", "a newline"),
+)
+
+# Chaining is allowed and each link is checked on its own. `npm run build
+# && npm test` is one honest thing somebody does, and refusing it buys
+# nothing: both halves still have to be commands this crew may run, with
+# paths that stay inside the project.
+LINKS = ("&&", "||", ";", "|")
+
+# A switch rather than a thing to open. Everything that is not one is
+# treated as a possible path, because the alternative is deciding what
+# looks like one - and `ls door`, where `door` is a link out of the
+# project, looks like a word. A bare word that is not a path resolves to
+# somewhere inside the project and passes; nothing is lost by asking.
+_A_SWITCH = re.compile(r"^-")
 
 
 def offending(payload: dict, root: Path) -> str | None:
@@ -55,6 +165,93 @@ def offending(payload: dict, root: Path) -> str | None:
     return None
 
 
+def _one_command(said: str, root: Path) -> str | None:
+    """Why this single command may not run here, if it may not."""
+    try:
+        words = shlex.split(said)
+    except ValueError:
+        return "this shell command could not be read as one command"
+    if not words:
+        return None
+
+    name = Path(words[0]).name
+    if name not in ALLOWED:
+        return (
+            f"`{name}` is not a command this crew may run. It may read the "
+            "project, read its git history, and run its toolchain."
+        )
+
+    for word in words[1:]:
+        if _A_SWITCH.match(word) or not word:
+            continue
+        try:
+            target = Path(word).expanduser()
+            target = target if target.is_absolute() else root / target
+            target = target.resolve()
+        except (OSError, RuntimeError):
+            return f"{name} was given a path that cannot be resolved: {word}"
+        if not target.is_relative_to(root):
+            return (
+                f"{name} was pointed at {target}, which is outside this "
+                f"project. The crew only works inside {root}."
+            )
+    return None
+
+
+def _shell_offence(command: str, root: Path) -> str | None:
+    """Why this shell command may not run here, if it may not.
+
+    Three questions, in the order they can be answered cheaply.
+
+    Does it mean what it reads as? Anything that can become a different
+    command before it runs - a substitution, an expansion, a redirection
+    - is refused without being parsed.
+
+    Is every command in it one we allow? A list of names rather than a
+    list of patterns, so what is permitted can be read in one sitting.
+    Chains are split and each link asked separately, because `npm run
+    build && npm test` is one honest thing and refusing it buys nothing.
+
+    And does every path stay inside the project? Resolved, not matched.
+    `..` is the obvious way out and the boring ones are an absolute path,
+    a symlink and a home directory; `resolve()` answers all four, because
+    it answers where the path actually lands rather than how it is spelt.
+    """
+    said = (command or "").strip()
+    if not said:
+        return None
+    # The root as the filesystem sees it. `/tmp` is a link to
+    # `/private/tmp` on a Mac, so an unresolved root compared against a
+    # resolved target says every path is outside - which fails closed and
+    # would still have been a day of wondering why nothing could read
+    # anything.
+    root = root.resolve()
+
+    for mark, what in TRICKS:
+        if mark in said:
+            return (
+                f"this shell command contains {what} (`{mark}`), which this "
+                "crew may not run. Run plain commands."
+            )
+
+    rest = said
+    for link in LINKS:
+        rest = rest.replace(link, "\x00")
+    # What is left of `&` once the chains are out is a command sent to the
+    # background, which finishes after anybody is still watching for it.
+    if "&" in rest:
+        return (
+            "this shell command puts something in the background (`&`), "
+            "which this crew may not do."
+        )
+
+    for part in rest.split("\x00"):
+        reason = _one_command(part, root)
+        if reason:
+            return reason
+    return None
+
+
 def main() -> int:
     root_env = os.environ.get("DRYDOCK_ROOT")
     if not root_env:
@@ -72,7 +269,12 @@ def main() -> int:
         print("the hook could not read the tool call", file=sys.stderr)
         return 2
 
-    reason = offending(payload, root)
+    if payload.get("tool_name") == "Bash":
+        reason = _shell_offence(
+            (payload.get("tool_input") or {}).get("command", ""), root
+        )
+    else:
+        reason = offending(payload, root)
     if reason:
         print(reason, file=sys.stderr)
         return 2

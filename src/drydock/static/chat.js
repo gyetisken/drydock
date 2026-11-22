@@ -1215,6 +1215,7 @@ async function refresh() {
   S.projects = full.projects;
   S.commands = full.commands; S.runs = full.runs;
   S.engines = full.engines; S.models = full.models; S.crew = full.crew || [];
+  S.projectsHome = full.projects_home || "";
   drawVersion(full.version);
   S.model = localStorage.getItem("drydock.model") || S.model;
   // Whatever was picked before the picker went. Nothing reads it now, and
@@ -1982,10 +1983,25 @@ $("box").addEventListener("keydown", (e) => {
 
 $("plus").onclick = () => {
   $("addbox").classList.toggle("open");
-  if ($("addbox").classList.contains("open")) $("newpath").focus();
+  if ($("addbox").classList.contains("open")) { $("newpath").focus(); whereTo(); }
 };
+
+// Where a new project will actually land, said before it lands there. A
+// name used to be resolved against whatever directory this server was
+// started from, which for a checkout is drydock's own source - so typing
+// `gkhntest` made a project inside the harness and nothing said so.
+function whereTo() {
+  const box = $("wherebox");
+  if (!box) return;
+  const said = $("newpath").value.trim();
+  if (!said) { box.textContent = ""; return; }
+  box.textContent = /^[~/]|\//.test(said)
+    ? `Opens ${said}, wherever that is.`
+    : `Creates ${S.projectsHome || "the projects folder"}/${said}.`;
+}
 $("cancel").onclick = () => { $("addbox").classList.remove("open"); $("newpath").value = ""; };
 $("newpath").onkeydown = (e) => { if (e.key === "Enter") $("add").click(); };
+$("newpath").addEventListener("input", whereTo);
 
 async function halt() {
   running(true, "stopping after this item");
@@ -2007,30 +2023,12 @@ $("add").onclick = async () => {
   $("newpath").value = "";
   $("addbox").classList.remove("open");
   S.project = null;
-  await // The work has always run on the server, so a reload never stopped it. The
-// page simply had no way to find it again afterwards, which from where
-// anyone is sitting is the same thing as having stopped it.
-async function reattach() {
-  const { jobs } = await (await fetch("/api/running")).json();
-  if (!jobs.length) return false;
-  const here = jobs.find(j => j.repo === S.project) || jobs[0];
-  S.project = here.repo;
-  drawSide();
-  view("thread");
-  $("thread-inner").innerHTML = "";
-  youSaid(here.task);
-  say("crew", `<div class="body"><p>This was already running when the page
-    loaded. Picking it back up.</p></div>`, "dim");
-  watch(here.key, { already: true });
-  running(true, "working");
-  return true;
-}
-
-Palette.wire();
-refresh().then(async () => {
-  if (await reattach()) return;
-});
-drawSettings();
+  // An unfinished edit left `await` here with nothing after it and no
+  // closing brace, so adding a project swallowed the next function and
+  // never redrew the sidebar: the project existed on the server and was
+  // invisible until a reload.
+  await refresh();
+  openProject(body.path);
 };
 
 // The work has always run on the server, so a reload never stopped it. The
