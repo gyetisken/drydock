@@ -27,13 +27,16 @@ class TestDiscovery:
     def test_body_arrives_when_loaded(self, installed):
         skill = load(next(s for s in installed if s.name == "migration"))
         assert skill.loaded
-        assert set(skill.sections) == {"survey", "plan", "engineer", "verify"}
+        # `survey` and `verify` were folded into the sections a station
+        # actually asks for. The loader still understands them - see
+        # test_a_section_nobody_reads - but no installed skill uses one.
+        assert set(skill.sections) == {"plan", "engineer"}
 
 
 class TestGuidance:
     def test_each_role_gets_its_own_section(self, installed):
         skill = load(installed[0])
-        assert skill.guidance("survey") != skill.guidance("engineer")
+        assert skill.guidance("plan") != skill.guidance("engineer")
 
     def test_a_role_with_nothing_to_say_says_nothing(self):
         skill = load(discover(SKILLS)[0])
@@ -54,7 +57,7 @@ class TestGuidance:
         nobody in particular outranks the sentence somebody typed this
         morning. Both happened. See
         test_the_skill_does_not_outrank_the_request."""
-        said = " ".join(briefing([load(installed[0])], "survey").split())
+        said = " ".join(briefing([load(installed[0])], "plan").split())
         assert "What the person asked for comes first" in said
         assert "This block is last" in said
         assert "a fact about this job where a skill is a generalisation" in said

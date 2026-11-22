@@ -46,13 +46,14 @@ PROMPT = flat(engineer.PROMPT)
 
 
 def verify_section() -> str:
-    """What the skill says to whoever checks the work.
+    """What the skill says about the bar the work is held to.
 
-    `briefing(..., "engineer")` returns only the Engineer section, so an
-    assertion about the Verify section has to read the file.
+    It used to be a `## Verify` section, which no station asked for -
+    5,160 characters across four skills, delivered to nobody. The part
+    worth keeping is in `## Engineer` now, where one does.
+    See test_a_section_nobody_reads.
     """
-    at = SKILL.index("## Verify")
-    return flat(SKILL[at : SKILL.index("## Checked against", at)])
+    return guidance()
 
 
 def guidance() -> str:
@@ -148,18 +149,24 @@ class TestDepthFollowsTheWork:
             )
 
     def test_the_skill_says_the_bar_is_not_a_number(self):
-        said = verify_section()
-        assert "The bar is not a number" in said
-        assert "Judge it by what could plausibly break" in said
+        # The proportionality rule lives in the engineer's own
+        # instructions, which every engineer reads whatever skill is
+        # loaded. The copy in the skill's `## Verify` reached nobody and
+        # said the same thing, so it went rather than moved.
+        assert "Test what could plausibly be wrong" in SYSTEM
+        assert "nothing for the sake of a number" in SYSTEM
 
     def test_the_skill_still_refuses_an_empty_suite(self):
         said = verify_section()
-        assert "a suite that passes because it contains nothing" in said
-        assert "It should only ever go up" in said
+        assert "A suite that passes because it contains nothing" in said
+        assert "the count only ever goes up" in said
 
     def test_what_was_left_untested_is_reported(self):
-        assert "say in the report what you decided was not worth testing" in (
-            verify_section()
+        # Said once, in the engineer's own instructions rather than in
+        # two places that disagreed about where it lived.
+        assert (
+            "say in the report what you decided was not worth testing" in (SYSTEM)
+            or "Write the few that would catch a real mistake and stop" in SYSTEM
         )
 
 

@@ -11,6 +11,33 @@ passes every test, does everything it was asked, and looks like it was made
 by nobody for nobody. Default styling is a decision; it is just not one
 anybody took.
 
+## Plan
+
+Six lines, because you are writing the direction and not the stylesheet.
+The whole of how to build a page is under `## Engineer`, where the person
+building it will read it; none of that belongs here.
+
+- **Direct for this business, not for businesses.** A Nolita trattoria and
+  a tax practice are not the same page with different words. Say who walks
+  in, what they came to find, and what the place feels like standing in it.
+  Every later choice answers back to that sentence.
+- **Name the one gesture.** A page is carried by a single idea at the top
+  and then it gets quiet. Say what that idea is here; a page that shouts in
+  six places reads as cheap.
+- **Say what the generic version would be** - the stock hero of a table,
+  "Welcome to our restaurant", the carousel nobody asked for - so it cannot
+  arrive by default.
+- **Say what pictures exist, if any.** Nothing here can take or generate a
+  photograph. If the request or the repository supplies real ones, say so
+  and say what they show. If it does not, direct a page that does not need
+  them rather than one with holes in it.
+- **Intent, not values.** Name a colour the way a person does - "a deep
+  oxblood, not a web red" - and leave the hex, the type scale, the spacing
+  and the breakpoints to whoever has the page in front of them.
+- **It is read on a phone, standing up.** Most people looking at a
+  restaurant's site are outside it deciding whether to go in. Direct that
+  first; the desktop version is the easy one.
+
 ## Design
 
 **Decide for this business, not for businesses.** A Nolita trattoria and a
@@ -43,43 +70,48 @@ other single choice.
 restaurant's site are outside it deciding whether to go in. Design that
 first; the desktop version is the easy one.
 
-**Photographs: not made, but used.** Nothing here can take a photograph or
-generate one, and a hand-written file named `.jpg` is a lie that passes a
-build. A photograph somebody else took, licensed for this and referenced by
-URL, is neither - and it is what carries most of the pages worth sitting
-beside.
+**Photographs: never made here, sometimes available.** Nothing in this
+process can take a photograph, buy one, or generate one, and a file of flat
+colour named `.jpg` is a lie that passes a build. That rules out one thing
+and one thing only: inventing the image file.
 
-Use real ones, from a real source, with the URL in the markup: Unsplash
-serves them directly. Give every one an aspect ratio in the CSS so nothing
-jumps when it arrives, `loading="lazy"` below the fold, a real `alt`, and a
-ground colour underneath in case it never comes. What is never allowed is an
-image file written by the thing building the page.
+Which of the two remaining paths is right depends on what you were actually
+given, so look before you choose.
 
-**Do not try to check an image URL.** This process has no network. A worker
-that goes looking for one spends the whole item on it: two of them spent a
-hundred and fifty minutes between them running `curl`, turning the sandbox
-off, and reaching for a web search, to prove a photograph existed. Write
-the URL the direction gives you and move on. Whether the picture is the
-right picture is settled by somebody looking at the page, which is a
-station that already exists.
+*If the request, the direction or the repository supplies real images* - a
+URL to a licensed photograph, files already committed, an asset directory -
+use them, and design around them. Give every one an aspect ratio in the CSS
+so nothing jumps when it arrives, `loading="lazy"` below the fold, a real
+`alt`, and a ground colour underneath for when it does not come. Do not try
+to check a URL: this process has no network, and a worker that goes looking
+spends the whole item on it - two of them spent a hundred and fifty minutes
+between them running `curl`, turning the sandbox off and reaching for a web
+search, to prove a photograph existed. Write the URL you were given and move
+on; whether it is the right picture is settled by somebody looking at the
+page, which is a station that already exists.
 
-An image with no art direction is a stock photograph of a handshake. If the
-direction does not say what is in the picture and what it is doing, the page
-is better with type, colour and space instead.
+*If nothing supplies them*, design with type, colour, space and drawn marks,
+and say so rather than leaving a hole. A layout whose whole idea is a hero
+photograph is a layout nobody here can build. Where an image really is
+required, leave a placeholder that looks like a decision - a flat field at
+the right aspect ratio, captioned with what goes there - and say in the
+README what to drop in.
 
-** Nothing in this process can take one, buy one or
-generate one. A layout that needs a hero image is a layout nobody here can
-build, and what arrives instead is a few hundred bytes of flat colour named
-.jpg. Design with type, colour, space and drawn marks. Where an image really
-is required, leave a placeholder that looks like a decision - a flat field at
-the right aspect ratio with the caption saying what goes there - and say in
-the README what to drop in.
+Either way: an image with no art direction is a stock photograph of a
+handshake. If nothing says what is in the picture and what it is doing, the
+page is better with type, colour and space instead.
 
 **Say what you will not do.** Writing down the generic version - stock hero
 photo of a table, "Welcome to our restaurant", a carousel nobody asked for -
 is what stops it arriving by default.
 
 ## Engineer
+
+Before calling visual work finished, look at it - at phone width, at
+desktop width, and in both colour schemes if it supports them. Three things
+are nearly always the ones wrong: text that fails contrast against its
+background, a heading hierarchy that skips a level, and tap targets smaller
+than a thumb.
 
 **One stylesheet holds the decisions.** The palette, the type scale and the
 spacing live as custom properties in one place, written early, and every
@@ -89,16 +121,39 @@ started a second design.
 **Write the current CSS, not the CSS you learned.** A few of these replace
 whole patterns and each is worth more than the line it takes:
 
+- `color-scheme: light dark` on `:root`, or `<meta name="color-scheme">`
+  in the head. Safari inverts the luminosity of any page that has not
+  declared one and leaves alone any page that has, so this is the
+  difference between choosing how the page renders in dark mode and
+  having it chosen. It also has to be set for the next line to work.
 - `light-dark()` returns one of two colours based on the active scheme, so
   dark mode is one declaration rather than a duplicated block.
-- `text-wrap: balance` on headlines and `text-wrap: pretty` on body text.
-  It is the cheapest visible improvement to a marketing page there is.
+- `oklch()` for anything with steps in it. Its lightness is perceived
+  lightness, so a ramp built by varying L alone stays even; the same ramp
+  in hex or `hsl()` has visibly uneven steps, and that unevenness is one
+  of the clearest tells of a palette nobody looked at.
+- `text-wrap: balance` on headlines - the cheapest visible improvement to
+  a marketing page there is, and available everywhere. `text-wrap: pretty`
+  on body text is progressive enhancement only: Firefox has not shipped
+  it, so it is safe to set and never safe to rely on. Do not write a
+  layout or a test that assumes paragraphs have no orphans.
 - `clamp()` for type and spacing, with `rem` units. Never `px` for
   `font-size`: it ignores what the reader set.
 - Container queries for components that need to respond to their own box
   rather than the viewport.
 - `size-adjust` and the `@font-face` metric overrides on the fallback font.
   Web fonts are the usual cause of the layout shift a hero suffers from.
+
+Four things a new page should simply get right, because most of the web
+does not: colour contrast that passes, a visible focus style - `:focus-visible`
+rather than deleting the outline - pinch zoom left enabled, and font sizes
+in `rem` so the reader's own text setting still means something.
+
+Anything that moves on scroll needs a `prefers-reduced-motion` branch, or
+the page is below the common bar rather than above it. And three things
+are not settled enough to depend on: CSS anchor positioning, cross-document
+view transitions, and scroll marker pseudo-elements. Tooltips, dropdowns
+and page transitions still have to work without them.
 
 **Test files never go in a routes directory.** Astro, Next, Nuxt, SvelteKit
 and Remix all turn everything under their pages or routes folder into a URL.
@@ -176,12 +231,3 @@ the content below the fold, a form that is unusable with a thumb. No test
 catches any of them, so they have to be looked at deliberately before the
 work is called done.
 
-## Verify
-
-A page that passes its tests can still be wrong in ways the tests cannot
-reach. Before calling visual work finished, look at it: at phone width, at
-desktop width, and in both colour schemes if it supports them.
-
-Check the three that are nearly always wrong first: text that fails contrast
-against its background, a heading hierarchy that skips a level, and tap
-targets smaller than a thumb.

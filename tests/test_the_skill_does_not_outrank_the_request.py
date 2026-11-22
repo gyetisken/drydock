@@ -101,13 +101,19 @@ class TestWhatWasWorthKeepingWasKept:
         assert "run that one test and watch it fail" in FLAT
 
     def test_the_verification_bar_is_untouched(self):
-        assert "a suite that passes because it contains nothing" in FLAT
-        assert "It should only ever go up" in FLAT
+        """Moved from `## Verify`, which no station read, into
+        `## Engineer`, which one does. See test_a_section_nobody_reads."""
+        assert "A suite that passes because it contains nothing" in FLAT
+        assert "the count only ever goes up" in FLAT
 
-    def test_the_design_currency_block_is_untouched(self):
-        assert "Checked against what is current" in FLAT
-        assert "text-wrap: balance" in FLAT
-        assert "oklch()" in FLAT
+    def test_the_design_currency_block_moved_to_where_it_is_read(self):
+        """It named no station, so none of its 7,704 characters reached
+        anybody. What was not already said in web-design, not dated and
+        not a statistic is now in that skill's Engineer section."""
+        assert "Checked against what is current" not in FLAT
+        web = Path("skills/web-design/SKILL.md").read_text()
+        for kept in ("text-wrap: balance", "oklch()", "color-scheme: light dark"):
+            assert kept in web, kept
 
     def test_it_now_defers_on_how_work_is_cut_up(self):
         assert "How the work is cut up is not this skill's to decide" in FLAT

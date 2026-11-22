@@ -12,25 +12,25 @@ A major version is a promise that something you rely on has been removed. The
 work is not the version number; it is finding what you were using that no
 longer exists, and the compiler only tells you about some of it.
 
-## Survey
-
-Pin down what is actually in use before reading any release notes. A migration
-guide describes every change in the library; only a fraction of them touch this
-codebase, and the fraction is discoverable by reading imports and call sites.
-
-Record the current version, the target version, and how far apart they are. Two
-majors is two migrations, and doing them in one step means a failure could
-belong to either.
-
-Look for the parts that fail silently rather than at compile time: reflection,
-configuration files naming classes as strings, service loader entries, anything
-the build does not check.
-
-Note whether the dependency appears in more than one place. A second build
-file, a dependency management block, a lockfile and a container image can each
-pin a version independently.
-
 ## Plan
+
+Pin down what is actually in use before reading any release notes. A
+migration guide describes every change in the library; only a fraction of
+them touch this codebase, and that fraction is discoverable from imports
+and call sites. Record the current version, the target, and how far apart
+they are: two majors is two migrations, and doing them in one step means a
+failure could belong to either.
+
+Name the surfaces that fail silently rather than at compile time -
+reflection, configuration naming classes as strings, service loader
+entries, anything the build does not check - and the places a version is
+pinned more than once: a second build file, a dependency management block,
+a lockfile, a container image.
+
+An item here is verified by the suite, not by the build. The parts that
+break silently are exactly the parts a compiler does not see, and where
+integration tests exercise the upgraded library they matter more than the
+unit tests do.
 
 One major version per item, in order. Skipping intermediate versions is
 tempting and makes the failure impossible to attribute.
@@ -56,10 +56,3 @@ stop and report rather than inventing an approximation that compiles.
 Resist the urge to modernise the code you are passing through. The reviewer of
 this diff should see only what the upgrade required.
 
-## Verify
-
-Compiling is not enough for this kind of change, because the parts that break
-silently are exactly the parts the compiler does not see. Run the suite.
-
-If the project has integration tests that exercise the upgraded library, they
-matter more here than the unit tests do.

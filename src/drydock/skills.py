@@ -15,12 +15,23 @@ proof. A skill carries a section for each, and an agent is only handed its own.
 """
 
 import re
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 
 import yaml
 
 SECTIONS = ("survey", "design", "plan", "engineer", "verify")
+
+# Which of those a station actually asks for. `survey` and `verify` are
+# understood, so a skill written for the four-station path still loads -
+# but nothing reads them unless DRYDOCK_FOUR_STATIONS is set, and a
+# section nobody reads is a section somebody wrote for nothing.
+#
+# Measured before this existed: greenfield's `## Verify` and three other
+# skills' `## Survey` sections, 5,160 characters between them, delivered
+# to no one. Nobody knew, because nothing said.
+ASKED_FOR = ("design", "plan", "engineer")
 
 
 @dataclass(frozen=True)
@@ -33,6 +44,11 @@ class Skill:
     task: str = ""
     asks: str = ""
     sections: dict[str, str] | None = None
+    # Headings in the body that no station will ever be given, and why.
+    # Kept rather than dropped: a section written and never delivered is
+    # the quietest way for work to go missing, and this is how it is
+    # said out loud. See `complaints`.
+    unread: tuple[tuple[str, str], ...] = ()
 
     @property
     def loaded(self) -> bool:
@@ -43,6 +59,10 @@ class Skill:
         if not self.sections:
             return ""
         return self.sections.get(role, "").strip()
+
+    def complaints(self) -> list[str]:
+        """What about this skill will not reach anybody, said plainly."""
+        return [f"{self.name}: `## {head}` {why}" for head, why in self.unread]
 
     def fits(self, language: str, build_tool: str) -> bool:
         if not self.applies_to:
@@ -66,13 +86,37 @@ def _split_sections(body: str) -> dict[str, str]:
     instead of "## Engineer" would make the format hostile for no benefit.
     """
     found: dict[str, str] = {}
+    unread: list[tuple[str, str]] = []
     chunks = re.split(r"^##\s+(.+)$", body, flags=re.MULTILINE)
     for heading, content in zip(chunks[1::2], chunks[2::2], strict=False):
         key = heading.strip().lower()
-        for role in SECTIONS:
-            if key.startswith(role):
-                found[role] = content.strip()
-    return found
+        role = next((r for r in SECTIONS if key.startswith(r)), "")
+        if not role:
+            unread.append(
+                (
+                    heading.strip(),
+                    (
+                        "names no station, so none of it is read. Rename "
+                        f"it to one of {', '.join(SECTIONS)}, or fold it "
+                        f"into one that is ({len(content.strip())} "
+                        "characters)."
+                    ),
+                )
+            )
+            continue
+        if role not in ASKED_FOR:
+            unread.append(
+                (
+                    heading.strip(),
+                    (
+                        "is only read on the four-station path, which is "
+                        "off unless DRYDOCK_FOUR_STATIONS is set "
+                        f"({len(content.strip())} characters)."
+                    ),
+                )
+            )
+        found[role] = content.strip()
+    return found, unread
 
 
 def discover(root: Path) -> list[Skill]:
@@ -98,8 +142,19 @@ def discover(root: Path) -> list[Skill]:
 
 
 def load(skill: Skill) -> Skill:
-    """Read the body. Called once a skill has actually been chosen."""
+    """Read the body. Called once a skill has actually been chosen.
+
+    Anything in it that no station will be given is recorded and said on
+    the way past, because a section written and never delivered is the
+    quietest way for work to go missing. Four skills had one; nobody
+    knew.
+    """
     _, body = _split_frontmatter((skill.path / "SKILL.md").read_text())
+    sections, unread = _split_sections(body)
+    for said in Skill(
+        name=skill.name, description="", path=skill.path, unread=tuple(unread)
+    ).complaints():
+        print(f"skill: {said}", file=sys.stderr)
     return Skill(
         name=skill.name,
         description=skill.description,
@@ -108,7 +163,8 @@ def load(skill: Skill) -> Skill:
         command=skill.command,
         task=skill.task,
         asks=skill.asks,
-        sections=_split_sections(body),
+        sections=sections,
+        unread=tuple(unread),
     )
 
 

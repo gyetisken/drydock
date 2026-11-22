@@ -17,42 +17,35 @@ gets fixed. The danger is that it appears to succeed: the build is green, the
 diff looks right, and something that used to be checked is no longer being
 checked by anything.
 
-## Survey
-
-**Find the number that would notice.** Before touching anything, find the count
-that would drop if the migration quietly lost something, and record it. In a
-test suite that is the number of tests that run. In an API it is the number of
-routes served. In a schema it is the number of records that round-trip. If no
-such number exists, the first item of the plan is to create one, because
-without it there is nothing to verify against and every later check is an
-opinion.
-
-Record it per unit — per class, per module, per file — not only as a total. A
-total hides a loss in one place behind a gain in another.
-
-**Find every surface, including the ones that are not named after the thing.**
-Search for the old API by what it imports and what it calls, not by filename.
-Helpers, fixtures, base classes and utilities use the old API too and are the
-ones missed by anything that works from a naming pattern.
-
-**Find the compatibility layer.** Most migrations ship one: a shim, a bridge, a
-vintage engine, a legacy flag, a polyfill, a deprecated-but-working alias. It
-is the single most useful thing in the migration and the single most dangerous.
-Useful, because it lets the old and new sides run side by side so the work can
-be done in pieces. Dangerous, because while it is present, code nobody has
-migrated still works, and the suite cannot tell you how far along you are.
-
-**Find the second build file.** A Gradle build beside a Maven one, a
-`requirements.txt` beside a `pyproject.toml`, a Dockerfile that pins its own
-version. Each has its own dependency list, and a migration that updates one of
-them is half a migration.
-
-**Find out whether the runner can even see the new thing.** A test runner, a
-loader or a bundler too old to discover the new format will report success
-having done nothing at all. Establish the version in use and whether it
-supports the target, before anything else is planned.
-
 ## Plan
+
+**Find the number that would notice.** Before anything is planned, find the
+count that would drop if the migration quietly lost something: tests that
+run, routes served, records that round-trip. Record it per unit - per
+class, per module, per file - because a total hides a loss in one place
+behind a gain in another. If no such number exists, the first item is to
+create one; without it every later check is an opinion.
+
+**Find every surface, including the ones not named after the thing.** The
+old API is found by what it imports and what it calls, not by filename.
+Helpers, fixtures, base classes and utilities use it too and are what a
+naming pattern misses.
+
+**Find the compatibility layer.** Most migrations ship one - a shim, a
+bridge, a legacy flag, a deprecated alias. It is the most useful thing in
+the migration and the most dangerous: it lets both sides run so the work
+can be done in pieces, and while it is there the suite cannot tell you how
+far along you are. The migration is finished when it is gone and the count
+still holds.
+
+**Find the second build file**, and **find out whether the runner can see
+the new thing at all** - a loader or bundler too old to discover the new
+format reports success having done nothing.
+
+Say in the items that colour is not the check, the count is: a green run
+that executed fewer units than the baseline lost something silently, which
+is worse than a failure because a failure is visible. A run of zero that
+passes has failed, whatever the build says.
 
 **Make the measuring instrument honest first.** Pin the runner, the loader, the
 version that can actually see both sides. Until that is done, every green build
@@ -142,19 +135,3 @@ reading them is to recognise the shape when it appears somewhere else.
 - **Database or schema migrations.** A nullable column filled by a default is
   not the same as one filled from the old data; row counts match either way.
 
-## Verify
-
-**Colour is not the check. The count is.** A green run that executed fewer
-units than the baseline recorded means the migration lost something, silently,
-which is worse than a failure — a failure is visible.
-
-Compare per unit where the baseline has per-unit numbers. Something that
-quietly stops being expanded — a parameterized class, a generated set, a
-data-driven table — drops its count by a multiple, and a total can hide it
-behind a gain somewhere else.
-
-**A suite that runs zero and passes has failed.** Treat an empty run as a
-failure, always, no matter what the build says.
-
-**The migration is finished when the compatibility layer is gone and the count
-still holds.** Until then it is in progress, however complete the diff looks.
