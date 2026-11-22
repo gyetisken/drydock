@@ -42,6 +42,44 @@ def _lend_dependencies(repo: Path, where: Path) -> None:
 # every time this class does.
 OUR_LOOK = ".drydock-look"
 
+# Everything this program writes into somebody's repository, in one
+# place, because it was in six and two of them disagreed.
+#
+# `look.py` writes the pictures, `discard` keeps them on purpose so a
+# second attempt can open what the first was refused for, `sweep`
+# removes them before any commit, and the review diff excludes them.
+# Four places knew they were ours. The two cleanliness checks did not,
+# and read a directory this program had deliberately left behind as
+# somebody's uncommitted work.
+#
+# What that cost, once: a site that was written, whose sixteen tests
+# all passed, abandoned at the integration check over `?? .drydock-look/`
+# and reported as though the work had failed.
+OUR_FILES = (".drydock-report.json", ".drydock-out.json", ".drydock-preview.log")
+
+
+def ours(path: str) -> bool:
+    """Whether a path in somebody's tree is one this program put there.
+
+    Deliberately narrow. Exact names, and one directory matched by its
+    first segment - not a prefix, not a pattern, and nothing a worker
+    can choose. A file somebody wrote is never ours, however it is
+    spelt, because the list is a list rather than a rule.
+    """
+    said = (path or "").strip().strip('"')
+    if not said:
+        return False
+    return said.split("/")[0] == OUR_LOOK or said in OUR_FILES
+
+
+def _said_about(line: str) -> str:
+    """The path a `git status --porcelain` line is about.
+
+    `XY path`, and a rename is `XY old -> new`, where the new name is
+    the one that exists now.
+    """
+    return line[3:].split(" -> ")[-1].strip().strip('"')
+
 
 class GitError(RuntimeError):
     """Git could not establish the state needed to continue safely."""
@@ -70,7 +108,27 @@ class Repo:
         return said[0] if said else ""
 
     def is_clean(self) -> bool:
-        return not self._git("status --porcelain")[1].strip()
+        """Whether anything is here that somebody would have to explain."""
+        return not self.dirt()
+
+    def dirt(self) -> str:
+        """What is uncommitted here that is not this program's own.
+
+        Not everything git calls a change. See `ours`: the answer file a
+        worker writes, the preview log, and the pictures `discard` keeps
+        on purpose are all things this program put here and is going to
+        take away again. Counting them as somebody's work put two of our
+        own decisions in direct contradiction - one kept the pictures,
+        the other refused to go on while they existed - and threw away a
+        finished site over it.
+
+        Everything else still counts, exactly as it did.
+        """
+        return "\n".join(
+            line
+            for line in self._git("status --porcelain")[1].splitlines()
+            if line.strip() and not ours(_said_about(line))
+        )
 
     def has_history(self) -> bool:
         """Whether anything has ever been committed here.
@@ -157,7 +215,8 @@ class Repo:
                 "failed item back to"
             )
         head = self._checked("rev-parse --verify HEAD")
-        status = self._checked("status --porcelain")
+        # What is here that is not ours. See `dirt`.
+        status = self.dirt()
         if current != branch or (tip and head != tip) or status:
             raise GitError(
                 f"expected clean {branch} at {tip or 'its tip'}, "
@@ -180,8 +239,19 @@ class Repo:
             )
 
     def changed_files(self) -> list[str]:
+        """What changed here that somebody wrote.
+
+        `commit` asks this to decide whether there is anything to
+        commit, so a tree holding nothing but our own leftovers must
+        answer no - otherwise an item that wrote nothing commits the
+        pictures of the page it did not change.
+        """
         _, out = self._git("status --porcelain")
-        return [line[3:].strip() for line in out.splitlines() if line.strip()]
+        return [
+            _said_about(line)
+            for line in out.splitlines()
+            if line.strip() and not ours(_said_about(line))
+        ]
 
     def commit(self, message: str) -> str | None:
         """Commit whatever changed. Returns the hash, or None if nothing did."""
@@ -195,7 +265,7 @@ class Repo:
     # written there because a worker has to put its answer somewhere the
     # worker can reach, and they are removed because leaving them would mean
     # drydock dirtying a tree it then refuses to work in.
-    OURS = (".drydock-report.json", ".drydock-out.json", ".drydock-preview.log")
+    OURS = OUR_FILES
     # Pictures of the page as the last attempt left it, put where the
     # engineer can open them. A directory rather than a file because there
     # are two of them, and swept like the rest so it never reaches a commit.

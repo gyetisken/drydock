@@ -136,6 +136,14 @@ door is open right now. Two of the remaining items then depended on it.
 Nobody asked for live opening hours, and the first item alone ran for
 longer than the whole job should have taken.
 
+**An item's files must cover its own criteria.** The list of files is
+what an item is allowed to write, and something that is not you refuses
+a change that touches anything else. So read each criterion back and ask
+what it needs on disk: "runs with one command" needs whatever serves or
+starts it, "the suite passes" needs the test file. An item that asks for
+something it did not authorise the files for cannot be done, and will be
+refused for doing it - twice, because that is how many attempts it gets.
+
 **The least machinery that answers the request.** A server, a build
 step, a data layer, a module computing something at runtime - each is a
 thing to write, test, review and keep working, and each needs the

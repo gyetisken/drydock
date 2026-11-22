@@ -306,7 +306,22 @@ PLAN_SCHEMA = {
                     "files": {
                         "type": "array",
                         "items": {"type": "string"},
-                        "description": "Paths or globs this item touches.",
+                        "description": (
+                            "Every path this item may write. Something "
+                            "that is not you checks the change against "
+                            "this list and sends the item back for a "
+                            "file that is not on it, so a list that "
+                            "misses one makes the item unwinnable.\n\n"
+                            "Read your own criteria back and ask what "
+                            "each one needs on disk. An item required "
+                            "to run with one command needs whatever "
+                            "serves or starts it; an item required to "
+                            "pass a suite needs the test file. Both "
+                            "attempts of one run were refused for "
+                            "`server.js` because the criteria said "
+                            "`npm start` serves the site and the list "
+                            "did not say a server could be written."
+                        ),
                     },
                     "verify_with": {
                         "type": "string",
