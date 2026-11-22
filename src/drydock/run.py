@@ -35,6 +35,18 @@ class Run(BaseModel):
     # now only the planner ever saw it - which is why the accent colour that
     # was specified appeared nowhere on the page.
     direction: str = ""
+    # The request written out by the one that read the repository, and what
+    # it settled that nobody said. Kept apart from the request rather than
+    # merged into it, for two reasons that cost real runs: the request is
+    # what the work is judged against and must stay readable as itself, and
+    # a reading nobody asked for is enforced exactly as hard as a price
+    # somebody named the moment the two become one piece of text.
+    #
+    # Apart from `direction` as well, which is about how a thing looks and
+    # exists only for work somebody looks at. A payments endpoint has no
+    # direction and still needs saying what it is for.
+    expanded: str = ""
+    assumptions: list[str] = Field(default_factory=list)
     # The loaded skill bodies for this run. Not written to disk - they come
     # from files - but carried so a worker in a worktree can be handed the
     # same briefing as one in the repository.
@@ -99,6 +111,33 @@ class Run(BaseModel):
             "It adds to the request above, or revises it where the two "
             "disagree. It does not replace it, and nothing above stops "
             f"being true because of it:\n\n{now}"
+        )
+
+    @property
+    def as_briefed(self) -> str:
+        """The request, and then the request written out, in that order.
+
+        What everything downstream reads. The order is the whole point:
+        the request is first and is said to outrank what follows, because
+        the expansion is one worker's reading of a sentence and the
+        sentence is the thing somebody actually asked for. An engineer
+        handed the two as one block has no way to tell which half it may
+        depart from.
+
+        When nothing was written out this is the request and nothing else,
+        so a run that needed no expansion reads exactly as it did before.
+        """
+        asked = self.brief
+        more = self.expanded.strip()
+        if not more:
+            return asked
+        return (
+            f"{asked}\n\n---\n\nWhat that was taken to mean, written out "
+            "by whoever read the repository. It is context, not the "
+            "standard: everything above was asked for and holds, and "
+            "anything here that disagrees with it is wrong and loses. "
+            "Where the request left something open, this is the sensible "
+            f"reading of it and a good starting point:\n\n{more}"
         )
 
     @property

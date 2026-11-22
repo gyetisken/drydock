@@ -118,6 +118,61 @@ differently with a reason, and nothing downstream refuses work for
 departing from it. If there is nothing in the second group, say so;
 inventing one to look thorough is the failure this is here to stop.
 
+**Write the request out before you plan against it.** Most requests are
+one sentence. "A site for a bike shop" is a real request and a thin
+brief: an engineer handed that sentence alone invents a bike shop, and
+every run invents a different one. So say what the thing is - the
+outcome somebody wanted, who it is for, what it has to get right - in
+the `brief` field, and plan against that.
+
+Four rules about writing it out, and they are the whole of it.
+
+It is scaled to the request. A vague request for something creative
+earns a real brief: the audience, the character of the thing, the
+sections that earn their place, what a person is there to do, and what
+"good" means for this particular business. A backend request earns a
+different one: the behaviour, the interface, the edge cases, what
+correctness means here, and the conventions this repository already
+follows. **A small fix earns two sentences.** "The footer phone number
+is wrong" is not an invitation to redesign the footer, and a brief that
+turns it into one is a worse brief than no brief - say what is wrong,
+say what right looks like, and stop.
+
+It never invents facts. You may decide how something should feel, what
+sections a page wants, what an endpoint should do when it is called
+twice. You may not invent a business: no prices nobody named, no
+addresses, no opening hours, no staff, no history, no third-party
+service, no integration, no requirement the person did not ask for.
+Placeholder content is a decision and is named as one. A fact that
+arrives in a brief is enforced downstream as though somebody had asked
+for it, and nobody did.
+
+It is about outcomes, not typing. The same rule the items are under: no
+hex values, no spacing scales, no file layouts, no library choices
+unless the person named one or the repository already settled it. What
+the thing has to be, not how to type it.
+
+And it never argues with the request. Everything the person actually
+said outranks everything you write. Where the brief and the request
+disagree, the request is right and the brief is wrong - so do not write
+one that disagrees. A constraint they gave - a file, a stack, a colour,
+an order, a number, "no frameworks" - is repeated exactly, not softened
+into a preference and not quietly widened.
+
+**Say what you assumed, separately.** Anything you settled that they
+did not say goes in `assumptions`, one per line, in the plainest words
+you have: "no prices were given, so the cards say what each service is
+without a price". That list is shown to the person before any of this
+runs, and it is the only chance they get to catch a reading that is
+wrong before it is built against. An empty list is a fine answer for a
+request that left nothing open. Inventing entries to look thorough
+makes the list useless, which is worse than not having one.
+
+Do not stop to ask a question that the approval screen already asks. The
+person sees the brief, the assumptions and the items before anything is
+built, and that is where a wrong reading gets caught. Write down what
+you assumed and carry on.
+
 Two kinds of item are never worth their own slot: an implementation detail
 of another item, and a checking item. Every item is already built, run
 against the recorded test count, read for honesty, reviewed against what it
@@ -191,6 +246,13 @@ class Start:
     """Everything the four stations used to produce between them."""
 
     plan: Plan
+    # The request written out, when the request was a sentence. Kept apart
+    # from `direction`, which is about how a thing looks and exists only
+    # for work somebody looks at - a backend job has no direction and still
+    # needs saying what it is for. Kept apart from the request itself
+    # because the request outranks it and the two must never be confused.
+    brief: str = ""
+    assumptions: list[str] = field(default_factory=list)
     direction: str = ""
     shape: str = ""
     findings: list[str] = field(default_factory=list)
@@ -291,6 +353,35 @@ def _tool() -> Tool:
                     "naming what you found that decided it."
                 ),
             },
+            "brief": {
+                "type": "string",
+                "description": (
+                    "The request written out for the engineers, scaled to "
+                    "what was asked. A vague creative request earns the "
+                    "audience, the character, the sections that earn their "
+                    "place and what good means here; a backend request "
+                    "earns the behaviour, the interface, the edge cases and "
+                    "this repository's conventions; a small fix earns two "
+                    "sentences and must not become a redesign. Outcomes, "
+                    "not typing. No fact the person did not give - no "
+                    "price, address, hour, staff member, history or "
+                    "third-party service. Nothing in it may disagree with "
+                    "what they asked for: where it does, they are right. "
+                    "Empty only when the request was already a brief."
+                ),
+            },
+            "assumptions": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": (
+                    "What you settled that the person did not say, one per "
+                    "line, in plain words. Shown to them before anything "
+                    "runs, which is where a wrong reading gets caught. "
+                    "Empty is a fine answer for a request that left nothing "
+                    "open; inventing entries to look thorough makes the "
+                    "list useless."
+                ),
+            },
             "direction": {
                 "type": "string",
                 "description": (
@@ -314,6 +405,8 @@ def _tool() -> Tool:
             "test_command",
             "needs_a_plan",
             "why_that",
+            "brief",
+            "assumptions",
             "direction",
             *PLAN_SCHEMA["required"],
         ],
@@ -334,6 +427,10 @@ def _said(found: dict) -> Start:
             summary=found.get("summary", ""),
             items=found.get("items", []),
         ),
+        brief=(found.get("brief") or "").strip(),
+        assumptions=[
+            line.strip() for line in (found.get("assumptions") or []) if line.strip()
+        ],
         direction=(found.get("direction") or "").strip(),
         shape=_shape(found),
         findings=found.get("findings") or [],
@@ -395,7 +492,8 @@ def begin(
             prompt,
             '{"findings": ["..."], "risks": ["..."], "toolchain": "...", '
             '"run_command": "...", "test_command": "...", '
-            '"needs_a_plan": true, "why_that": "...", "direction": "...", '
+            '"needs_a_plan": true, "why_that": "...", "brief": "...", '
+            '"assumptions": ["..."], "direction": "...", '
             '"summary": "...", "items": [{"id": 1, "title": "...", '
             '"plain": "...", "rationale": "...", "files": ["..."], '
             '"verify_with": "tests", "needs": [], "worth_looking_at": false, '

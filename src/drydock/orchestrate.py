@@ -207,10 +207,12 @@ def _show_it(repo_path: Path, run, item, on_event):
             # what that part was from a title alone.
             f"{item.plain or item.title}\n\nIn full: {item.as_asked()}",
             scratch,
-            # What was actually asked for. Without it the critic had only
-            # the direction to judge against, so a direction that had
-            # drifted from the brief was ratified rather than caught.
-            brief=run.brief,
+            # What was actually asked for, and then what it was taken to
+            # mean. Without the first, the critic had only the direction
+            # to judge against, so a direction that had drifted from the
+            # brief was ratified rather than caught. The second is below
+            # it and says so: it is context, never the standard.
+            brief=run.as_briefed,
             model=run.model,
             on_event=on_event,
         )
@@ -272,6 +274,11 @@ def _judge(
                 engine=engine,
                 model=model,
                 on_event=on_event,
+                # The only station that never knew what the job was. It
+                # read an item and a diff and nothing else, which is how
+                # a criterion that is plain in context gets measured as
+                # an arbitrary line.
+                brief=run.as_briefed,
             )
         # The planner says whether this item is worth looking at; the diff
         # decides only when it did not say. A critic sent to judge a
@@ -509,7 +516,7 @@ def _one_item(
                 # The brief, not this run's instruction. An item is worked
                 # on three jobs after the one that said what the thing is,
                 # and "carry on" told the engineer nothing about it.
-                run.brief,
+                run.as_briefed,
                 item,
                 detect(where).build_command,
                 failure,

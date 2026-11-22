@@ -151,6 +151,7 @@ class TestStoppingEndsTheItem:
         run = SimpleNamespace(
             task="t",
             brief="t",
+            as_briefed="t",
             direction="",
             model="opus",
             skills_loaded=[],

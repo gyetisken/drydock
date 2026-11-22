@@ -189,6 +189,29 @@ function whatLanded(e) {
     </div>`).join("")}</div>`;
 }
 
+// What the request was taken to mean, and what was read into it that
+// nobody said. This is the one moment it can be caught: after approval it
+// has been built against. Folded, because on a request that was already a
+// brief there is nothing here worth a reader's eye - and the assumptions
+// are open, because an assumption nobody reads is the failure this is for.
+function understood(e) {
+  const brief = (e.expanded || "").trim();
+  const took = (e.assumptions || []).filter(a => (a || "").trim());
+  if (!brief && !took.length) return "";
+  return `<details class="understood">
+    <summary>What this was taken to mean${
+      took.length ? ` · ${took.length} assumption${took.length > 1 ? "s" : ""}` : ""
+    }</summary>
+    ${brief ? `<div class="took-it">${marked(brief)}</div>` : ""}
+    ${took.length ? `<ul class="assumed">${
+      took.map(a => `<li>${esc(a)}</li>`).join("")
+    }</ul>` : ""}
+    <p class="why">Nothing here was asked for — it is how the request was
+       read. What you actually asked for wins over all of it. If a line is
+       wrong, say so instead of approving.</p>
+  </details>`;
+}
+
 // What the stations said and did not stop anything over.
 //
 // Three of them produce these - the engineer reports what it saw outside
@@ -560,6 +583,7 @@ const on = {
   },
   "plan.ready": (e) => {
     const msg = say("planner", `<div class="body"><p>${esc(e.summary)}</p>
+      ${understood(e)}
       <div class="card"><h4>${e.items.length} items</h4><div class="steps"></div></div>
       <div class="actions">${S.alreadyApproved
         ? `<span class="hint working-now">Approved · working through it, one item

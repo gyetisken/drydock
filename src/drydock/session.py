@@ -720,6 +720,14 @@ class Session:
 
         self.run.inventory = started.inventory(chain)
 
+        # The request written out, and what was read into it that nobody
+        # said. Stored beside the request rather than folded into it: the
+        # request is what the work is judged against, and a reading is
+        # enforced as hard as a requirement the moment the two are one
+        # piece of text. Both are shown before anything is approved.
+        self.run.expanded = started.brief
+        self.run.assumptions = list(started.assumptions)
+
         # Only when a look was asked for. `direction` is a required field,
         # so a worker told not to direct one still has to put something in
         # it - and what it puts there is a paragraph explaining why it is
@@ -1343,6 +1351,12 @@ class Session:
         self.feed.emit(
             "plan.ready",
             summary=self.run.plan.summary,
+            # What the request was taken to mean, and what was assumed to
+            # get there. This is the one moment somebody can catch a
+            # reading before it is built against, and until now the screen
+            # showed the items and not the understanding behind them.
+            expanded=self.run.expanded,
+            assumptions=list(self.run.assumptions),
             items=[
                 {
                     "id": i.id,
@@ -1568,7 +1582,7 @@ class Session:
                     self.run.direction,
                     f"The whole of it: {self.run.task.splitlines()[0]}",
                     Path(scratch),
-                    brief=self.run.brief,
+                    brief=self.run.as_briefed,
                     model=self.model,
                     on_event=self._agent_event("Critic"),
                 )
@@ -1828,6 +1842,11 @@ class Session:
             session.feed.emit(
                 "plan.ready",
                 summary=run.plan.summary,
+                # Replayed too. A run reopened a day later showed its
+                # items and not the reading they were planned against,
+                # which is the half somebody goes back to check.
+                expanded=run.expanded,
+                assumptions=list(run.assumptions),
                 items=[
                     {
                         "id": i.id,

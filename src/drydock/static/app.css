@@ -831,3 +831,12 @@ body.split .composer .cwrap { max-width:none }
    fact: one was a decision, the other was the bound somebody set. */
 .body.deadline { border-left: 3px solid var(--bad, #b4531f); padding-left: 10px; }
 .body.deadline b { color: var(--bad, #b4531f); }
+
+/* What the request was taken to mean, on the approval card. Quiet: it is
+   context for a decision, not the decision. */
+.understood { margin:10px 0 2px; border:1px solid var(--line); border-radius:9px;
+  padding:8px 11px; background:var(--panel) }
+.understood > summary { cursor:pointer; font-size:12.5px; color:var(--faint) }
+.understood .took-it { font-size:13px; margin-top:8px }
+.understood .assumed { margin:8px 0 0; padding-left:18px; font-size:12.5px }
+.understood .assumed li { margin:3px 0 }

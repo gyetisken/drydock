@@ -145,7 +145,11 @@ class TestWhoIsHandedIt:
 
     def test_the_engineer_is_handed_the_brief_on_every_attempt(self):
         source = inspect.getsource(orchestrate._one_item)
-        assert "run.brief," in source
+        # `as_briefed` is the brief and then, below it, what the brief was
+        # taken to mean. The request is still the first thing the engineer
+        # reads and still outranks the rest - see
+        # test_a_sentence_is_not_a_brief.
+        assert "run.as_briefed," in source
         assert "run.task," not in source
 
     def test_the_engineer_prompt_carries_it(self):

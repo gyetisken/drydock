@@ -223,8 +223,8 @@ class TestTheCriticJudgesThePage:
         assert "brief" in inspect.signature(critic.look).parameters
 
     def test_both_callers_hand_it_the_brief(self):
-        assert "brief=run.brief," in inspect.getsource(orchestrate._show_it)
-        assert "brief=self.run.brief," in inspect.getsource(
+        assert "brief=run.as_briefed," in inspect.getsource(orchestrate._show_it)
+        assert "brief=self.run.as_briefed," in inspect.getsource(
             session.Session._look_at_the_finished_thing
         )
 

@@ -51,7 +51,15 @@ reviewer who hedges is no use to anyone reading the result.
 
 Anything true but outside the item belongs in `noticed`, not in a rejection."""
 
-PROMPT = """Item {id}: {title}
+PROMPT = """What is being built, and what it is for. You are not judging
+the change against this - the item below is what it was asked to do - but
+a criterion can be unclear on its own and clear beside what the work is
+for, and until now this station was the only one reading the item with no
+idea what the job was:
+
+{brief}
+
+Item {id}: {title}
 
 What the item was for: {rationale}
 
@@ -131,6 +139,7 @@ def review(
     engine: str = "api",
     model: str = "opus",
     on_event=None,
+    brief: str = "",
 ) -> tuple[dict, object]:
     clipped = diff[:MAX_DIFF]
     if len(diff) > MAX_DIFF:
@@ -141,6 +150,11 @@ def review(
         )
 
     prompt = PROMPT.format(
+        # What the job is. Every other station has had this and this one
+        # never did: it read an item and a diff with no idea what was
+        # being built, which is how a criterion that is obvious in context
+        # gets read as an arbitrary line to be measured against.
+        brief=(brief or "").strip() or "  (nothing was recorded for this run)",
         id=item.id,
         title=item.title,
         # Anything since decided about this item comes with it. A question
