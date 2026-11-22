@@ -71,6 +71,14 @@ The change, as a diff:
 
 {diff}
 
+Those criteria come in two groups. What is under "From what was asked" is
+the person's requirement: a change that does not meet it is a rejection.
+What is under "Decided here" is the planner's reading of something left
+open, and departing from it is not a fault - if the change does it
+differently and the result still meets what was asked for, that is the
+engineer's call and belongs in `noticed` at most. Refusing work for
+crossing a line nobody drew is the thing this separation exists to stop.
+
 Those texts can disagree with each other. A criterion that contradicts the
 item's reasoning, or either of them contradicting what the person asked
 for, is a fault in the plan rather than in this change - put it in

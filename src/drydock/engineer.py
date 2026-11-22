@@ -152,10 +152,18 @@ the change against them:
 
 {criteria}
 
+Those criteria come in two groups and they are not worth the same. What
+is under "From what was asked" is the person's requirement and holds.
+What is under "Decided here" is the planner's reading of something the
+person left open - it is a sensible default and a good starting point,
+and you may do it differently when the code in front of you says
+otherwise. Say which one you departed from and why, in your report.
+
 Three of those four texts can disagree, and when they do it matters which
-one wins. The brief at the top wins over everything. After it, a criterion
-above is a commitment somebody made and is worth more than the item's
-reasoning, which is there to explain rather than to decide.
+one wins. The brief at the top wins over everything. After it, a
+requirement from the brief is a commitment somebody made and is worth
+more than the item's reasoning, which is there to explain rather than to
+decide.
 
 What you must not do is pick one quietly. If a criterion contradicts the
 brief, build what the brief asked for and say so in your report. If a

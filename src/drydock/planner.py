@@ -130,6 +130,21 @@ is judged by that suite.
 Name files. "The test classes" is not a plan. If the survey counted them, the
 item says which ones or how many and on what pattern.
 
+**Say which of it is theirs and which of it is yours.** An item's
+criteria get read as requirements by everything downstream, so a reading
+you invented is enforced exactly as hard as a price the person named.
+One run turned "different payload" into "judged on the three fields the
+service acts on" - a defensible reading nobody asked for - and the work
+was built, reviewed and delivered against it as though it had been.
+
+So the criteria come in two groups. What the person actually said goes
+under "From what was asked:" and is a requirement. What you settled
+because the request did not say goes under "Decided here:" and is the
+smallest reasonable reading, not a requirement: the engineer may do it
+differently with a reason, and nothing downstream refuses work for
+departing from it. If there is nothing in the second group, say so;
+inventing one to look thorough is the failure this is here to stop.
+
 **Say what has to be true afterwards, not how to type it.** An item is an
 outcome and the way that outcome will be judged. Which files it touches,
 what it must do, what must not break, what somebody will check - those are
@@ -248,11 +263,27 @@ PLAN_SCHEMA = {
                     "plain": {
                         "type": "string",
                         "description": (
-                            "The same item in one short sentence for "
-                            "somebody who will not open the files. No "
-                            "paths, no symbol names, no jargon. Say "
-                            "what will be true afterwards that is not "
-                            "true now. Under 80 characters."
+                            "What must be true when this item is done, "
+                            "in words somebody who will not open the "
+                            "files can check: no paths, no symbol names, "
+                            "no jargon. This is read twice - by the "
+                            "person deciding whether to let the work "
+                            "happen, and by the engineer and the "
+                            "reviewer as the criteria the work is held "
+                            "to - so it says the outcome and nothing "
+                            "about how to reach it.\n\n"
+                            "Separate what was asked for from what you "
+                            "decided. Things the person actually said go "
+                            "under 'From what was asked:'; anything you "
+                            "settled because the request did not say "
+                            "goes under 'Decided here:'. A thing you "
+                            "decided is the smallest reasonable reading "
+                            "and not a requirement - the engineer may do "
+                            "it differently with a reason, and nothing "
+                            "downstream refuses work for departing from "
+                            "it. Keeping them apart is what stops your "
+                            "reading being enforced as though the person "
+                            "had asked for it."
                         ),
                     },
                     "rationale": {

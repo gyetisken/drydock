@@ -103,6 +103,21 @@ Several items are right when the pieces can fail on their own and can be
 worked on at the same time - different files, different data, different
 endpoints. That is what the range is for.
 
+**Say which of it is theirs and which of it is yours.** An item's
+criteria get read as requirements by everything downstream, so a reading
+you invented is enforced exactly as hard as a price the person named.
+One run turned "different payload" into "judged on the three fields the
+service acts on" - a defensible reading nobody asked for - and the work
+was built, reviewed and delivered against it as though it had been.
+
+So the criteria come in two groups. What the person actually said goes
+under "From what was asked:" and is a requirement. What you settled
+because the request did not say goes under "Decided here:" and is the
+smallest reasonable reading, not a requirement: the engineer may do it
+differently with a reason, and nothing downstream refuses work for
+departing from it. If there is nothing in the second group, say so;
+inventing one to look thorough is the failure this is here to stop.
+
 Two kinds of item are never worth their own slot: an implementation detail
 of another item, and a checking item. Every item is already built, run
 against the recorded test count, read for honesty, reviewed against what it
@@ -163,7 +178,12 @@ directs nothing. Be specific about what the page IS and quiet about how to
 type it."""
 
 UNSEEN = """Nothing here is looked at by anybody, so do not direct a look.
-Spend the words on the plan."""
+Spend the words on the plan.
+
+And then do not refer to one. A plan written beside an empty direction
+has sent an item to an engineer saying a value was fixed "(see
+direction)" when no direction existed, which reads to whoever gets it as
+a document they were not given. If a thing matters, the item says it."""
 
 
 @dataclass
@@ -274,10 +294,14 @@ def _tool() -> Tool:
             "direction": {
                 "type": "string",
                 "description": (
-                    "How this should look, in full and in a form an engineer "
-                    "can act on: the idea, the palette as hex values, the "
-                    "type scale, the composition, the one memorable moment, "
-                    "what to avoid. Empty when nobody looks at the result."
+                    "How this should look: who it is for, the character of "
+                    "it, the one memorable moment, and what the generic "
+                    "version would be so it cannot arrive by default. The "
+                    "intent, not the stylesheet - the hex, the type scale "
+                    "and the spacing are the engineer's, decided with the "
+                    "page in front of it. Empty when nobody looks at the "
+                    "result, and when it is empty nothing in the plan may "
+                    "refer to it."
                 ),
             },
             **PLAN_SCHEMA["properties"],
