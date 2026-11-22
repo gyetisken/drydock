@@ -117,7 +117,6 @@ class TestTheRunIsTold:
         from drydock import workspace
 
         monkeypatch.setenv("DRYDOCK_HOME", str(tmp_path))
-        monkeypatch.setattr(workspace, "HOME", tmp_path)
         seen = {}
 
         class Fake:
@@ -141,7 +140,6 @@ class TestTheRunIsTold:
         from drydock import workspace
 
         monkeypatch.setenv("DRYDOCK_HOME", str(tmp_path))
-        monkeypatch.setattr(workspace, "HOME", tmp_path)
         seen = {}
 
         class Fake:

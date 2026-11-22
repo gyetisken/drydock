@@ -234,7 +234,6 @@ class TestChoosingAProfile:
         from drydock import workspace
 
         monkeypatch.setenv("DRYDOCK_HOME", str(tmp_path))
-        monkeypatch.setattr(workspace, "HOME", tmp_path)
         seen = {}
 
         class Fake:
@@ -258,7 +257,6 @@ class TestChoosingAProfile:
         from drydock.settings import Settings
 
         monkeypatch.setenv("DRYDOCK_HOME", str(tmp_path))
-        monkeypatch.setattr(workspace, "HOME", tmp_path)
         Settings(profile=DEEP).save()
         seen = {}
 

@@ -13,13 +13,13 @@ from pathlib import Path
 
 import pytest
 
-from drydock.workspace import HOME, Project, Workspace
+from drydock.workspace import Project, Workspace, _home
 
 
 @pytest.fixture
 def home(tmp_path, monkeypatch):
     """The list is written to a fixed place, so it has to be moved."""
-    monkeypatch.setattr("drydock.workspace.HOME", tmp_path)
+    monkeypatch.setenv("DRYDOCK_HOME", str(tmp_path))
     return tmp_path
 
 
@@ -137,5 +137,34 @@ def test_a_project_is_called_what_somebody_called_it():
     assert a_project("/tmp/api-v2-final", label="Billing API").name == "Billing API"
 
 
-def test_the_home_is_where_it_says_it_is():
-    assert HOME.name == ".drydock"
+def test_the_home_is_where_it_says_it_is(monkeypatch):
+    monkeypatch.delenv("DRYDOCK_HOME", raising=False)
+    assert _home().name == ".drydock"
+    assert _home().parent == Path.home()
+
+
+def test_the_home_can_be_moved_out_of_the_way(monkeypatch, tmp_path):
+    """The whole of `conftest` rests on this. It was a module constant
+    read once at import, so the suite ignored `DRYDOCK_HOME` entirely
+    and saved an empty project list over the real one - every time
+    anybody ran it."""
+    monkeypatch.setenv("DRYDOCK_HOME", str(tmp_path / "elsewhere"))
+    assert _home() == tmp_path / "elsewhere"
+
+    kept = Workspace()
+    kept.projects = [Project(Path("/tmp/a-project"), "2026-01-01")]
+    kept.save()
+    assert (tmp_path / "elsewhere" / "projects.json").exists()
+    assert not (Path.home() / ".drydock" / "projects.json").samefile(
+        tmp_path / "elsewhere" / "projects.json"
+    )
+
+
+def test_it_is_read_when_it_is_used_rather_than_at_import(monkeypatch, tmp_path):
+    """A constant would have been fixed by whatever the environment was
+    when the module happened to be imported, which is before any test
+    has set anything."""
+    monkeypatch.setenv("DRYDOCK_HOME", str(tmp_path / "one"))
+    first = Workspace()._file
+    monkeypatch.setenv("DRYDOCK_HOME", str(tmp_path / "two"))
+    assert Workspace()._file != first

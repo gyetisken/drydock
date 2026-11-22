@@ -200,7 +200,7 @@ class TestBothWaysIn:
     ):
         from drydock.workspace import Workspace
 
-        monkeypatch.setattr("drydock.workspace.HOME", tmp_path / "home")
+        monkeypatch.setenv("DRYDOCK_HOME", str(tmp_path / "home"))
         (tmp_path / "home").mkdir()
         project = tmp_path / "HealthApi"
         project.mkdir()
@@ -215,7 +215,7 @@ class TestBothWaysIn:
     def test_adding_a_plain_folder_still_works(self, tmp_path, monkeypatch):
         from drydock.workspace import Workspace
 
-        monkeypatch.setattr("drydock.workspace.HOME", tmp_path / "home")
+        monkeypatch.setenv("DRYDOCK_HOME", str(tmp_path / "home"))
         (tmp_path / "home").mkdir()
         project = tmp_path / "Fresh"
         project.mkdir()

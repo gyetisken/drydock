@@ -10,6 +10,7 @@ record; duplicating any of it here would create a second truth that drifts.
 """
 
 import json
+import os
 from dataclasses import dataclass, field, fields
 from datetime import datetime
 from pathlib import Path
@@ -21,7 +22,21 @@ from .session import Session
 from .shell import run
 from .skills import Skill
 
-HOME = Path.home() / ".drydock"
+
+def _home() -> Path:
+    """Where this keeps its own things, asked every time.
+
+    This was a module constant, read once at import and from the real
+    home directory whatever anything said. Eight other modules take
+    `DRYDOCK_HOME` and the test suite sets it for exactly this reason -
+    this one did not, so every full run of the suite built an empty
+    `Workspace` and saved it over the real `projects.json`. A person
+    running the tests lost their sidebar, and nothing said why.
+
+    A function rather than a constant because the environment is read
+    when it is used, not when the module happens to be imported.
+    """
+    return Path(os.environ.get("DRYDOCK_HOME") or (Path.home() / ".drydock"))
 
 
 def _recency(stamp: str) -> float:
@@ -73,7 +88,7 @@ class Workspace:
 
     @property
     def _file(self) -> Path:
-        return HOME / "projects.json"
+        return _home() / "projects.json"
 
     def load(self) -> "Workspace":
         """Read the list back, including everything somebody chose about it.
@@ -105,7 +120,7 @@ class Workspace:
         return self
 
     def save(self) -> None:
-        HOME.mkdir(parents=True, exist_ok=True)
+        _home().mkdir(parents=True, exist_ok=True)
         self._file.write_text(
             json.dumps(
                 [
