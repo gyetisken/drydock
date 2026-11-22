@@ -101,6 +101,25 @@ def _the_same_refusal(now: str, before: str) -> bool:
     return len(here & there) >= 0.9 * len(here | there)
 
 
+def _said_by(station: str, on_event):
+    """The same feed, with every line attributed to one station.
+
+    A worker reports its tool calls as `("tool", ...)`, which names what
+    happened and not who did it, so the office put them on whichever
+    desk the closure happened to be bound to - the engineer's. The
+    critic's own reading of two screenshots and the reviewer's of a diff
+    were counted as the engineer's work: nine of the forty-three calls
+    in one measured run, and ninety-eight seconds of its time.
+    """
+    if not on_event:
+        return on_event
+
+    def say(what: str, text: str) -> None:
+        on_event(station if what == "tool" else what, text)
+
+    return say
+
+
 def _stopped_here(item, attempt: int, why: str):
     """The result for work that was not done because the run was stopping."""
     return ItemResult(item=item, outcome=Outcome.BLOCKED, attempts=attempt, note=why)
@@ -240,7 +259,7 @@ def _show_it(repo_path: Path, run, item, on_event):
             # it and says so: it is context, never the standard.
             brief=run.as_briefed,
             model=run.model,
-            on_event=on_event,
+            on_event=_said_by("critic", on_event),
         )
         # What was measured goes on the record beside what was seen,
         # so a contrast failure or a control with no name reaches
@@ -299,7 +318,7 @@ def _judge(
                 report.get("summary", ""),
                 engine=engine,
                 model=model,
-                on_event=on_event,
+                on_event=_said_by("reviewer", on_event),
                 # The only station that never knew what the job was. It
                 # read an item and a diff and nothing else, which is how
                 # a criterion that is plain in context gets measured as

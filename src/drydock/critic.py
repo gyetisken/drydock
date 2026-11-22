@@ -108,6 +108,16 @@ Two images of the page as it renders now are in this directory: desktop.png
 and phone.png. They are all you have, and they are enough: you are here for
 the rendered result, judged against what the person asked for.
 
+Each is one shot of a browser window - 1440 by 2200, or 390 by 1800 for the
+phone - taken whole, in one go. Nothing is scrolled, nothing is joined and
+nothing is scaled, so there is no seam for anything to be duplicated across
+and a page taller than the window is simply cut off at the bottom rather
+than continued. That is worth knowing because it rules a whole class of
+explanation out: if something looks like a rendering artefact, a repeated
+band or a ghost of content from elsewhere on the page, it is on the page.
+Say what you see and say you are unsure if you are, but do not account for
+it with a stitch that did not happen.
+
 The item above may list things that exist only in the source - that the
 hours are table markup rather than a list, that a phone number is an anchor
 with a tel: href, that a test was added. Those are not yours and you cannot

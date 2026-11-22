@@ -917,6 +917,19 @@ def one_run(run_id: str) -> dict:
     }
 
 
+@app.on_event("startup")
+def _clear_what_was_left() -> None:
+    """Stop previews left behind by an application that has gone.
+
+    They keep their ports, and the next run's engineer cannot start its
+    own. Measured after a week of runs: two servers three days old and
+    one holding 4173, which cost an engineer two of its three looks.
+    """
+    left = preview.reap()
+    if left:
+        print(f"stopped {left} preview(s) left by an earlier run")
+
+
 @app.on_event("shutdown")
 def _stop_everything() -> None:
     """Nothing this application started outlives it.

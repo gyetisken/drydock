@@ -392,6 +392,74 @@ def running(repo: Path) -> Preview | None:
     return left_over
 
 
+def _still_that_command(pid: int, command: str) -> bool:
+    """Whether this pid is still running what we wrote down for it.
+
+    A pid is reused. Confirming the port answers says something is
+    serving; this says the something is the thing we started, so a
+    number that has come round again on an unrelated process is not
+    signalled. Both have to hold.
+    """
+    if not pid or not command.strip():
+        return False
+    try:
+        said = subprocess.run(
+            ["ps", "-o", "command=", "-p", str(pid)],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=False,
+        ).stdout
+    except (OSError, subprocess.SubprocessError):
+        return False
+    said = said.strip()
+    if not said:
+        return False
+    # The first real word of the recorded command - `npm`, `node`,
+    # `python3` - has to appear in what is running now. Loose on purpose:
+    # a shell wrapper changes the rest of the line and not this.
+    first = next((w for w in shlex.split(command) if not w.startswith("-")), "")
+    return bool(first) and Path(first).name in said
+
+
+def reap() -> int:
+    """Stop every preview written down by an application that has gone.
+
+    `stop()` works on `_RUNNING`, which is in memory. A fresh process
+    owns no previews, so it reaps none of the ones it finds, and a dev
+    server outlives the application that started it - keeping its port.
+
+    Measured, on this machine, after a week of runs: two `http.server`
+    processes three days old and a `node server.js` holding 4173. An
+    engineer then could not start its own preview, and said so itself -
+    "two of the three looks were spent on those failed starts". The
+    looks are the only way it sees the page it is building.
+
+    Called once when the application starts. A preview this process
+    starts is its own and is stopped the ordinary way.
+
+    Two things have to hold before anything is signalled: the recorded
+    port still answers, and the recorded pid is still running the
+    recorded command. Either alone could point at somebody else's
+    process.
+    """
+    stopped = 0
+    for note in sorted(_roster().glob("*.json")):
+        try:
+            said = json.loads(note.read_text())
+            port = int(said["url"].rsplit(":", 1)[1])
+        except (OSError, ValueError, KeyError, IndexError):
+            note.unlink(missing_ok=True)
+            continue
+        note.unlink(missing_ok=True)
+        pid = int(said.get("pid") or 0)
+        if not _answers(port) or not _still_that_command(pid, said.get("command", "")):
+            continue
+        _signal_group(_Elsewhere(pid), signal.SIGTERM)
+        stopped += 1
+    return stopped
+
+
 def stop(repo: Path | None = None) -> int:
     """Stop one preview, or all of them."""
     with _LOCK:
