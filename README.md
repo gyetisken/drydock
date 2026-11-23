@@ -12,6 +12,12 @@ nothing lands at all by being asserted.
 
 It runs locally and drives the Claude Code CLI you are already signed in to.
 
+**Where this is.** Being worked on, in the open, and used on real jobs while
+it is built — most of what is in here was written because a run went wrong
+in a way nobody could see. It is harness engineering rather than a model
+project: the interesting part is not asking a model for code, it is what
+the program around it does with the answer. Expect the behaviour to move.
+
 ## The problem it is built around
 
 An agent that edits a repository can make the suite green four ways:
@@ -77,6 +83,49 @@ agents report the failure and leave the files where they are.
 item removes a test, adds a `skip`, or turns an assertion into a tautology,
 that is matched in the diff and the item goes back, whatever the suite says.
 
+## How much ceremony a job gets
+
+Not every request needs a plan, and some need one whatever they look like.
+The depth is chosen before any model is called, by reading the sentence and
+the repository, and it is shown and can be overruled:
+
+| | |
+|---|---|
+| **Automatic** | reads the request and the repository, then picks |
+| **No plan** | starts now. Build, tests and the scope check still run; the diff review is skipped and the page is looked at once at the end |
+| **Plan first** | a brief, acceptance criteria, and your approval before anything changes |
+| **Extra careful** | more time, three attempts instead of two, work split further |
+
+Some work is not allowed to take the cheap road however it was asked for. A
+sentence naming a migration, authentication, money or a dropped table has a
+floor under it and gets a plan, because a short sentence about a dangerous
+thing reads exactly like a short sentence.
+
+## Looking at the result
+
+The Critic is handed pictures, not a description, and the pictures are the
+whole page at two widths — not the window the page opened in. A hero set to
+`100svh` used to fill both of them, so every page was judged by its top.
+
+Colour is resolved by the browser rather than parsed, so `oklch()`, `lab()`
+and whatever CSS gains next are measured rather than guessed at. A colour
+that cannot be resolved is reported as unmeasured. A ratio computed from a
+colour nobody read is worse than no ratio, and a picture of the first
+screenful offered as a picture of the page is worse than no picture.
+
+## When something fails
+
+A refused item is thrown away — that is what makes the rollback affordable.
+Before it goes, the tree is written into the object database as an
+unreferenced commit, so `git show` reads the whole of it back afterwards.
+A site that worked, with sixteen passing tests, was once discarded and gone
+because nothing had ever been staged.
+
+An item refused twice by the station that reads files, for the same reason
+both times, is a defect in the plan rather than an engineer that failed
+twice. It stops there and says which, instead of spending the second attempt
+proving it.
+
 ## What a finished run leaves behind
 
 A branch — `drydock/<run id>` — with one commit per item, and a draft pull
@@ -124,6 +173,20 @@ does not restrict, and a deny pattern broad enough to cover the parent
 directory also covers the repository. The hook was written after an Analyst,
 given an empty folder, read drydock's own source to find something to report.
 
+The shell goes through it too, which it did not at first. A command is one
+command — no substitution, no expansion, no redirection that writes — its
+name is on a list short enough to read, and every argument is resolved
+before it runs. `..` is the obvious way out; an absolute path, a home
+directory and a symlink are the boring ones, and resolving answers all four.
+
+Two more things a worker does not inherit. Settings are the person's own
+only, because Claude Code walks up from the working directory and loads
+every `CLAUDE.md` it passes — a nested `.git` does not stop it, which was
+measured rather than assumed, and a job about a restaurant website was being
+handed this repository's instructions to its own agent. And an API key in
+the shell is removed from the environment the worker runs in, so what is set
+on the machine cannot decide how the crew authenticates.
+
 ## Skills
 
 A skill is one Markdown file with sections addressed to individual stations,
@@ -145,7 +208,7 @@ uv run drydock skills
 uv run pytest -q
 ```
 
-Three hundred-odd, and they are mostly about failures that looked like
+Two thousand-odd, and they are mostly about failures that looked like
 successes: a green suite whose test count could not be read, a finished item
 thrown away for want of a report, a design decision that never reached the
 engineer who writes the CSS, a resumed run that quietly dropped the skills it
