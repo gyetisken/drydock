@@ -209,11 +209,11 @@ class TestTheEngineerIsToldAboutPictures:
 
     def test_it_says_what_may_not_be_done(self):
         said = self._engineer_section()
-        assert "Nothing here can take, buy or generate a photograph" in said
+        assert "Nothing here can take, buy or generate a *photograph*" in said
 
-    def test_inventing_the_file_is_the_only_thing_ruled_out(self):
+    def test_the_photograph_is_the_only_thing_ruled_out(self):
         said = self._engineer_section()
-        assert "That rules out inventing the file and nothing else" in said
+        assert "That rules out the photograph and nothing else" in said
 
     def test_it_says_supplied_images_may_be_used(self):
         said = self._engineer_section()
@@ -286,9 +286,9 @@ class TestTheEngineerDirectsItselfWhenNobodyElseDid:
         assert "The ground, the ink and the one accent" in said
         assert "What the generic version of this page would be" in said
 
-    def test_it_is_four_or_five_lines_and_not_a_plan(self):
+    def test_it_is_five_lines_and_not_a_plan(self):
         said = flat(engineer.DIRECT_YOURSELF)
-        assert "in four or five lines" in said
+        assert "in five lines" in said
 
     def test_it_does_not_become_an_acceptance_criterion(self):
         """The standing rule: a suggestion must not silently become a

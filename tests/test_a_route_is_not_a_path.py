@@ -33,6 +33,7 @@ does not.
 """
 
 import inspect
+import re
 import subprocess
 import tempfile
 from pathlib import Path
@@ -40,7 +41,7 @@ from typing import ClassVar
 
 import pytest
 
-from drydock import confine, critic, look, orchestrate, preview, verify
+from drydock import confine, critic, engineer, look, orchestrate, preview, verify
 from drydock.models import Baseline, Check
 from drydock.route import LOOK, is_route, slug
 
@@ -865,3 +866,236 @@ class TestSweepingUpAfterSeveralRoutes:
         (repo / "src" / "index.html").write_text("<!doctype html>")
         Repo(repo).sweep()
         assert (repo / "src" / "index.html").exists()
+
+
+# --------------------------------------------------------------------------
+# What a benchmark said was missing
+# --------------------------------------------------------------------------
+
+
+def web_design() -> dict:
+    from drydock.skills import discover, load
+
+    for s in discover(Path("skills")):
+        if s.name == "web-design":
+            return load(s).sections or {}
+    raise AssertionError("web-design is not installed")
+
+
+class TestTheEngineerIsToldItMayDraw:
+    """Four runs of one sentence: two under this skill produced nought and
+    two SVGs between them, two without it produced nine and thirteen, and
+    three blind judges each named the absence of any image as the first
+    thing wrong with ours. Nothing had forbidden drawing - `Write` is
+    unconditional and `.svg` is not swept. Nothing had suggested it
+    either: the word did not appear in the section the builder reads.
+    """
+
+    def test_drawing_is_the_answer_when_nothing_supplies_a_picture(self):
+        said = flat(web_design()["engineer"])
+        assert "Where nothing supplies one, **you draw it**" in said
+
+    def test_what_it_writes_is_an_asset_rather_than_a_placeholder(self):
+        said = flat(web_design()["engineer"])
+        assert "An SVG you write is a real asset and not a placeholder" in said
+
+    def test_the_kinds_are_named_without_being_prescribed(self):
+        """Named so the option is visible, listed so none of them is the
+        instruction."""
+        said = flat(web_design()["engineer"])
+        for kind in ("a hero", "a scene", "a mark", "a texture", "a pattern"):
+            assert kind in said
+
+    def test_a_missing_photograph_does_not_rule_out_an_illustrated_one(self):
+        said = flat(web_design()["engineer"])
+        assert (
+            "A photograph you cannot get rules out a photographic hero; it does "
+            "not rule out an illustrated one" in said
+        )
+
+    def test_the_design_section_says_the_same_thing(self):
+        """It is the planner's half of the same decision, and it carried
+        the sentence that read wider than it was: a hero nobody here can
+        build is a photographic one."""
+        said = flat(web_design()["design"])
+        assert "a layout carried by a hero that somebody draws is not" in said
+        assert "a direction you may take rather than a consolation" in said
+
+    def test_the_photograph_is_still_the_one_thing_ruled_out(self):
+        said = flat(web_design()["engineer"])
+        assert "That rules out the photograph and nothing else" in said
+
+    def test_it_still_says_not_to_go_looking(self):
+        """Two workers once spent a hundred and fifty minutes proving a
+        photograph existed. That rule is not relaxed by this."""
+        assert "Do not go looking: there is no network here" in flat(
+            web_design()["engineer"]
+        )
+
+    def test_nothing_here_prescribes_how_much_or_in_what_manner(self):
+        said = flat(web_design()["engineer"])
+        at = said.index("**Pictures.**")
+        block = said[at : at + 1400]
+        assert "What you draw, how much, and in what manner are yours" in block
+        # No count, no named style, no palette.
+        assert not re.search(
+            r"\b(one|two|three|four|five|\d+)\s+(svgs?|illustrat)", block, re.IGNORECASE
+        )
+        for prescribed in ("flat design", "line art", "isometric", "#", "oklch("):
+            assert prescribed not in block
+
+
+class TestTheSelfDirectionAsksWhatCarriesIt:
+    def test_there_is_a_fifth_line(self):
+        said = flat(engineer.DIRECT_YOURSELF)
+        assert "What carries it to the eye, and whether you are going to draw that" in (
+            said
+        )
+
+    def test_type_is_still_a_real_answer(self):
+        """The point is that it is a decision, not a default."""
+        said = flat(engineer.DIRECT_YOURSELF)
+        assert "Type can carry a page and often should" in said
+
+    def test_it_names_the_failure_it_exists_to_stop(self):
+        said = flat(engineer.DIRECT_YOURSELF)
+        assert "rather than arriving at type because nothing supplied a photograph" in (
+            said
+        )
+
+    def test_it_is_still_five_lines_and_not_a_plan(self):
+        said = flat(engineer.DIRECT_YOURSELF)
+        assert "in five lines" in said
+
+    def test_it_is_still_not_an_acceptance_criterion(self):
+        said = flat(engineer.DIRECT_YOURSELF)
+        assert "nothing downstream judges the result against it" in said
+        assert "does not widen the item" in said
+
+    def test_no_second_worker_was_added_for_it(self):
+        source = inspect.getsource(engineer.work)
+        for spawning in ("ClaudeCodeEngine(", "pool.submit", "ThreadPoolExecutor"):
+            assert source.count(spawning) <= 1
+
+
+class TestSpaceIsADecision:
+    """Three blind judges each wrote the same sentence about ours: the
+    right half of the page sits empty, and it reads as unfinished rather
+    than as generous. No instruction had asked for that - the only
+    spacing guidance in the skill is in `## Design`, which on the straight
+    path reaches nobody."""
+
+    def test_it_defends_real_space_first(self):
+        said = flat(web_design()["engineer"])
+        assert "Room between sections and around a headline is the point" in said
+
+    def test_it_names_the_thing_that_is_not_space(self):
+        said = flat(web_design()["engineer"])
+        assert (
+            "A content column that stops halfway across a wide section because "
+            "that is where the words ran out is a different thing" in said
+        )
+
+    def test_the_signal_is_a_repeat_rather_than_a_single_gap(self):
+        said = flat(web_design()["engineer"])
+        assert "when it happens twice on one page" in said
+
+    def test_the_answer_is_left_open(self):
+        said = flat(web_design()["engineer"])
+        assert (
+            "a second column, a drawing, a figure, a different grid, or "
+            "genuinely nothing - is yours to decide" in said
+        )
+
+    def test_it_prescribes_no_layout(self):
+        said = flat(web_design()["engineer"])
+        at = said.index("**Space is a decision")
+        block = said[at : at + 700]
+        for prescribed in ("grid-template", "two-column layout", "sidebar", "px", "%"):
+            assert prescribed not in block
+
+
+class TestTheOnePassRuleSurvives:
+    def test_whole_first_then_better(self):
+        assert "**Whole first, then better.**" in engineer.PROMPT
+
+    def test_one_pass(self):
+        said = flat(engineer.PROMPT)
+        assert "One pass." in said
+        assert '"could be nicer" is not a defect' in said
+
+    def test_the_gates_are_untouched(self):
+        assert orchestrate.GATES == ("verifier", "inspector", "reviewer", "critic")
+
+    def test_the_engineer_still_does_not_count_as_a_look(self):
+        said = flat(engineer.LOOKING)
+        assert "This is not a check that counts" in said
+
+
+class TestADevServersOwnFurnitureIsNotThePage:
+    """`astro dev` injects `<astro-dev-toolbar>` into every page it
+    serves, and a project with no `start` script is served by `astro dev`.
+    Confirmed in the rendered DOM: present on an Astro preview, absent on
+    a plain static one. Six blind judges across two rounds each named the
+    four-icon pill and each discounted it; nothing tells the critic to."""
+
+    def test_the_known_overlays_are_hidden_before_the_picture(self):
+        source = Path("src/drydock/shot.py").read_text()
+        assert (
+            "'astro-dev-toolbar, astro-dev-overlay, vite-error-overlay, "
+            "nextjs-portal'" in source
+        )
+        assert "el.style.display = 'none'" in source
+
+    def test_it_happens_before_the_page_is_measured(self):
+        source = Path("src/drydock/shot.py").read_text()
+        assert source.index("astro-dev-toolbar") < source.index(
+            "const measured = await send"
+        )
+
+    def test_it_is_a_named_list_rather_than_a_guess(self):
+        """Nothing is hidden for looking like furniture. Only elements
+        that belong to a dev server by name."""
+        source = Path("src/drydock/shot.py").read_text()
+        at = source.index("astro-dev-toolbar")
+        block = source[at - 200 : at + 300]
+        for sweeping in (
+            "[class*=",
+            "[id*=",
+            "position:fixed",
+            "querySelectorAll('*')",
+        ):
+            assert sweeping not in block
+
+
+class TestAPreviewIsNotForgottenWhileItIsStillUp:
+    """`stop` struck the record off first and unconditionally, and only
+    then signalled - and only when `ours` was true. A preview whose own
+    shell had already exited, which is what `npm run dev` looks like when
+    npm hands off to a daemon, had its note deleted and nothing
+    signalled. Measured: `astro dev` on port 4322 outliving the run that
+    started it, invisible to `running()`, found with `ps`."""
+
+    def test_the_record_comes_off_last(self):
+        source = inspect.getsource(preview.stop)
+        assert source.index("_signal_group") < source.index("_strike_off")
+
+    def test_a_port_that_still_answers_keeps_its_record(self):
+        source = inspect.getsource(preview.stop)
+        assert 'if _answers(int(preview.url.rsplit(":", 1)[1])):' in source
+        assert "continue" in source[source.index("_answers(int(preview.url") :]
+
+    def test_a_malformed_url_does_not_take_the_stop_down(self):
+        source = inspect.getsource(preview.stop)
+        assert "with contextlib.suppress(ValueError, IndexError):" in source
+
+    def test_what_it_signals_is_unchanged(self):
+        """The group, not the process: these are started with shell=True
+        and the pid belongs to the shell."""
+        source = inspect.getsource(preview.stop)
+        assert "_signal_group(preview.process, signal.SIGTERM)" in source
+        assert "_signal_group(preview.process, signal.SIGKILL)" in source
+
+    def test_the_count_still_reports_what_was_signalled(self):
+        source = inspect.getsource(preview.stop)
+        assert "stopped += 1" in source

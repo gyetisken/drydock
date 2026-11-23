@@ -193,6 +193,25 @@ class TestAPreviewThatOutlivedTheApplication:
         _write_a_note(preview, tmp_path / "nero", 4321, pid=0)
 
         assert preview.stop(tmp_path / "nero") == 0  # pid 0: nothing to signal
+        # And the note stays, because the port still answers. It used to
+        # be struck off here, which is how a server that could not be
+        # signalled became a server nothing knew about: the record was
+        # the last handle on it. A note is removed when the thing it
+        # describes has gone, which is the case below.
+        assert list((tmp_path / "home" / "previews").glob("*.json"))
+
+    def test_one_that_did_go_is_struck_off_by_stopping_it(self, tmp_path, monkeypatch):
+        """The other half: once the port is quiet the record is removed,
+        so a note never outlives what it describes either."""
+        from drydock import preview
+
+        monkeypatch.setenv("DRYDOCK_HOME", str(tmp_path / "home"))
+        answers = iter([True, False])  # found, then gone
+        monkeypatch.setattr(preview, "_answers", lambda port: next(answers, False))
+        preview._RUNNING.clear()
+        _write_a_note(preview, tmp_path / "nero", 4321, pid=0)
+
+        preview.stop(tmp_path / "nero")
         assert not list((tmp_path / "home" / "previews").glob("*.json"))
 
 

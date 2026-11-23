@@ -580,7 +580,15 @@ def stop(repo: Path | None = None) -> int:
         targets = [left_over] if left_over else []
     stopped = 0
     for preview in targets:
-        _strike_off(preview.project)
+        # The record comes off at the end, and only if the port has gone
+        # quiet. It used to come off first and unconditionally, while the
+        # signal below was conditional - so a preview whose own shell had
+        # already exited (`ours` is false, which is what `npm run dev`
+        # looks like when npm hands off to a daemon) had its record
+        # deleted and nothing signalled. The server went on answering and
+        # drydock had no handle, no note and no way to find it again.
+        # Measured: `astro dev` on port 4322 outliving the run that
+        # started it, invisible to `running()`, found with `ps`.
         if preview.ours and preview.process.poll() is None:
             # The whole group, not the one process. These are started with
             # `shell=True`, so the pid belongs to the shell, and whether
@@ -596,6 +604,14 @@ def stop(repo: Path | None = None) -> int:
             except subprocess.TimeoutExpired:
                 _signal_group(preview.process, signal.SIGKILL)
             stopped += 1
+        # Did it actually go? A port that still answers is a preview that
+        # is still there, whatever was signalled, and striking it off
+        # would be this program forgetting something it is responsible
+        # for. Kept instead, so the next `running` or `stop` finds it.
+        with contextlib.suppress(ValueError, IndexError):
+            if _answers(int(preview.url.rsplit(":", 1)[1])):
+                continue
+        _strike_off(preview.project)
     return stopped
 
 
