@@ -108,15 +108,20 @@ Two images of the page as it renders now are in this directory: desktop.png
 and phone.png. They are all you have, and they are enough: you are here for
 the rendered result, judged against what the person asked for.
 
-Each is one shot of a browser window - 1440 by 2200, or 390 by 1800 for the
-phone - taken whole, in one go. Nothing is scrolled, nothing is joined and
-nothing is scaled, so there is no seam for anything to be duplicated across
-and a page taller than the window is simply cut off at the bottom rather
-than continued. That is worth knowing because it rules a whole class of
-explanation out: if something looks like a rendering artefact, a repeated
-band or a ghost of content from elsewhere on the page, it is on the page.
-Say what you see and say you are unsure if you are, but do not account for
-it with a stitch that did not happen.
+Each is the whole page, top to bottom, in one shot. The window is 1440
+wide, or 390 for the phone, and the picture is as tall as the document -
+so what the page looks like on arrival is the top of the image, and
+everything below the fold is below it. Nothing is scrolled, nothing is
+joined and nothing is scaled: there is no seam for content to be
+duplicated across. If something looks like a rendering artefact, a
+repeated band or a ghost of content from elsewhere on the page, it is on
+the page. Say what you see and say you are unsure if you are, but do not
+account for it with a stitch that did not happen.
+
+Judge the arrival by the top of the image and the rest by the rest. A
+page whose first screenful is mostly empty ground is a real fault and
+you can see it here; so is a section nobody styled, four thousand pixels
+down, which you could not see before.
 
 The item above may list things that exist only in the source - that the
 hours are table markup rather than a list, that a phone number is an anchor

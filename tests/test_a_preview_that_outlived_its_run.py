@@ -197,39 +197,56 @@ class TestAStationsOwnCallsAreItsOwn:
 
 
 class TestTheCriticIsToldHowThePictureWasMade:
+    """It explained what it thought it saw as "an overlap artifact of a
+    stitched full-page capture". We do not stitch. It is told what the
+    picture actually is - and told again when that changed: it was one
+    window, and it is the whole page now."""
+
     def said(self) -> str:
         from drydock.critic import PROMPT
 
         return " ".join(PROMPT.split())
 
     def test_it_is_told_the_shot_is_whole(self):
-        assert "taken whole, in one go" in self.said()
-        assert "Nothing is scrolled, nothing is joined" in self.said()
+        said = self.said()
+        assert "Each is the whole page, top to bottom, in one shot" in said
+        assert "Nothing is scrolled, nothing is joined" in said
 
     def test_it_is_told_what_that_rules_out(self):
         said = self.said()
-        assert "there is no seam for anything to be duplicated across" in said
+        assert "there is no seam for content to be duplicated across" in said
         assert "do not account for it with a stitch that did not happen" in said
 
     def test_it_is_still_asked_to_say_what_it_sees(self):
         """Not a muzzle. The critic reported a ghost that is not in the
         pixels and hedged it correctly into `noticed`; what it lacked was
         a true account of how the picture is made."""
-        said = self.said()
-        assert "Say what you see and say you are unsure if you are" in said
+        assert "Say what you see and say you are unsure if you are" in self.said()
 
-    def test_the_sizes_it_is_given_are_the_sizes_taken(self):
+    def test_the_widths_it_is_given_are_the_widths_taken(self):
+        """The height is the document's now, so only the width is a
+        number anybody can state in advance."""
         from drydock.shot import WIDTHS
 
         said = self.said()
-        for width, height in WIDTHS.values():
-            assert f"{width} by {height}" in said or f"{width} by {height}" in said
+        for width, _ in WIDTHS.values():
+            assert str(width) in said, width
+
+    def test_it_is_told_where_the_arrival_is_in_the_image(self):
+        said = self.said()
+        assert "what the page looks like on arrival is the top of the image" in said
+        assert "everything below the fold is below it" in said
+
+    def test_it_is_told_to_judge_both(self):
+        said = self.said()
+        assert "Judge the arrival by the top of the image" in said
+        assert "which you could not see before" in said
 
     def test_the_capture_really_is_one_shot(self):
-        """Saying so would be worse than useless if it were not."""
+        """Saying so would be worse than useless if it were not. One
+        capture still - past the viewport, not joined out of several."""
         source = Path("src/drydock/shot.py").read_text()
         assert source.count("Page.captureScreenshot") == 1
-        #  is a flag, not a scroll. These are the
-        # things a stitched capture would need.
-        for word in ("scrollTo", "scrollHeight", "stitch", "captureBeyondViewport"):
+        assert "captureBeyondViewport: true" in source
+        for word in ("scrollTo", "stitch", "Promise.all"):
             assert word not in source, word

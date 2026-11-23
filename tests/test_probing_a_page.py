@@ -203,7 +203,11 @@ class TestTheThingThatMadeItLookLikeItWorked:
 
         page = probe.LOOK[probe.LOOK.index("expression: `") :]
         assert r"/\\s+/" in page
-        assert r"/[\\d.]+/g" in page
+        # The colour-scraping regex this also guarded is gone: colours
+        # are resolved by the browser now, because reading the digits out
+        # of `oklch(...)` measured every page as unreadable. See
+        # test_a_colour_it_could_not_read.
+        assert r"/[\\d.]+/g" not in page
         assert r"/\s+/" not in page.replace(r"/\\s+/", "")
 
     def test_there_is_no_backtick_anywhere_in_the_page_script(self):

@@ -49,6 +49,9 @@ SHOOT = r"""
 const [, , target, widthArg, heightArg, out] = process.argv;
 const width = Number(widthArg);
 const height = Number(heightArg);
+// Above this a picture stops being a picture of a page. Generous: the
+// LUMI site was 4,800 and the AURA one 6,200.
+const TALLEST = 12000;
 const { spawn } = await import('node:child_process');
 const { mkdtempSync, writeFileSync } = await import('node:fs');
 
@@ -93,7 +96,38 @@ await send('Page.enable', {}, sessionId);
 await send('Page.navigate', { url: target }, sessionId);
 await new Promise((r) => setTimeout(r, 4000));
 
-const shot = await send('Page.captureScreenshot', { format: 'png' }, sessionId);
+// The whole page, not the window it opened in. This took one shot of a
+// fixed window, so a hero set to 100svh filled both pictures and the
+// critic saw the arrival and nothing else - it said so itself, on a page
+// with four sections under the fold: "Neither shot shows any of the four
+// sections". It had been judging the top of every page it was given.
+//
+// Captured past the viewport rather than by making the viewport taller.
+// Resizing is the obvious way and it is wrong: viewport units resolve
+// against the window, so a 100svh hero grows to fill whatever height is
+// asked for and pushes the rest of the page down behind it. Tried, and
+// the phone picture came back five thousand pixels tall with the hero
+// repeated down it and the four sections still missing. The window stays
+// the size a phone is; only the picture is bigger.
+//
+// The cap is there because a page can be a hundred thousand pixels tall
+// and a picture that large helps nobody.
+const measured = await send('Runtime.evaluate', {
+  expression: `Math.max(
+    document.documentElement.scrollHeight, document.body.scrollHeight,
+    document.documentElement.offsetHeight, ${height})`,
+  returnByValue: true,
+}, sessionId);
+const full = Math.min(
+  Math.max(Number((measured.result || {}).result?.value) || height, height),
+  TALLEST,
+);
+
+const shot = await send('Page.captureScreenshot', {
+  format: 'png',
+  captureBeyondViewport: true,
+  clip: { x: 0, y: 0, width, height: full, scale: 1 },
+}, sessionId);
 if (!shot.result || !shot.result.data) stop('the page would not be photographed');
 writeFileSync(out, Buffer.from(shot.result.data, 'base64'));
 stop('ok');

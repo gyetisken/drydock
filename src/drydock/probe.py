@@ -268,9 +268,35 @@ const out = await send('Runtime.evaluate', {
       });
       return 0.2126 * r + 0.7152 * g + 0.0722 * b;
     };
+    // Ask the browser what a colour is, rather than reading the digits
+    // out of it. getComputedStyle hands back whatever space the author
+    // wrote in - oklch(0.21 0.02 160) stays oklch(...) - and scraping the
+    // first three numbers out of that read 0.21 as a red channel out of
+    // 255. Every element came back near-black and every ratio came back
+    // about 1.06, on a page whose contrast was fine. An engineer noticed
+    // and said so; nothing in here would have.
+    //
+    // A canvas resolves any syntax this browser supports, which is the
+    // same set the page can use, so this cannot go out of date. An
+    // invalid value leaves fillStyle untouched, so it is set to a
+    // sentinel first and a colour that did not take is null - never a
+    // number, because a fabricated ratio is worse than no ratio.
+    // (No backticks in here - see the note above the template.)
+    const paint = document.createElement('canvas').getContext('2d', {
+      willReadFrequently: true,
+    });
     const rgb = (said) => {
-      const n = (said.match(/[\\d.]+/g) || []).map(Number);
-      return n.length >= 3 ? n.slice(0, 3) : null;
+      if (!said) return null;
+      paint.fillStyle = '#000000';
+      paint.fillStyle = said;
+      const first = paint.fillStyle;
+      paint.fillStyle = '#ffffff';
+      paint.fillStyle = said;
+      if (paint.fillStyle !== first) return null;
+      paint.clearRect(0, 0, 1, 1);
+      paint.fillRect(0, 0, 1, 1);
+      const [r, g, b, a] = paint.getImageData(0, 0, 1, 1).data;
+      return a === 0 ? null : [r, g, b, a / 255];
     };
     const behind = (el) => {
       // The nearest ancestor that actually paints something. A transparent
@@ -278,10 +304,11 @@ const out = await send('Runtime.evaluate', {
       // page on a dark ground is reported as perfectly legible.
       for (let at = el; at; at = at.parentElement) {
         const c = rgb(getComputedStyle(at).backgroundColor);
-        const a = (getComputedStyle(at).backgroundColor.match(/[\\d.]+/g) || [])[3];
-        if (c && (a === undefined || Number(a) > 0.5)) return c;
+        if (c && c[3] > 0.5) return c;
       }
-      return [255, 255, 255];
+      // Nothing painted anything, so what is behind the text is the
+      // canvas, and the canvas is white. Not a guess.
+      return [255, 255, 255, 1];
     };
 
     const text = [...document.querySelectorAll('body *')].filter(el => {
@@ -292,10 +319,15 @@ const out = await send('Runtime.evaluate', {
     });
 
     const unreadable = [];
+    let unresolved = 0;
     for (const el of text.slice(0, 400)) {
       const style = getComputedStyle(el);
       const ink = rgb(style.color);
-      if (!ink) continue;
+      // A colour this browser could not resolve is a measurement that
+      // did not happen. Counted and reported as that, rather than
+      // guessed at - an element reported as unreadable on a number
+      // nobody computed costs an attempt and teaches nothing.
+      if (!ink) { unresolved += 1; continue; }
       const size = parseFloat(style.fontSize);
       const bold = Number(style.fontWeight) >= 700;
       const large = size >= 24 || (size >= 18.66 && bold);
@@ -370,6 +402,7 @@ const out = await send('Runtime.evaluate', {
       visible: document.querySelectorAll('body *').length,
       words: (document.body.innerText || '').trim().split(/\\s+/).filter(Boolean).length,
       unreadable: unreadable.slice(0, 12),
+      unresolved,
       images,
       nameless: nameless.slice(0, 12),
       controls: document.querySelectorAll('button, a, input, select').length,
@@ -399,6 +432,11 @@ class Looked:
     going: list[dict] = field(default_factory=list)
     lists: list[dict] = field(default_factory=list)
     unreadable: list[dict] = field(default_factory=list)
+    # Elements whose colour this browser could not resolve, so no ratio
+    # was computed for them. Said rather than guessed: the whole of the
+    # `oklch()` failure was a number produced for a colour nobody had
+    # read, and a wrong number is worse than a missing one.
+    unresolved: int = 0
     images: list[str] = field(default_factory=list)
     nameless: list[dict] = field(default_factory=list)
     failed: list[dict] = field(default_factory=list)
@@ -490,6 +528,12 @@ class Looked:
             said.append(
                 f"text is below the contrast anybody can read: "
                 f'"{u["said"]}" is {u["ratio"]}:1 and needs {u["needs"]}:1'
+            )
+        if self.unresolved:
+            said.append(
+                f"{self.unresolved} element(s) had a colour this browser "
+                "could not resolve, so their contrast was not measured. "
+                "Nothing is claimed about them either way."
             )
         # Once each, in the order they were found. The same failure can
         # arrive down two channels - a document that will not load is both
