@@ -39,10 +39,25 @@ def verify_build(repo: Path, command: str) -> Verdict:
             check=Check(name="build", command="", passed=True, seconds=0.0),
         )
     result = check("build", command, repo)
+    # A build command is often the test command. `"build": "npm test"` is
+    # what a greenfield worker writes when there is nothing to compile, and
+    # then the counts are sitting in the output and nothing read them: one
+    # run reported `tests_run: 0` and "compiles" for an item whose own
+    # check detail said `# tests 22 / # pass 22 / # fail 0`. This does not
+    # decide anything - a build still passes or fails on its exit status -
+    # it only records what the output already said. A build with no test
+    # report in it parses as nought, which is what it was before.
+    run, failed, _ = read_test_counts(result.detail)
     return Verdict(
         passed=result.passed,
-        reason="compiles" if result.passed else "does not compile",
+        reason=(
+            (f"compiles, {run} tests pass" if run else "compiles")
+            if result.passed
+            else "does not compile"
+        ),
         check=result,
+        tests_run=run,
+        tests_failed=failed,
     )
 
 

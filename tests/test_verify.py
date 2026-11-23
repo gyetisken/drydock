@@ -1,8 +1,10 @@
 """The verification is the part that must not be wrong, so it is tested hardest."""
 
+import inspect
 from pathlib import Path
 from typing import ClassVar
 
+from drydock import verify as verify_module
 from drydock.models import Baseline, Check
 from drydock.parse import read_test_counts
 from drydock.verify import verify
@@ -127,3 +129,62 @@ class TestItAlsoHasToBuild:
         )
         assert verdict.passed
         assert calls == ["tests"]
+
+
+NODE_OUTPUT = """
+# Subtest: the two-night minimum applies only when a high-season night is booked
+ok 1 - rates
+# tests 22
+# pass 22
+# fail 0
+"""
+
+TSC_OUTPUT = "Found 0 errors. Watching for file changes.\n"
+
+
+class TestABuildThatIsAlsoATestRunReportsItsTests:
+    def _verdict(self, output: str, passed: bool = True, monkeypatch=None):
+        def ran(name, command, repo):
+            return Check(
+                name=name, command=command, passed=passed, seconds=0.1, detail=output
+            )
+
+        monkeypatch.setattr(verify_module, "check", ran)
+        return verify_module.verify_build(Path("/x"), "npm run build")
+
+    def test_the_count_in_the_output_is_recorded(self, monkeypatch):
+        """Measured: one run reported `tests_run: 0` and "compiles" for an
+        item whose own check detail said 22 tests had passed."""
+        said = self._verdict(NODE_OUTPUT, monkeypatch=monkeypatch)
+        assert said.tests_run == 22
+        assert said.tests_failed == 0
+
+    def test_the_reason_says_so(self, monkeypatch):
+        said = self._verdict(NODE_OUTPUT, monkeypatch=monkeypatch)
+        assert said.reason == "compiles, 22 tests pass"
+
+    def test_a_real_build_still_reports_none(self, monkeypatch):
+        """A compiler's output has no test report in it, and parsing it
+        has to come back nought rather than guess."""
+        said = self._verdict(TSC_OUTPUT, monkeypatch=monkeypatch)
+        assert said.tests_run == 0
+        assert said.reason == "compiles"
+
+    def test_the_pass_or_fail_decision_is_untouched(self, monkeypatch):
+        """This records a number. It does not decide anything: a build
+        passes or fails on its exit status exactly as before."""
+        said = self._verdict(NODE_OUTPUT, passed=False, monkeypatch=monkeypatch)
+        assert said.passed is False
+        assert said.reason == "does not compile"
+
+    def test_no_command_is_still_a_pass_with_nothing_measured(self):
+        said = verify_module.verify_build(Path("/x"), "")
+        assert said.passed is True
+        assert said.tests_run == 0
+        assert said.reason == "no separate build command"
+
+    def test_the_arithmetic_check_is_still_the_arithmetic_check(self):
+        """`verify` is where a dropped count fails an item. Nothing here
+        touches it."""
+        source = inspect.getsource(verify_module.verify)
+        assert "the suite reported success but ran 0 tests" in source
