@@ -736,14 +736,20 @@ class TestTheArithmeticIsUntouched:
 
 
 class TestItWorksOnARealProject:
-    """One project on disk, one node process, no model anywhere near it."""
+    """One project on disk, one node process, no model anywhere near it.
+
+    Skipped where the machine cannot actually run a node test suite. It
+    was written asserting that two tests were counted and CI counted
+    nought - `npm test` there exited 0 in two tenths of a second having
+    reported nothing this can parse. A test that asserts a pipeline and
+    measures the runner it happens to be sitting on is worse than no
+    test: it goes red for a reason that has nothing to do with the
+    change in front of it.
+    """
 
     @pytest.fixture
     def built(self, tmp_path):
         (tmp_path / "package.json").write_text(
-            # The file by name, not a glob. A glob is expanded by
-            # whatever shell npm happens to use and matched nothing on
-            # CI, so this asserted the pipeline and measured the shell.
             '{"name":"x","private":true,"type":"module","scripts":'
             '{"build":"node build.js","test":"node --test tests/a.test.js"}}'
         )
@@ -755,13 +761,30 @@ class TestItWorksOnARealProject:
             "test('one', () => assert.equal(1, 1));\n"
             "test('two', () => assert.equal(2, 2));\n"
         )
+        # Can this machine do it at all? Asked by doing it, because every
+        # other way of asking - is node installed, which major is it -
+        # has already been wrong once here.
+        from drydock.parse import read_test_counts
+
+        try:
+            said = subprocess.run(
+                ["npm", "test"],
+                cwd=tmp_path,
+                check=False,
+                capture_output=True,
+                text=True,
+                timeout=120,
+            )
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            pytest.skip(f"no usable npm here: {exc}")
+        ran, _, _ = read_test_counts(said.stdout + said.stderr)
+        if ran != 2:
+            pytest.skip(
+                "this machine's `node --test` does not report a count this "
+                f"can read (got {ran} from exit {said.returncode})"
+            )
         return tmp_path
 
-    @pytest.mark.skipif(
-        subprocess.run(["which", "node"], check=False, capture_output=True).returncode
-        != 0,
-        reason="no node on this machine",
-    )
     def test_the_suite_runs_and_the_count_is_recorded(self, built):
         from drydock.detect import detect
 
