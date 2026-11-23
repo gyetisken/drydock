@@ -622,7 +622,7 @@ const on = {
     const msg = say("planner", `<div class="body"><p>${esc(e.summary)}</p>
       ${understood(e)}
       <div class="card"><h4>${e.items.length} items</h4><div class="steps"></div></div>
-      <div class="actions">${S.alreadyApproved
+      <div class="actions">${S.alreadyApproved || e.approved
         ? `<span class="hint working-now">Approved · working through it, one item
            at a time</span>`
         : `<button class="btn" id="approve">Approve and start</button>

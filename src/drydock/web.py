@@ -864,9 +864,8 @@ def running_jobs() -> dict:
                 "key": key,
                 "repo": str(session.repo),
                 "task": session.task.split("\n")[0],
-                "awaiting_approval": bool(
-                    session.run and session.run.plan and not session.stopping
-                ),
+                # Asked, not merely plannable. See `Session.waiting`.
+                "awaiting_approval": bool(session.waiting and not session.stopping),
             }
         )
     return {"jobs": live}

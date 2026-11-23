@@ -115,6 +115,13 @@ class Session:
         # nobody has read.
         self.stop_after = stop_after
         self.floor = floor
+        # Whether a person has actually been asked for something. It used
+        # to be worked out from "there is a plan and the run has not
+        # stopped", which is true of every run that got as far as
+        # planning - so a job that was never going to ask reported itself
+        # as waiting for an answer for the whole of its life, and the one
+        # that went straight to the work reported it loudest.
+        self.waiting = False
         # How much ceremony this job gets. Decided once, here, and carried
         # rather than re-derived anywhere downstream.
         self.policy = policy or of(None)
@@ -1403,16 +1410,22 @@ class Session:
                 for i in self.run.plan.items
             ],
             cost=round(self.run.cost, 2),
+            # A plan that is already being worked must not offer a button
+            # that starts it. The straight path and every auto-run profile
+            # reach here with nobody left to ask.
+            approved=auto_run,
         )
         self.feed.emit(
             "agent.state",
             agent="Planner",
             state="done",
-            note=f"{len(self.run.plan.items)} items, awaiting approval",
+            note=f"{len(self.run.plan.items)} items, "
+            + ("starting" if auto_run else "awaiting approval"),
         )
         if auto_run:
             self.work_the_plan()
         else:
+            self.waiting = True
             self.feed.emit("awaiting.approval")
 
     # Which desk owns each stage. The verifier owns the baseline because the
@@ -1463,6 +1476,9 @@ class Session:
         spinner and waits for events that will never arrive, which is the
         worst failure this program can have: it looks exactly like working.
         """
+        # Nothing is being waited for from here on, whether this was
+        # approved, never needed approving, or went straight to the work.
+        self.waiting = False
         try:
             self._work_the_plan()
         except BaseException as exc:  # noqa: BLE001 - nothing may die in silence
