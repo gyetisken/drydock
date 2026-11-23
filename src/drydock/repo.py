@@ -5,6 +5,7 @@ enough to be the default response to a failure rather than a last resort.
 """
 
 import os
+import shutil
 from pathlib import Path
 
 from .shell import run
@@ -289,10 +290,17 @@ class Repo:
                 gone.append(name)
         look = self.path / self.OUR_LOOK
         if look.is_dir():
-            for shot in look.iterdir():
-                shot.unlink()
-            look.rmdir()
-            gone.append(self.OUR_LOOK)
+            # A tree, not a flat directory. Looking at a second route puts
+            # its pictures in a directory of its own, and this walked the
+            # top level calling `unlink` on whatever it found - which on a
+            # directory is `Operation not permitted`, raised out of the
+            # sweep, which runs before the commit. So every run that
+            # looked at more than one page died at the end with the work
+            # finished, built and tested, and nothing recorded. Measured
+            # once, on the first run of a benchmark.
+            shutil.rmtree(look, ignore_errors=True)
+            if not look.exists():
+                gone.append(self.OUR_LOOK)
         return gone
 
     def checkpoint(self, why: str = "") -> str:

@@ -799,3 +799,69 @@ class TestItWorksOnARealProject:
         verdict = verify.verify(built, "build", GREENFIELD, commands)
         assert verdict.passed is True
         assert verdict.tests_run == 2
+
+
+class TestSweepingUpAfterSeveralRoutes:
+    """The one that killed the first run of a benchmark.
+
+    `sweep` walked the top of `.drydock-look/` calling `unlink` on
+    whatever it found, which was right while every picture sat in one
+    flat directory. Looking at a second route puts its pictures in a
+    directory of its own, and `unlink` on a directory is `Operation not
+    permitted`. The sweep runs before the commit, so the run died at the
+    end with the site built, four pages rendered and thirty-three tests
+    green, and nothing recorded at all.
+    """
+
+    def _repo(self, tmp_path):
+        subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+        return tmp_path
+
+    def test_a_tree_of_pictures_goes(self, tmp_path):
+        from drydock.repo import OUR_LOOK, Repo
+
+        repo = self._repo(tmp_path)
+        look = repo / OUR_LOOK
+        (look / "rooms").mkdir(parents=True)
+        (look / "dining").mkdir()
+        (look / "desktop.png").write_bytes(b"x")
+        (look / "rooms" / "phone.png").write_bytes(b"x")
+        assert Repo(repo).sweep() == [OUR_LOOK]
+        assert not look.exists()
+
+    def test_a_flat_directory_still_goes(self, tmp_path):
+        from drydock.repo import OUR_LOOK, Repo
+
+        repo = self._repo(tmp_path)
+        look = repo / OUR_LOOK
+        look.mkdir()
+        (look / "desktop.png").write_bytes(b"x")
+        assert Repo(repo).sweep() == [OUR_LOOK]
+        assert not look.exists()
+
+    def test_nothing_to_sweep_is_not_an_error(self, tmp_path):
+        from drydock.repo import Repo
+
+        assert Repo(self._repo(tmp_path)).sweep() == []
+
+    def test_it_does_not_raise_out_of_the_sweep(self, tmp_path):
+        """Whatever is in there, the sweep must finish: it runs between
+        the work being done and the work being committed."""
+        from drydock.repo import OUR_LOOK, Repo
+
+        repo = self._repo(tmp_path)
+        look = repo / OUR_LOOK
+        (look / "a" / "b" / "c").mkdir(parents=True)
+        (look / "a" / "b" / "c" / "deep.png").write_bytes(b"x")
+        Repo(repo).sweep()
+        assert not look.exists()
+
+    def test_the_project_is_not_touched(self, tmp_path):
+        from drydock.repo import OUR_LOOK, Repo
+
+        repo = self._repo(tmp_path)
+        (repo / OUR_LOOK / "rooms").mkdir(parents=True)
+        (repo / "src").mkdir()
+        (repo / "src" / "index.html").write_text("<!doctype html>")
+        Repo(repo).sweep()
+        assert (repo / "src" / "index.html").exists()
