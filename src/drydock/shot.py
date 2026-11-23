@@ -13,6 +13,7 @@ already on the machine in headless mode, and says plainly when there is not
 one rather than pretending the check happened.
 """
 
+import os
 import shutil
 import subprocess
 import tempfile
@@ -141,6 +142,17 @@ def _through_devtools(url: str, out: Path, width: int, height: int) -> bool:
                 check=False,
                 env={
                     "PATH": "/usr/bin:/bin:/usr/local/bin",
+                    # The environment is stripped on purpose: a browser
+                    # pointed at somebody's page has no business reading
+                    # this process's variables. `HOME` is the exception,
+                    # and leaving it out was not isolation but an
+                    # oversight - a Chrome that cannot find a home cannot
+                    # find a keychain, and macOS stops the machine with a
+                    # modal asking what to do about it, every time a page
+                    # is photographed. It still gets its own
+                    # `--user-data-dir`, so this does not hand it the
+                    # person's profile.
+                    "HOME": os.environ.get("HOME", ""),
                     "DRYDOCK_BROWSER": browser,
                 },
             )

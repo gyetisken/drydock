@@ -424,8 +424,12 @@ class TestTheRequestIsNotSaidTwice:
 class TestNothingNestedPollutesTheStatus:
     def test_the_projects_made_before_the_fix_are_ignored(self):
         for name in ("gkhntest", "TestProject", "newWebsiteProject"):
+            # With the trailing slash, because the pattern is `/name/`
+            # and git only matches that against a path spelt as a
+            # directory. Here the folders exist and it matched either
+            # way; on a fresh checkout they do not, and it did not.
             done = subprocess.run(
-                ["git", "check-ignore", "-q", name],
+                ["git", "check-ignore", "-q", f"{name}/"],
                 check=False,
                 capture_output=True,
             )

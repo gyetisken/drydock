@@ -163,16 +163,24 @@ class Repo:
         )
 
     def _as_whoever(self) -> str:
-        """Who to sign the baseline commit as, when git has nobody.
+        """Who to sign a commit as, when git has nobody.
 
-        A machine where `git config user.email` was never set cannot commit
-        at all, and that is the same machine as the one with a folder that
-        was `git init`-ed and left - a new laptop, a container, CI. Refusing
-        there means refusing to work for the person this was written for.
+        A machine where `git config user.email` was never set cannot
+        commit at all, and that is the same machine as the one with a
+        folder that was `git init`-ed and left - a new laptop, a
+        container, CI. Refusing there means refusing to work for the
+        person this was written for.
+
+        Written for the baseline commit and then used only there, which
+        meant the two commits that matter were not covered: an item's own
+        commit died with "Author identity unknown", and `checkpoint`
+        returned nothing at all - so the work it exists to preserve was
+        thrown away unrecoverably, on exactly the machine the fallback
+        was written for. Caught by CI, where no identity is set.
 
         Only a fallback: where an identity exists it is used, because the
-        files being committed are theirs. And only on this one commit -
-        nothing is written to anybody's git config.
+        files being committed are theirs. Nothing is ever written to
+        anybody's git config.
         """
         if self._git("config user.email")[0] == 0:
             return ""
@@ -258,7 +266,7 @@ class Repo:
         if not self.changed_files():
             return None
         self._checked("add -A")
-        self._checked(f"commit -q -m {_quote(message)}")
+        self._checked(f"{self._as_whoever()}commit -q -m {_quote(message)}")
         return self._checked("rev-parse --verify HEAD")
 
     # Files this application writes into somebody's repository. They are
@@ -325,7 +333,9 @@ class Repo:
         head = self.head()
         parent = f"-p {_quote(head)}" if head else ""
         message = _quote(why.strip()[:200] or "work discarded by drydock")
-        code, made = self._git(f"commit-tree {_quote(tree)} {parent} -m {message}")
+        code, made = self._git(
+            f"{self._as_whoever()}commit-tree {_quote(tree)} {parent} -m {message}"
+        )
         made = made.strip()
         return made if code == 0 and made else ""
 

@@ -155,9 +155,12 @@ def test_the_home_can_be_moved_out_of_the_way(monkeypatch, tmp_path):
     kept.projects = [Project(Path("/tmp/a-project"), "2026-01-01")]
     kept.save()
     assert (tmp_path / "elsewhere" / "projects.json").exists()
-    assert not (Path.home() / ".drydock" / "projects.json").samefile(
-        tmp_path / "elsewhere" / "projects.json"
-    )
+    # Compared as paths rather than with samefile(), which needs both to
+    # exist - and on a machine that has never run drydock, the real one
+    # does not. That is the machine this is protecting.
+    assert (tmp_path / "elsewhere" / "projects.json").resolve() != (
+        Path.home() / ".drydock" / "projects.json"
+    ).resolve()
 
 
 def test_it_is_read_when_it_is_used_rather_than_at_import(monkeypatch, tmp_path):
