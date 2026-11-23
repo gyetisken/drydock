@@ -79,7 +79,31 @@ def verify(repo: Path, item_verify: str, base: Baseline, commands: dict) -> Verd
             check=Check(name="tests", command="", passed=False, seconds=0.0),
         )
 
-    if item_verify == "build" and not needs_suite and commands.get("build"):
+    # An item verified by the build still runs the suite when the project
+    # has one. This escape is for the project that has no tests at all -
+    # a greenfield repository before the item that creates them lands, or
+    # a build-only project - where demanding a suite refuses an item for
+    # something nobody did wrong.
+    #
+    # It was not asking that question. It asked whether the item said
+    # "build", and an item on a greenfield job says "build" because the
+    # baseline had no tests - so the whole of a site's own suite was
+    # skipped the moment the engineer wrote one. Measured: a run recorded
+    # `tests_run: 0` and "compiles" for a project whose `npm test` passes
+    # fourteen tests, and the acceptance for an entire website was that
+    # its static site generator exited 0.
+    #
+    # `has_tests` is the project declaring a test script; equal commands
+    # mean the build is the suite, which the path below runs once.
+    a_suite = bool(commands.get("has_tests")) and commands.get("tests") != commands.get(
+        "build"
+    )
+    if (
+        item_verify == "build"
+        and not needs_suite
+        and commands.get("build")
+        and not a_suite
+    ):
         return verify_build(repo, commands["build"])
 
     # An item verified by its tests must still leave something that builds.
