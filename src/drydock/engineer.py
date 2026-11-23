@@ -157,14 +157,20 @@ by somebody who is not you. None of them is told that you looked."""
 # and 1,630 of brief, and the straight one carried nought of either. The
 # engineer was handed a sentence and asked for a website.
 #
-# This is not a station and it is not a plan. It is four lines the worker
+# This is not a station and it is not a plan. It is five lines the worker
 # writes for itself inside the turn it already has, before it starts
 # typing, because deciding what the page is for costs less than a minute
 # and is the difference between a page and a template.
+#
+# The fifth line was added after a benchmark: two runs under this
+# instruction produced nought and two SVGs between them while two runs
+# without it produced nine and thirteen, and three blind judges put the
+# absence of any image first among what was wrong with ours. Nothing had
+# forbidden drawing. Nothing had suggested it either.
 DIRECT_YOURSELF = """
 
 Nothing upstream directed this. You are the only one who will decide what
-it looks like, so decide it before you write anything, in four or five
+it looks like, so decide it before you write anything, in five
 lines, and put them at the top of your report:
 
 - Who walks in, what they came to find, and what the place feels like
@@ -175,6 +181,10 @@ lines, and put them at the top of your report:
 - What the generic version of this page would be - the stock hero, the
   carousel nobody asked for, "Welcome to our restaurant" - so it cannot
   arrive by default.
+- What carries it to the eye, and whether you are going to draw that.
+  Type can carry a page and often should. So can something you make: a
+  hero, a mark, a scene, a texture. Decide which, here, rather than
+  arriving at type because nothing supplied a photograph.
 
 Then build against it. This is your own working decision and nothing
 downstream judges the result against it: it is not an acceptance

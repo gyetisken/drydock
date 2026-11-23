@@ -100,9 +100,11 @@ search, to prove a photograph existed. Write the URL you were given and move
 on; whether it is the right picture is settled by somebody looking at the
 page, which is a station that already exists.
 
-*If nothing supplies them*, design with type, colour, space and drawn marks,
-and say so rather than leaving a hole. A layout whose whole idea is a hero
-photograph is a layout nobody here can build. Where an image really is
+*If nothing supplies them*, design with type, colour, space and drawings
+made here. A layout whose whole idea is a hero *photograph* is one nobody
+here can build; a layout carried by a hero that somebody draws is not,
+and an illustrated page is a direction you may take rather than a
+consolation for one you could not. Where an image really is
 required, leave a placeholder that looks like a decision - a flat field at
 the right aspect ratio, captioned with what goes there - and say in the
 README what to drop in.
@@ -124,17 +126,32 @@ deliberately: text that fails contrast against its background, a heading
 hierarchy that skips a level, a hero that pushes the content below the
 fold, and tap targets smaller than a thumb.
 
-**Pictures.** Nothing here can take, buy or generate a photograph, and
-flat colour named `.jpg` is a lie that passes a build. That rules out
-inventing the file and nothing else, so look at what you have before
-deciding there is none. Images the request, the direction or the
-repository supplies are yours to use, each with an aspect ratio in the CSS
-so nothing jumps, `loading="lazy"` below the fold, a real `alt` and a
-ground colour underneath. `brand/logo.svg` may already be there, in one
-colour. Where nothing supplies one, type, colour and space carry the page
-and you say so rather than leaving a hole. Do not go looking: there is no
-network here. And "no pictures" is a decision about this page, not a rule
-- do not make it silently for a business whose appeal is how it looks.
+**Pictures.** Nothing here can take, buy or generate a *photograph*, and
+flat colour named `.jpg` is a lie that passes a build. That rules out the
+photograph and nothing else. Images the request, the direction or the
+repository supplies are yours to use, each with an aspect ratio in the
+CSS so nothing jumps, `loading="lazy"` below the fold, a real `alt` and a
+ground colour underneath; `brand/logo.svg` may already be there.
+
+Where nothing supplies one, **you draw it**. An SVG you write is a real
+asset and not a placeholder - a hero, a scene, a mark, a texture, a
+pattern behind a band, a figure beside a paragraph - and it ships with
+the page. A photograph you cannot get rules out a photographic hero; it
+does not rule out an illustrated one. What you draw, how much, and in
+what manner are yours, and they should answer to this business rather
+than to the category.
+
+Do not go looking: there is no network here. And "no pictures" is a
+decision about this page, not a rule - do not make it silently for a
+business whose appeal is how it looks.
+
+**Space is a decision, not what is left over.** Room between sections and
+around a headline is the point. A content column that stops halfway
+across a wide section because that is where the words ran out is a
+different thing, and when it happens twice on one page the page is
+telling you something is missing from it rather than that it is
+breathing. What answers it - a second column, a drawing, a figure, a
+different grid, or genuinely nothing - is yours to decide.
 
 **One stylesheet holds the decisions.** The palette, the type scale and the
 spacing live as custom properties in one place, written early, and every

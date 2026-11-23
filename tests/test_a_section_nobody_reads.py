@@ -270,11 +270,25 @@ class TestPromptSize:
 
     def test_the_engineer_briefing_stays_under_what_it_was(self):
         """It was 7,817 for this pair before the folding, and the folding
-        moved content into it. Held under ten thousand on purpose: the
-        engineer's own instructions are 5,157 and a skill should not be
-        twice its host."""
+        moved content into it. The bound exists because the engineer's
+        own instructions are 5,157 and a skill should not swamp its host.
+
+        Raised once, from 10,500, and the reason is on the record rather
+        than in a commit message. A benchmark ran the same sentence four
+        times: two runs under this skill produced nought and two SVGs
+        between them, two runs without it produced nine and thirteen, and
+        three blind judges each named the absence of any image as the
+        first thing wrong with ours. What was missing was one clause -
+        the skill told the engineer what it could not photograph and
+        never told it that it could draw - and that clause had been cut
+        from this same passage to fit this same number. Trimming the
+        craft guidance to make room for it would have been the same
+        mistake twice, so the number moved instead.
+
+        It is still a bound and it is still enforced. If it has to move
+        again, something in here is not earning its place."""
         said = briefing(self.pair(), "engineer")
-        assert len(said) < 10500, len(said)
+        assert len(said) < 11600, len(said)
 
     def test_no_skill_file_is_mostly_undelivered(self):
         for s in skills():
