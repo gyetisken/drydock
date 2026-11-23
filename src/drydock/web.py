@@ -717,6 +717,16 @@ def start(body: StartJob) -> JSONResponse:
             status_code=409,
         )
 
+    # Asking for no plan has to mean no plan. The profile used to change
+    # only how much ceremony the work got - more attempts, a reviewer, a
+    # look at every item - while the route was still decided by the
+    # sentence, so somebody who picked "no plan" on an ordinary request
+    # watched a planner run anyway. The floor still overrules this, in
+    # the session, where everything that overrules a route is read.
+    stop_after = command.stop_after
+    if body.profile == "fast" and stop_after == "planner":
+        stop_after = "straight"
+
     skills = [load_skill(command.skill)] if command.skill else []
     standing = next(
         (p.instructions for p in workspace.projects if str(p.path) == body.project),
@@ -729,7 +739,7 @@ def start(body: StartJob) -> JSONResponse:
         0.0 if body.engine == "claude" else body.budget,
         body.engine,
         body.model,
-        command.stop_after,
+        stop_after,
         standing,
         body.profile,
         body.minutes,

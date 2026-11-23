@@ -211,3 +211,66 @@ class TestFastKnowsWhatItCannotCheck:
         source = Path("src/drydock/inspect.py").read_text()
         for check in ("allow_removals", "MAGIC"):
             assert check in source, check
+
+
+class TestTheNamesAreTrue:
+    """Two of the four said something the system did not do.
+
+    "Straight to it" sent `profile: "fast"`, which changed how much
+    ceremony the work got and left the route to the sentence - so
+    somebody who asked for no plan watched a planner run. And "the
+    checks all still run" was not true of that profile: it turns the
+    diff review off and looks at the finished thing once rather than at
+    every step.
+    """
+
+    def names(self) -> dict:
+        import re
+
+        block = JS[
+            JS.index("const DEPTHS = [") : JS.index("];", JS.index("const DEPTHS = ["))
+        ]
+        return dict(re.findall(r'id: "(\w*)", label: "([^"]+)"', block))
+
+    def test_they_are_short_and_plain(self):
+        said = self.names()
+        assert said == {
+            "": "Automatic",
+            "fast": "No plan",
+            "balanced": "Plan first",
+            "deep": "Extra careful",
+        }
+
+    def test_no_plan_actually_skips_the_plan(self):
+        said = PAGE
+        assert 'if body.profile == "fast" and stop_after == "planner":' in said
+        assert 'stop_after = "straight"' in said
+
+    def test_it_only_redirects_the_path_that_would_have_planned(self):
+        """`/ask`, `/review`, `/qa` and the rest are not plans and are
+        not touched."""
+        block = PAGE[PAGE.index('if body.profile == "fast"') :][:200]
+        assert 'stop_after == "planner"' in block
+
+    def test_the_floor_still_overrules_it(self):
+        assert 'if self.stop_after == "straight" and self.floor:' in SESSION
+
+    def test_the_note_no_longer_claims_every_check_runs(self):
+        said = JS[JS.index("const DEPTHS = [") :][:1200]
+        assert "the checks all still run" not in said
+        assert "the diff review is skipped" in said
+
+    def test_the_note_says_what_does_still_run(self):
+        said = JS[JS.index("const DEPTHS = [") :][:1200]
+        assert "Build, tests and the scope check still run" in said
+
+    def test_the_fast_profile_really_is_that(self):
+        """Saying so would be worse than useless if it were not."""
+        from drydock.policy import AT_THE_END
+
+        assert PROFILES[FAST].read_the_diff is False
+        assert PROFILES[FAST].look_at_it == AT_THE_END
+
+    def test_extra_careful_really_does_split_into_four(self):
+        assert PROFILES[DEEP].fewest_items == 4
+        assert PROFILES[DEEP].attempts == 3

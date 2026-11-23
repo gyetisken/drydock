@@ -10,18 +10,21 @@ const S = { projects: [], commands: [], runs: [], project: null, key: null, menu
   // has always done; the other three are a person overruling that.
   depth: "" };
 
-// What the three depths mean, in the words somebody choosing would use.
+// What each one does, in the words somebody choosing would use. The
+// notes are checked against what the profiles actually do: "fast" turns
+// the diff review off and looks at the finished thing once rather than
+// at every step, and saying "all the checks still run" about it was not
+// true.
 const DEPTHS = [
-  { id: "", label: "Decide for me",
-    note: "reads the request and the repository and picks" },
-  { id: "fast", label: "Straight to it",
-    note: "no plan and no approval - the checks all still run" },
-  { id: "balanced", label: "Plan it",
-    note: "a brief, acceptance criteria, and your approval before any work" },
-  { id: "deep", label: "Take it seriously",
-    note: "more investigation, more attempts, every item looked at" },
-];
-// There is one way to run the crew and it is not a question anybody was
+  { id: "", label: "Automatic",
+    note: "reads your request and the repository, then picks one of the three below" },
+  { id: "fast", label: "No plan",
+    note: "starts now. Build, tests and the scope check still run; the diff review is skipped and the page is looked at once at the end" },
+  { id: "balanced", label: "Plan first",
+    note: "a written brief, acceptance criteria and your approval before anything changes" },
+  { id: "deep", label: "Extra careful",
+    note: "more time, three attempts instead of two, and the work split into at least four pieces" },
+];// There is one way to run the crew and it is not a question anybody was
 // answering. `api` still exists for anything headless - the CLI takes
 // `--engine`, and CI has no account to be signed in as - but the window
 // is a person at their own machine, signed in, and the picker only ever
