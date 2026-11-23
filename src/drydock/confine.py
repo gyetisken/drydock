@@ -26,6 +26,8 @@ import shlex
 import sys
 from pathlib import Path
 
+from .route import LOOK, is_route
+
 # The keys a path can arrive under, across the tools worth guarding.
 PATH_KEYS = ("file_path", "path", "notebook_path", "target_file")
 
@@ -102,7 +104,7 @@ ALLOWED = frozenset(
         "swift",
         "java",
         # This program's own tool, when a worker is allowed to look.
-        "drydock-look",
+        LOOK,
     }
 )
 
@@ -186,8 +188,19 @@ def _one_command(said: str, root: Path) -> str | None:
             "project, read its git history, and run its toolchain."
         )
 
+    # One command takes a page of the project's own site rather than a
+    # file, and a route reads exactly like an absolute path: `/rooms`
+    # resolved to the directory `/rooms` at the root of the disk and was
+    # refused for being outside the project. Narrow on purpose - this one
+    # command name, and only for arguments the look tool itself would
+    # accept as a route, by the same validator it uses. Everything else
+    # that is not a switch is still a path, still resolved, and still has
+    # to land inside the project.
+    looking = name == LOOK
     for word in words[1:]:
         if _A_SWITCH.match(word) or not word:
+            continue
+        if looking and is_route(word):
             continue
         try:
             target = Path(word).expanduser()

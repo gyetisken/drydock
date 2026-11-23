@@ -30,6 +30,8 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
+from .route import LOOK
+
 
 class EngineUnavailable(RuntimeError):
     pass
@@ -150,7 +152,8 @@ BOOTSTRAP = (
 # starts, measures the page, writes two pictures into the tree and prints
 # what it found. The path it is given is validated as a path - no scheme,
 # no host, no port - so there is nowhere for it to go but this project.
-LOOK = "drydock-look"
+# Named in `route`, where the confinement hook reads it too - that
+# module imports nothing, so the hook does not pay for this one.
 
 
 def _shell_rule(build_command: str, can_look: bool = False) -> str:
