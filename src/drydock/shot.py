@@ -13,6 +13,7 @@ already on the machine in headless mode, and says plainly when there is not
 one rather than pretending the check happened.
 """
 
+import json
 import os
 import shutil
 import subprocess
@@ -130,7 +131,13 @@ const shot = await send('Page.captureScreenshot', {
 }, sessionId);
 if (!shot.result || !shot.result.data) stop('the page would not be photographed');
 writeFileSync(out, Buffer.from(shot.result.data, 'base64'));
-stop('ok');
+// How tall the page was and how much of it is in the picture, so a
+// capture that stopped short says so rather than looking like the end of
+// the page. A review that saw the first screenful and reported on the
+// whole is the failure this is here to stop; reporting nothing when the
+// cap bites would be the same failure one cap higher.
+const whole = Number((measured.result || {}).result?.value) || full;
+stop(JSON.stringify({ ok: true, page: whole, took: full }));
 """
 
 
@@ -138,6 +145,26 @@ stop('ok');
 class Shot:
     width: str
     path: Path
+    # How tall the document was, and how much of it the picture holds.
+    # Equal almost always; different when a page is taller than anything
+    # worth looking at in one image.
+    page: int = 0
+    took: int = 0
+
+    @property
+    def whole(self) -> bool:
+        """Whether this picture is the whole page."""
+        return not self.page or self.took >= self.page
+
+    def said(self) -> str:
+        """What to tell whoever is about to judge this picture."""
+        if self.whole:
+            return ""
+        return (
+            f"{self.width}.png is the top {self.took} pixels of a page "
+            f"{self.page} tall. Everything below that is not in it and "
+            "nothing is claimed about it."
+        )
 
 
 def find_browser() -> str:
@@ -158,7 +185,8 @@ def find_browser() -> str:
 PATIENCE = 20
 
 
-def _through_devtools(url: str, out: Path, width: int, height: int) -> bool:
+def _through_devtools(url: str, out: Path, width: int, height: int) -> tuple:
+    """Photograph the page, and say how much of it the picture holds."""
     """Photograph the page as a device of this width would see it."""
     node = shutil.which("node")
     browser = find_browser()
@@ -168,7 +196,7 @@ def _through_devtools(url: str, out: Path, width: int, height: int) -> bool:
         script = Path(scratch) / "shoot.mjs"
         script.write_text(SHOOT)
         try:
-            subprocess.run(
+            done = subprocess.run(
                 [node, str(script), url, str(width), str(height), str(out)],
                 capture_output=True,
                 text=True,
@@ -191,8 +219,18 @@ def _through_devtools(url: str, out: Path, width: int, height: int) -> bool:
                 },
             )
         except (OSError, subprocess.TimeoutExpired):
-            return False
-    return out.exists() and out.stat().st_size > 1000
+            return (False, 0, 0)
+    if not (out.exists() and out.stat().st_size > 1000):
+        return (False, 0, 0)
+    # The last line is the script's answer. An older one said "ok" and
+    # nothing else; a picture with no numbers beside it is taken as whole,
+    # which is what it was before any of this.
+    said = (done.stdout or "").strip().splitlines()
+    try:
+        found = json.loads(said[-1]) if said else {}
+    except (ValueError, IndexError):
+        found = {}
+    return (True, int(found.get("page") or 0), int(found.get("took") or 0))
 
 
 def take(
@@ -213,8 +251,9 @@ def take(
     for name in widths:
         width, height = WIDTHS[name]
         out = into / f"{name}.png"
-        if _through_devtools(url, out, width, height):
-            shots.append(Shot(width=name, path=out))
+        taken, page, took = _through_devtools(url, out, width, height)
+        if taken:
+            shots.append(Shot(width=name, path=out, page=page, took=took))
             continue
         # No Node on this machine. The flag alone cannot emulate a device,
         # so a narrow picture taken this way is a crop of a wide page

@@ -222,6 +222,11 @@ def look(
             0.0,
         )
 
+    # A picture that stopped short says so. Without this a review of the
+    # top of a page reads exactly like a review of the page, which is the
+    # failure the full-page capture was written to end rather than to
+    # move one cap higher.
+    short = [s.said() for s in shots if not s.whole]
     asked = PROMPT.format(
         # The brief first and uncut. It is a few hundred characters and it
         # is the thing being judged against; the direction is the long one
@@ -230,6 +235,14 @@ def look(
         direction=direction[:8000] or "(none was written)",
         item=item_title,
     )
+    if short:
+        asked += (
+            "\n\nOne thing about the pictures themselves: "
+            + " ".join(short)
+            + " Judge what you can see and say plainly that the rest was "
+            "not in front of you. Do not describe it and do not approve "
+            "it on the strength of the part you were given."
+        )
 
     # One repair, and only for an answer that was written and cannot be
     # read. The pictures are already on disk and are not taken again: what

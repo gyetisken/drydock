@@ -27,13 +27,23 @@ building it will read it; none of that belongs here.
 - **Say what the generic version would be** - the stock hero of a table,
   "Welcome to our restaurant", the carousel nobody asked for - so it cannot
   arrive by default.
-- **Say what pictures exist, if any.** Nothing here can take or generate a
-  photograph. If the request or the repository supplies real ones, say so
-  and say what they show. If it does not, direct a page that does not need
-  them rather than one with holes in it.
+- **Say what pictures are available, and leave the rest open.** Nothing
+  here can take or generate a photograph, and inventing an image file is
+  the one thing that is never allowed. Everything else is a live option:
+  real photographs the request or the repository supplies, licensed ones
+  referenced by URL, illustration, a drawn mark used at size, type and
+  colour carrying the page on their own. Say what exists and what it
+  shows; where nothing does, say what kind of imagery would suit and let
+  whoever builds it decide what is reachable. "No images" is a decision
+  about this page, not a rule - do not make it for a business whose whole
+  appeal is how a place looks, and do not write it as a requirement.
 - **Intent, not values.** Name a colour the way a person does - "a deep
-  oxblood, not a web red" - and leave the hex, the type scale, the spacing
-  and the breakpoints to whoever has the page in front of them.
+  oxblood, not a web red" - and leave the hex, the type scale, the
+  spacing and the breakpoints to whoever has the page in front of them.
+  The same goes for how many sections the page has, how many tests it
+  carries, which framework builds it and what the directory is called:
+  none of those is a direction, and naming one without a reason the
+  request gave you is deciding somebody else's job from further away.
 - **It is read on a phone, standing up.** Most people looking at a
   restaurant's site are outside it deciding whether to go in. Direct that
   first; the desktop version is the easy one.

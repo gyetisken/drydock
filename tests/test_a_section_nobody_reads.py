@@ -175,8 +175,10 @@ class TestThePlannerGetsADirectionNotAStylesheet:
     def test_it_is_not_a_copy_of_the_design_section(self):
         web = load_web()
         plan, design = web.guidance("plan"), web.guidance("design")
-        assert len(plan) < len(design) / 2
+        assert len(plan) < len(design)
         assert plan not in design
+        # Different words for different jobs, not an excerpt.
+        assert "One gesture" in design and "Name the one gesture" in plan
 
     def test_it_says_what_the_planner_decides(self):
         said = flat(load_web().guidance("plan"))
@@ -184,7 +186,7 @@ class TestThePlannerGetsADirectionNotAStylesheet:
             "Direct for this business, not for businesses",
             "Name the one gesture",
             "Say what the generic version would be",
-            "Say what pictures exist, if any",
+            "Say what pictures are available, and leave the rest open",
             "Intent, not values",
             "read on a phone, standing up",
         ):

@@ -149,6 +149,10 @@ PAGE = """<!doctype html><html lang="en"><head><meta charset="utf-8">
           <button class="pick" id="pick-model">
             <span id="model-label">Opus</span><span class="caret">&#9662;</span>
           </button>
+          <button class="pick ghost" id="pick-depth"
+                  title="how much planning this gets before the work starts">
+            <span id="depth-label">Decide for me</span><span class="caret">&#9662;</span>
+          </button>
           <label class="pick ghost limit" title="end the run after this many minutes, whatever it is doing">
             <input id="minutes" type="number" min="1" max="600" step="5"
                    placeholder="&#8734;" inputmode="numeric">
@@ -157,6 +161,7 @@ PAGE = """<!doctype html><html lang="en"><head><meta charset="utf-8">
           <button class="go" id="go" title="send"><span id="go-icon">&#8593;</span></button>
         </div>
         <div class="pop" id="pop-model" style="display:none"></div>
+        <div class="pop" id="pop-depth" style="display:none"></div>
       </div>
       <div class="hint" id="hint"></div>
     </div></div>

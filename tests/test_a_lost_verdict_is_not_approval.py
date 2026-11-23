@@ -115,7 +115,9 @@ def _engine(monkeypatch, answers):
 
     monkeypatch.setattr(critic, "ClaudeCodeEngine", Fake)
     monkeypatch.setattr(
-        critic, "take", lambda url, into, **k: [SimpleNamespace(width="desktop")]
+        critic,
+        "take",
+        lambda url, into, **k: [SimpleNamespace(width="desktop", whole=True)],
     )
     return calls
 
@@ -141,7 +143,7 @@ class TestOneBoundedRecovery:
 
         def count(url, into, **k):
             shots["n"] += 1
-            return [SimpleNamespace(width="desktop")]
+            return [SimpleNamespace(width="desktop", whole=True)]
 
         _engine(
             monkeypatch,
@@ -166,7 +168,9 @@ class TestOneBoundedRecovery:
 
         monkeypatch.setattr(critic, "ClaudeCodeEngine", Fake)
         monkeypatch.setattr(
-            critic, "take", lambda url, into, **k: [SimpleNamespace(width="d")]
+            critic,
+            "take",
+            lambda url, into, **k: [SimpleNamespace(width="d", whole=True)],
         )
         look("http://x", "d", "i", tmp_path)
         assert "could not be read" in asked[1]

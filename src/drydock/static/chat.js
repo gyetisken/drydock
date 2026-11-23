@@ -5,7 +5,22 @@
 const S = { projects: [], commands: [], runs: [], project: null, key: null, menu: -1,
   engines: [], models: [], engine: "claude", model: "opus",
   // Whether stop has already been asked once for the run in flight.
-  stopAsked: false };
+  stopAsked: false,
+  // How much planning to spend. Empty is "work it out", which is what it
+  // has always done; the other three are a person overruling that.
+  depth: "" };
+
+// What the three depths mean, in the words somebody choosing would use.
+const DEPTHS = [
+  { id: "", label: "Decide for me",
+    note: "reads the request and the repository and picks" },
+  { id: "fast", label: "Straight to it",
+    note: "no plan and no approval - the checks all still run" },
+  { id: "balanced", label: "Plan it",
+    note: "a brief, acceptance criteria, and your approval before any work" },
+  { id: "deep", label: "Take it seriously",
+    note: "more investigation, more attempts, every item looked at" },
+];
 // There is one way to run the crew and it is not a question anybody was
 // answering. `api` still exists for anything headless - the CLI takes
 // `--engine`, and CI has no account to be signed in as - but the window
@@ -576,6 +591,23 @@ const on = {
         ? `<div class="findings">${counted}${findings}${good}</div>` : ""}
       <p class="hint">Nothing was changed. This is a reading, not a job.</p>
       </div>`);
+  },
+  // The floor, said out loud. It was carried, it raised the attempts and
+  // the turns, and the window never mentioned it - so a run that had been
+  // quietly made more careful looked exactly like one that had not.
+  "policy.raised": (e) => {
+    say("crew", `<div class="body"><p><b>Taking this one seriously.</b>
+      ${esc(e.why)}.</p><p class="why">${esc(e.say || "")} You can overrule
+      it with the control beside the model, but the reason above is why it
+      was raised.</p></div>`, "dim");
+  },
+  // And the one case where the floor overrules the router outright.
+  "plan.required": (e) => {
+    say("crew", `<div class="body"><p><b>This one gets a plan.</b>
+      ${esc(e.note)}: ${esc(e.why)}.</p><p class="why">A short sentence
+      about a dangerous thing reads like any other short sentence, so what
+      it names decides this rather than how long it is. You will be shown
+      the plan before anything is changed.</p></div>`, "dim");
   },
   "plan.skipped": (e) => {
     say("crew", `<div class="body"><p class="why">Going straight to it —
@@ -1224,6 +1256,7 @@ async function refresh() {
   S.projectsHome = full.projects_home || "";
   drawVersion(full.version);
   S.model = localStorage.getItem("drydock.model") || S.model;
+  S.depth = localStorage.getItem("drydock.depth") || "";
   // Whatever was picked before the picker went. Nothing reads it now, and
   // leaving it would have it look like a choice that is still in force.
   localStorage.removeItem("drydock.engine");
@@ -1289,6 +1322,8 @@ function drawDeadline() {
 function drawPicks() {
   const m = S.models.find(x => x.id === S.model) || S.models[0];
   if (m) { S.model = m.id; $("model-label").textContent = m.label; }
+  const d = DEPTHS.find(x => x.id === S.depth) || DEPTHS[0];
+  $("depth-label").textContent = d.label;
 }
 
 // Not a choice, but still worth saying when it is not there. The window
@@ -1328,7 +1363,15 @@ function popup(id, rows, onpick) {
 
 function save() {
   localStorage.setItem("drydock.model", S.model);
+  localStorage.setItem("drydock.depth", S.depth);
 }
+
+$("pick-depth").onclick = (ev) => {
+  ev.stopPropagation();
+  popup("pop-depth", DEPTHS.map(d => ({
+    id: d.id, label: d.label, note: d.note, on: d.id === S.depth,
+  })), id => (S.depth = id));
+};
 
 $("pick-model").onclick = (ev) => {
   ev.stopPropagation();
@@ -1840,6 +1883,7 @@ async function send() {
     method: "POST", headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       project: S.project, command: text, engine: S.engine, model: S.model,
+      profile: S.depth,
       // Zero is no deadline, which is what an empty box means. The server
       // reads anything <= 0 the same way, so a bad number cannot read as
       // a deadline that has already expired.

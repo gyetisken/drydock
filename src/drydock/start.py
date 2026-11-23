@@ -168,6 +168,16 @@ differently with a reason, and nothing downstream refuses work for
 departing from it. If there is nothing in the second group, say so;
 inventing one to look thorough is the failure this is here to stop.
 
+**And a thing you decided may not be made permanent by a test.** Watched
+happen: a reading that a hotel page should carry no images went under
+"Decided here", and the item then asked for a test asserting no image
+references anywhere on the page. A departure the engineer was explicitly
+allowed to make had been turned into a failing suite. Tests are for what
+the person asked for and for what the thing must not get wrong - never
+for holding your own reading in place. If you find yourself writing "a
+test asserts" about something in the second group, it belongs in the
+first group or it does not belong at all.
+
 **Write the request out before you plan against it.** Most requests are
 one sentence. "A site for a bike shop" is a real request and a thin
 brief: an engineer handed that sentence alone invents a bike shop, and

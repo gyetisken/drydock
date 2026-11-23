@@ -196,7 +196,13 @@ def _photograph(url: str, into: Path) -> tuple[list[str], str]:
     fresh = [s for s in shots if s.path.exists() and s.path.stat().st_size > 1000]
     if not fresh:
         return [], "the browser was asked for pictures and wrote none"
-    return [f"{OUR_LOOK}/{s.path.name} ({s.width})" for s in fresh], ""
+    named = [f"{OUR_LOOK}/{s.path.name} ({s.width})" for s in fresh]
+    # And what is not in them, when a page is taller than one picture
+    # worth reading. Said with the pictures rather than left out, because
+    # "I looked at the page" and "I looked at the top of the page" are
+    # different reports and only one of them is true here.
+    short = [s.said() for s in fresh if not s.whole]
+    return named, ("; ".join(short) if short else "")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -289,6 +295,12 @@ def main(argv: list[str] | None = None) -> int:
             "The measurements above are facts about the page; the pictures "
             "are the only way you see it."
         )
+        # Each picture is the whole page unless it says otherwise. When
+        # one stops short, say where it stopped: a report on the top of a
+        # page that reads as a report on the page is the thing all of
+        # this exists to prevent.
+        if why_not:
+            said.append(f"  NOT ALL OF IT: {why_not}")
     else:
         said += [
             "",

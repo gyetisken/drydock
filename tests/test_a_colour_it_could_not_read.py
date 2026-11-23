@@ -231,3 +231,53 @@ def _width(path) -> int:
 
 def _height(path) -> int:
     return _ihdr(path)[1]
+
+
+class TestPartialCoverageIsReported:
+    """A review of the top of a page must not read as a review of the
+    page. The full-page capture ended that for ordinary pages; the cap
+    would have reintroduced it one cap higher, in silence."""
+
+    def shot(self, **kw):
+        from pathlib import Path as P
+
+        from drydock.shot import Shot
+
+        return Shot(width="phone", path=P("/x"), **kw)
+
+    def test_a_whole_page_says_nothing(self):
+        said = self.shot(page=4200, took=4200)
+        assert said.whole
+        assert said.said() == ""
+
+    def test_a_cut_one_says_where_it_stopped(self):
+        said = self.shot(page=40000, took=12000)
+        assert not said.whole
+        assert "top 12000 pixels of a page 40000 tall" in said.said()
+        assert "nothing is claimed about it" in said.said()
+
+    def test_a_shot_with_no_numbers_is_taken_as_whole(self):
+        """Backward compatible: an older capture reported "ok" and no
+        sizes, and a picture with nothing said about it is the picture
+        it always was."""
+        assert self.shot().whole
+
+    def test_the_critic_is_told(self):
+        from pathlib import Path as P
+
+        said = P("src/drydock/critic.py").read_text()
+        assert "short = [s.said() for s in shots if not s.whole]" in said
+        assert "Judge what you can see and say plainly that the rest was" in said
+
+    def test_the_engineer_is_told(self):
+        from pathlib import Path as P
+
+        said = P("src/drydock/look.py").read_text()
+        assert "NOT ALL OF IT" in said
+        assert "short = [s.said() for s in fresh if not s.whole]" in said
+
+    def test_the_cap_exists_and_is_generous(self):
+        from pathlib import Path as P
+
+        said = P("src/drydock/shot.py").read_text()
+        assert "const TALLEST = 12000;" in said

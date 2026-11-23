@@ -297,6 +297,29 @@ class Session:
             # it is the planning and the approval that are skipped, not the
             # checking, because the checking is the point and a plan for a
             # typo is a plan nobody reads.
+            #
+            # Unless something raised the floor. The router reads a
+            # sentence, and a short sentence about a dangerous thing looks
+            # exactly like a short sentence: "fix the login password
+            # hash", "change the api key handling", "drop the users table
+            # and rebuild it" and "remove the old payment retry" were all
+            # routed here, and all four are work the floor calls deep. The
+            # floor raised the attempts and the turns for them and nothing
+            # consulted it here, so each one still skipped planning,
+            # acceptance criteria and the approval. The floor is the
+            # conservative answer to an unclear sentence and this is where
+            # it has to be read.
+            if self.stop_after == "straight" and self.floor:
+                self.feed.emit(
+                    "plan.required",
+                    why=self.floor,
+                    note=(
+                        "this was read as one small change, and what it "
+                        "names is not work that is done without a plan"
+                    ),
+                )
+                self.stop_after = "planner"
+
             if self.stop_after == "straight":
                 self.run.plan = Plan(
                     summary="One change, done directly.",

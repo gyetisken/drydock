@@ -112,7 +112,9 @@ class TestTheButtonStaysAlive:
         assert 'if (!on) { S.stopAsked = false; $("go").disabled = false; }' in said
 
     def test_the_flag_starts_false(self):
-        assert "stopAsked: false }" in JS
+        # `depth` was added after it, so the literal no longer ends the
+        # object. What matters is the flag, not the brace.
+        assert "stopAsked: false," in JS
 
     def test_why_is_written_down(self):
         at = JS.index("// Two presses, because there are two honest answers")
