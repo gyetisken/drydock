@@ -741,8 +741,11 @@ class TestItWorksOnARealProject:
     @pytest.fixture
     def built(self, tmp_path):
         (tmp_path / "package.json").write_text(
+            # The file by name, not a glob. A glob is expanded by
+            # whatever shell npm happens to use and matched nothing on
+            # CI, so this asserted the pipeline and measured the shell.
             '{"name":"x","private":true,"type":"module","scripts":'
-            '{"build":"node build.js","test":"node --test tests/*.test.js"}}'
+            '{"build":"node build.js","test":"node --test tests/a.test.js"}}'
         )
         (tmp_path / "build.js").write_text("console.log('built 1 page');\n")
         (tmp_path / "tests").mkdir()
