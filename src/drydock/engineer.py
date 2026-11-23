@@ -149,6 +149,39 @@ This is not a check that counts. What you write is still built, its suite
 still run, its diff still read, and the page still measured and looked at
 by somebody who is not you. None of them is told that you looked."""
 
+# What a visual item gets when nothing upstream directed it.
+#
+# The straight path builds its one item from the request and goes, so it
+# never calls the station that writes the direction: measured on two runs
+# of the same hotel, the planned one carried 4,515 characters of direction
+# and 1,630 of brief, and the straight one carried nought of either. The
+# engineer was handed a sentence and asked for a website.
+#
+# This is not a station and it is not a plan. It is four lines the worker
+# writes for itself inside the turn it already has, before it starts
+# typing, because deciding what the page is for costs less than a minute
+# and is the difference between a page and a template.
+DIRECT_YOURSELF = """
+
+Nothing upstream directed this. You are the only one who will decide what
+it looks like, so decide it before you write anything, in four or five
+lines, and put them at the top of your report:
+
+- Who walks in, what they came to find, and what the place feels like
+  standing in it. Specific to this one, not to the category.
+- The one gesture the page is carried by, and where it then gets quiet.
+- The ground, the ink and the one accent, named the way a person names a
+  colour rather than as hex.
+- What the generic version of this page would be - the stock hero, the
+  carousel nobody asked for, "Welcome to our restaurant" - so it cannot
+  arrive by default.
+
+Then build against it. This is your own working decision and nothing
+downstream judges the result against it: it is not an acceptance
+criterion, it does not become a test, and it does not widen the item. The
+item is still the whole of what you touch. If the request or the brief
+already says one of these, that wins and you do not restate it."""
+
 PROMPT = """Repository: {repo}
 Build: {build_command}
 
@@ -357,6 +390,11 @@ def work(
     looks = policy.self_looks if (can_look and engine == "claude") else 0
     if not look_key:
         looks = 0
+    # An undirected visual item directs itself. Only when there is nothing
+    # - a direction that exists wins, and a job nobody looks at does not
+    # need a palette.
+    if can_look and not direction.strip():
+        direction = DIRECT_YOURSELF
     briefed = LOOKING.format(look=OUR_LOOK, looks=looks) if looks else ""
     if typing != model and on_event:
         # Visible, every time, in the feed and in the run log. A routing

@@ -16,6 +16,7 @@ what will not be read, by name and by size, instead of discarding it in
 silence.
 """
 
+import re
 from pathlib import Path
 
 import pytest
@@ -213,10 +214,13 @@ STATIONS = (
 class TestWhatEachStationNowReceives:
     @pytest.mark.parametrize(("role", "where"), STATIONS)
     def test_the_station_asks_for_it(self, role, where):
-        assert (
-            f'briefing(skills or [], "{role}")' in Path(where).read_text()
-            or f'briefing(skills, "{role}")' in Path(where).read_text()
-        )
+        """Asked for, alone or beside another role. `start.py` reads,
+        directs and plans in one call, so it takes `"plan", "design"` -
+        and insisting on the single-role spelling would have made the
+        only fix for a section nobody read look like a regression."""
+        said = Path(where).read_text()
+        asked = re.findall(r"briefing\(\s*skills(?: or \[\])?\s*,([^)]*)\)", said)
+        assert any(f'"{role}"' in call for call in asked), asked
 
     def test_the_merged_start_is_the_default_path(self):
         said = Path("src/drydock/session.py").read_text()

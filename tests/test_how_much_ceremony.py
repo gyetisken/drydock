@@ -96,7 +96,10 @@ class TestTheThreeDepthsExist:
     def test_fast_is_a_path_with_no_planner_call(self):
         """It builds its one item locally. No model is asked anything
         before the engineer starts."""
-        block = SESSION[SESSION.index('if self.stop_after == "straight":') :][:2000]
+        # Wide enough to hold the block and its reasoning. It was 2,000
+        # and a comment explaining why the item now says whether anybody
+        # looks at it pushed the call past the end of the slice.
+        block = SESSION[SESSION.index('if self.stop_after == "straight":') :][:3200]
         assert "self.run.plan = Plan(" in block
         assert "begin(" not in block
         assert "self.work_the_plan()" in block

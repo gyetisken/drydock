@@ -118,10 +118,23 @@ is what stops it arriving by default.
 ## Engineer
 
 Before calling visual work finished, look at it - at phone width, at
-desktop width, and in both colour schemes if it supports them. Three things
-are nearly always the ones wrong: text that fails contrast against its
-background, a heading hierarchy that skips a level, and tap targets smaller
-than a thumb.
+desktop width, and in both colour schemes if it supports them. No test
+catches what is wrong there, which is why it has to be looked at
+deliberately: text that fails contrast against its background, a heading
+hierarchy that skips a level, a hero that pushes the content below the
+fold, and tap targets smaller than a thumb.
+
+**Pictures.** Nothing here can take, buy or generate a photograph, and
+flat colour named `.jpg` is a lie that passes a build. That rules out
+inventing the file and nothing else, so look at what you have before
+deciding there is none. Images the request, the direction or the
+repository supplies are yours to use, each with an aspect ratio in the CSS
+so nothing jumps, `loading="lazy"` below the fold, a real `alt` and a
+ground colour underneath. `brand/logo.svg` may already be there, in one
+colour. Where nothing supplies one, type, colour and space carry the page
+and you say so rather than leaving a hole. Do not go looking: there is no
+network here. And "no pictures" is a decision about this page, not a rule
+- do not make it silently for a business whose appeal is how it looks.
 
 **One stylesheet holds the decisions.** The palette, the type scale and the
 spacing live as custom properties in one place, written early, and every
@@ -235,9 +248,4 @@ not a test's job.
 What the markup looks like is judged by somebody looking at the rendered
 page. Write the unit tests for the logic, keep them fast, and let the page
 be seen.
-
-**The things a suite cannot see.** Contrast, hierarchy, a hero that pushes
-the content below the fold, a form that is unusable with a thumb. No test
-catches any of them, so they have to be looked at deliberately before the
-work is called done.
 

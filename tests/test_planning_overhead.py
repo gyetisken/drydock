@@ -58,7 +58,7 @@ def seen(monkeypatch):
             )
 
     monkeypatch.setattr(planner, "ClaudeCodeEngine", Fake)
-    monkeypatch.setattr(planner, "briefing", lambda skills, role: "")
+    monkeypatch.setattr(planner, "briefing", lambda skills, *roles: "")
     return record
 
 

@@ -536,7 +536,14 @@ def begin(
     """Read, decide and plan, in one call."""
     system = SYSTEM.format(
         mark=PHASE_MARK,
-        guide=briefing(skills or [], "plan"),
+        # Plan and design both. This one call replaced four stations and
+        # writes the direction, which is the designer's job - but it was
+        # handed only the plan section, so on the default path the whole
+        # of `## Design` reached nobody except the worker that draws the
+        # logo. For web-design that was 3,531 characters of how a page is
+        # composed and what may be done about photographs, delivered to a
+        # worker whose entire output is one one-colour mark.
+        guide=briefing(skills or [], "plan", "design"),
     )
     prompt = PROMPT.format(
         task=task,

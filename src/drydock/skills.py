@@ -168,10 +168,17 @@ def load(skill: Skill) -> Skill:
     )
 
 
-def briefing(skills: list[Skill], role: str) -> str:
-    """Everything the chosen skills have to say to one role."""
+def briefing(skills: list[Skill], *roles: str) -> str:
+    """Everything the chosen skills have to say to one or more roles.
+
+    More than one because a station can do more than one job. `start.py`
+    reads, directs and plans in a single call, so it needs the design
+    section as well as the plan one - and asking twice would send the
+    preamble below twice, which is the larger half of a short briefing.
+    """
     parts = [
         f"From the skill '{s.name}':\n\n{s.guidance(role)}"
+        for role in roles
         for s in skills
         if s.guidance(role)
     ]

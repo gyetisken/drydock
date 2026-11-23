@@ -337,6 +337,18 @@ class Session:
                             plain=self.task,
                             rationale="Asked for directly, with no plan.",
                             files=[],
+                            # Whether anybody will look at the result.
+                            # Left unset, `_worth_a_look` fell back to the
+                            # item's files - and this item has none, so it
+                            # answered no for every straight run including
+                            # every website. The policy had already asked
+                            # for two self-looks and they were discarded
+                            # here, silently, before the engineer was
+                            # called. One engineer spent part of its item
+                            # trying to install a headless browser and
+                            # then wrote "the layout is therefore reasoned
+                            # rather than seen" in its own findings.
+                            worth_looking_at=self._has_a_face(),
                             verify_with="tests" if b.tests_run else "build",
                         )
                     ],

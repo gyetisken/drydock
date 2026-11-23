@@ -445,9 +445,7 @@ def plan(
         )
         result, dollars, turns = ClaudeCodeEngine(model=model).structured(
             repo,
-            _system(engine, policy)
-            + briefing(chosen, "plan")
-            + briefing(chosen, "verify"),
+            _system(engine, policy) + briefing(chosen, "plan", "verify"),
             filled,
             '{"summary": "...", "items": [{"id": 1, "title": "...", '
             '"plain": "...", "rationale": "...", "files": ["..."], '
@@ -464,9 +462,7 @@ def plan(
         # The planner is given both its own guidance and what the skill says
         # counts as proof, because acceptance belongs in the item rather than
         # being remembered later by whoever reads the diff.
-        system=_system(engine, policy)
-        + briefing(chosen, "plan")
-        + briefing(chosen, "verify"),
+        system=_system(engine, policy) + briefing(chosen, "plan", "verify"),
         tools=read_only(repo),
         max_turns=10,
         budget=budget,
