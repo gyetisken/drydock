@@ -113,6 +113,21 @@ await new Promise((r) => setTimeout(r, 4000));
 //
 // The cap is there because a page can be a hundred thousand pixels tall
 // and a picture that large helps nobody.
+// A dev server's own furniture is not the page. Astro injects
+// `<astro-dev-toolbar>` into every page `astro dev` serves, and a
+// project with no `start` script is served by `astro dev` - so a
+// four-icon pill sat in the corner of every picture the critic was
+// given. Six blind judges across two rounds each named it and each
+// discounted it as a capture artifact; nothing tells the critic to.
+// Hidden rather than worked around, and only this short list of things
+// that are known to belong to a dev server rather than to anybody's
+// design.
+await send('Runtime.evaluate', {
+  expression: `for (const el of document.querySelectorAll(
+    'astro-dev-toolbar, astro-dev-overlay, vite-error-overlay, nextjs-portal'
+  )) { el.style.display = 'none'; }`,
+}, sessionId);
+
 const measured = await send('Runtime.evaluate', {
   expression: `Math.max(
     document.documentElement.scrollHeight, document.body.scrollHeight,
