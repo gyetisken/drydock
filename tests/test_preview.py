@@ -4,10 +4,12 @@ Two failures lived here, and both reported that nothing had started while
 the page loaded perfectly in a browser.
 """
 
+import inspect
 import json
 import socket
 import threading
 
+from drydock import preview
 from drydock.preview import _announced, _answers, how_to_run
 
 
@@ -208,3 +210,94 @@ def _write_a_note(preview, repo, port: int, pid: int) -> None:
             }
         )
     )
+
+
+class TestAProjectThatNamesItsOwnPortCanBeFound:
+    def test_the_command_we_type_names_nothing(self):
+        """`npm run start` is what we run. The number is in package.json,
+        so scanning only our own command string would have missed the
+        whole of the case this exists for."""
+        assert preview._ports_named_in("npm run start") == []
+
+    def test_the_script_behind_it_is_read(self, tmp_path):
+        (tmp_path / "package.json").write_text(
+            json.dumps({"scripts": {"start": "python3 -m http.server 4321"}})
+        )
+        assert preview._ports_named_in("npm run start", tmp_path) == [4321]
+
+    def test_a_shell_default_counts(self, tmp_path):
+        """`"${PORT:-4321}"` is a project telling us what it falls back
+        to when PORT is not honoured."""
+        (tmp_path / "package.json").write_text(
+            json.dumps({"scripts": {"start": 'python3 -m http.server "${PORT:-4321}"'}})
+        )
+        assert preview._ports_named_in("npm run start", tmp_path) == [4321]
+
+    def test_the_usual_switches(self):
+        for command, expected in (
+            ("next dev --port 3100", [3100]),
+            ("vite --port=5173", [5173]),
+            ("astro dev -p 4321", [4321]),
+            ("serve 8080", [8080]),
+        ):
+            assert preview._ports_named_in(command) == expected
+
+    def test_a_version_number_is_not_a_port(self):
+        for command in ("tsc --build v1.2.3", "node server.js", "python app.py"):
+            assert preview._ports_named_in(command) == []
+
+    def test_nonsense_in_the_manifest_is_not_a_crash(self, tmp_path):
+        (tmp_path / "package.json").write_text("{ not json")
+        assert preview._ports_named_in("npm run start", tmp_path) == []
+
+    def test_a_missing_manifest_is_not_a_crash(self, tmp_path):
+        assert preview._ports_named_in("npm run start", tmp_path) == []
+
+    def test_an_impossible_port_is_dropped(self, tmp_path):
+        (tmp_path / "package.json").write_text(
+            json.dumps({"scripts": {"start": "serve 99999"}})
+        )
+        assert preview._ports_named_in("npm run start", tmp_path) == []
+
+
+class TestWhichPortsAreKnockedOnAndWhen:
+    def test_ours_and_the_announced_one_come_first(self):
+        source = inspect.getsource(preview.start)
+        assert "for candidate in [p for p in (said, port, *mine) if p]:" in source
+
+    def test_a_guessed_port_is_only_tried_while_our_process_lives(self):
+        """A number we read out of a script is a guess. If the thing we
+        started has gone, something else is on that port and attaching to
+        it would report somebody else's server as this project."""
+        source = inspect.getsource(preview.start)
+        assert (
+            "_ports_named_in(command, repo) if process.poll() is None else []" in source
+        )
+
+    def test_a_process_that_died_saying_nothing_still_fails_at_once(self):
+        source = inspect.getsource(preview.start)
+        assert "if process.poll() is not None and said is None:" in source
+        assert "stopped without serving anything" in source
+
+    def test_the_timeout_is_still_there(self):
+        source = inspect.getsource(preview.start)
+        assert "without answering on a port" in source
+
+
+class TestAServerThatAnnouncesItselfCanBeHeard:
+    def test_python_is_told_not_to_buffer(self):
+        """`_announced` reads the log while the server is still running,
+        and a Python server's banner sits in a block buffer until the
+        process ends - which is never, for a server that works."""
+        source = inspect.getsource(preview.start)
+        assert '"PYTHONUNBUFFERED": "1"' in source
+
+    def test_the_port_we_asked_for_is_still_asked_for(self):
+        source = inspect.getsource(preview.start)
+        assert '"PORT": str(port)' in source
+
+    def test_the_announced_port_is_still_read_from_the_log(self):
+        assert preview.ANNOUNCED.search(
+            "Serving HTTP on 127.0.0.1 port 4321 (http://127.0.0.1:4321/)"
+        )
+        assert preview._ports_named_in("x") == []

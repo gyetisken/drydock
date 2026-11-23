@@ -179,6 +179,47 @@ def _free_port() -> int:
 ANNOUNCED = re.compile(r"https?://(?:localhost|127\.0\.0\.1|\[::1\]):(\d{2,5})")
 
 
+# A port the project named for itself. We ask for one through PORT and most
+# servers honour it, but a script that hardcodes its own is both common and
+# invisible to us: `python3 -m http.server 4321` served that page perfectly
+# for twenty-five seconds while this waited on a different number and then
+# reported that nothing had answered. Nobody looked at the page as a
+# result, which is the cost this is here to stop.
+#
+# Last resort, and only while the process we started is still alive, so an
+# unrelated server on a number we guessed is not mistaken for the project.
+# Each alternative is a place a port is named on purpose, so a version
+# number or a timeout cannot be read as one. The `:-NNNN` form is the shell
+# default in `"${PORT:-4321}"`: it only applies when PORT is unset, and a
+# project that writes it is telling us which number it falls back to.
+NAMED = re.compile(
+    r"--port[=\s]+(\d{2,5})"
+    r"|-p[=\s]+(\d{2,5})"
+    r"|http\.server\s+\D{0,12}?(\d{2,5})"
+    r"|:-\s*(\d{2,5})"
+    r"|\bserve\s+(\d{2,5})"
+)
+
+
+def _ports_named_in(command: str, repo: Path | None = None) -> list[int]:
+    """Ports named by the command, and by the script it stands for.
+
+    `npm run start` names nothing; the number is in package.json, which is
+    where the project actually hardcoded it. Scanning only what we type
+    would have missed the whole of the case this exists for.
+    """
+    text = command
+    said = re.match(r"npm run ([\w:-]+)$", command.strip())
+    if said and repo is not None:
+        try:
+            scripts = json.loads((repo / "package.json").read_text()).get("scripts")
+            text += " " + str((scripts or {}).get(said.group(1), ""))
+        except (OSError, ValueError, AttributeError):
+            pass
+    found = [int(p) for hit in NAMED.findall(text) for p in hit if p]
+    return [p for p in found if 1 <= p <= 65535]
+
+
 def _announced(log: Path) -> int | None:
     try:
         found = ANNOUNCED.findall(log.read_text())
@@ -319,7 +360,12 @@ def start(repo: Path, timeout: float = 25.0) -> Preview:
     # somebody's project and then left its own there, where it dirtied the
     # tree and stopped the next job before it started.
     log = _log_for(repo)
-    env = {"PORT": str(port), "HOST": "127.0.0.1"}
+    # PYTHONUNBUFFERED because `_announced` reads the log while the server
+    # is still running, and a Python server's "Serving HTTP on ..." line
+    # sits in a block buffer until the process ends - which is never, for a
+    # server that works. The one line we most need to read was the one we
+    # could not.
+    env = {"PORT": str(port), "HOST": "127.0.0.1", "PYTHONUNBUFFERED": "1"}
 
     with log.open("w") as out:
         # The command came from the project's own manifest, not from us.
@@ -339,7 +385,8 @@ def start(repo: Path, timeout: float = 25.0) -> Preview:
         # The port it says it is on, then the one we asked for. A server that
         # exited may still have announced a useful address on its way out -
         # Astro's second invocation reports where the first one is listening.
-        for candidate in [p for p in (said, port) if p]:
+        mine = _ports_named_in(command, repo) if process.poll() is None else []
+        for candidate in [p for p in (said, port, *mine) if p]:
             if _answers(candidate):
                 preview = Preview(
                     project=str(repo),
