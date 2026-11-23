@@ -266,7 +266,11 @@ class TestPartialCoverageIsReported:
         from pathlib import Path as P
 
         said = P("src/drydock/critic.py").read_text()
-        assert "short = [s.said() for s in shots if not s.whole]" in said
+        # Over every page it was shown, not only the home page. The
+        # critic now gets other routes of the same site, and a picture
+        # of the second page that stopped short has to be reported for
+        # the same reason the first one does.
+        assert "short = [s.said() for _, p in pages for s in p if not s.whole]" in said
         assert "Judge what you can see and say plainly that the rest was" in said
 
     def test_the_engineer_is_told(self):

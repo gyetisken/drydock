@@ -107,10 +107,14 @@ class TestTheEngineerIsTold:
         assert "Open them before" in source
 
     def test_nothing_is_promised_when_there_are_no_pictures(self):
-        """A path that is not there is worse than no path at all."""
+        """A path that is not there is worse than no path at all.
+
+        `rglob`, not `glob`: a second route's pictures sit in a directory
+        of their own, and an attempt that looked only at those would
+        otherwise read as an attempt that never looked at anything."""
         import inspect
 
         from drydock import orchestrate
 
         source = inspect.getsource(orchestrate._one_item)
-        assert 'any(looked.glob("*.png"))' in source
+        assert 'any(looked.rglob("*.png"))' in source

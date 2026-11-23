@@ -290,6 +290,64 @@ def what_it_serves(url: str, path: str = "/", timeout: float = 3.0) -> Served:
         return Served(error=f"it did not answer: {exc}")
 
 
+# Links a page makes to its own site, in the order it makes them. A page
+# is the only thing that knows what the rest of the site is: a project may
+# be four files or four hundred, built by anything, and the nav at the top
+# of its home page names the pages a person is meant to reach. Nothing
+# here guesses from the directory layout, which is a different question
+# with a different answer for every framework.
+# Only `<a>`. The first attempt matched any `href` and came back with the
+# favicon and the stylesheet, which are things the page loads rather than
+# pages a person goes to.
+_LINK = re.compile(r"""<a\s[^>]*?href\s*=\s*["'](/[^"'#?>]*)""", re.IGNORECASE)
+
+# And nothing that is plainly a file. A link straight to a PDF or an image
+# is a real link and it is not a page of the site.
+_A_FILE = re.compile(
+    r"\.(?:css|js|mjs|json|xml|txt|pdf|zip|png|jpe?g|gif|svg|webp|avif|ico|"
+    r"woff2?|ttf|otf|mp4|webm|mp3|wav)$",
+    re.IGNORECASE,
+)
+
+
+def routes_on(url: str, cap: int = 2, timeout: float = 3.0) -> list[str]:
+    """Up to `cap` other pages this one links to, deduplicated, in order.
+
+    The home page itself is never one of them - it is the page that was
+    read - and anything that is not a plain route is dropped rather than
+    cleaned up. Empty on anything that goes wrong: this widens a look
+    when it can and is never a reason for one not to happen.
+    """
+    import urllib.error
+    import urllib.request
+
+    from .route import is_route
+
+    try:
+        with urllib.request.urlopen(url, timeout=timeout) as answer:
+            if "html" not in answer.headers.get("Content-Type", "").lower():
+                return []
+            page = answer.read(400_000).decode("utf-8", "replace")
+    except (urllib.error.URLError, TimeoutError, OSError, ValueError):
+        return []
+
+    found: list[str] = []
+    for href in _LINK.findall(page):
+        said = href if href.startswith("/") else "/" + href
+        # One page per route, however the page spells it. `/rooms` and
+        # `/rooms/` are the same door.
+        if (
+            said != "/"
+            and is_route(said)
+            and not _A_FILE.search(said)
+            and said.rstrip("/") not in [s.rstrip("/") for s in found]
+        ):
+            found.append(said)
+        if len(found) >= cap:
+            break
+    return found
+
+
 def _answers(port: int) -> bool:
     """Whether anything is listening, on either address family.
 

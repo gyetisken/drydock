@@ -42,16 +42,21 @@ from pathlib import Path
 from . import preview, probe
 from .fits import why_it_does_not_fit
 from .repo import OUR_LOOK
+from .route import is_route, slug
 from .shot import take
 
-# What may be asked for: a path on the project's own server. Not a URL.
-#
-# The address is this program's to decide - it comes from the preview that
-# was started here - and the only thing the caller chooses is which page of
-# it to look at. A scheme, a host, a port or a `..` is refused rather than
-# cleaned up, because a browser pointed somewhere else is the one way this
-# command could reach anything but localhost.
-PATH_ONLY = re.compile(r"^/[A-Za-z0-9._~\-/]*(\?[A-Za-z0-9._~\-=&%+]*)?$")
+# What may be asked for lives in `route`, which the confinement hook reads
+# too. It was a pattern here whose comment said a `..` was refused and
+# whose character class allowed it, and the hook had a different rule
+# again - which is how `drydock-look /rooms` came to be refused by the
+# confiner for being a filesystem path and by this command for not
+# beginning with a slash, depending on which way it was spelt. One rule,
+# read by both ends of the door.
+
+# How many routes one invocation may name. Not the budget - that is
+# counted in pages below - but a guard on a command line that has got
+# away from whoever typed it.
+AT_ONCE = 6
 
 # The two widths everything else here already uses: a phone and a laptop.
 PHONE, DESKTOP = 390, 1440
@@ -196,7 +201,13 @@ def _photograph(url: str, into: Path) -> tuple[list[str], str]:
     fresh = [s for s in shots if s.path.exists() and s.path.stat().st_size > 1000]
     if not fresh:
         return [], "the browser was asked for pictures and wrote none"
-    named = [f"{OUR_LOOK}/{s.path.name} ({s.width})" for s in fresh]
+    # Named from the look directory down, not by filename alone: a second
+    # route's pictures live in a directory of their own, and handing back
+    # `.drydock-look/desktop.png` for a picture that is at
+    # `.drydock-look/rooms/desktop.png` is an unopenable path in a report
+    # that says to open it.
+    where = OUR_LOOK if into.name == OUR_LOOK else f"{OUR_LOOK}/{into.name}"
+    named = [f"{where}/{s.path.name} ({s.width})" for s in fresh]
     # And what is not in them, when a page is taller than one picture
     # worth reading. Said with the pictures rather than left out, because
     # "I looked at the page" and "I looked at the top of the page" are
@@ -205,53 +216,15 @@ def _photograph(url: str, into: Path) -> tuple[list[str], str]:
     return named, ("; ".join(short) if short else "")
 
 
-def main(argv: list[str] | None = None) -> int:
-    """Start it, measure it, photograph it, say what was found.
-
-    Returns 0 whatever happens. A non-zero exit reads to a worker as a
-    command it should fix, and a project that cannot be started is not
-    something the worker can fix from inside the item.
-    """
-    args = list(sys.argv[1:] if argv is None else argv)
-    path = args[0] if args else "/"
-    if len(args) > 1:
-        return _not_looked(
-            "one path at a time: `drydock-look` for the home page, or "
-            "`drydock-look /menu` for another page of the same project"
-        )
-    if not PATH_ONLY.match(path):
-        return _not_looked(
-            f"{path!r} is not a path on this project. This looks at the "
-            "project it is run in and nothing else - give it a path "
-            "beginning with / and no scheme, host or port."
-        )
-
-    budget = _asked_for()
-    if budget is None:
-        return _not_looked(NO_BUDGET)
-    where = _project()
-    if where is None:
-        return _not_looked("there is no project here to start")
-
-    nth = budget.one_more()
-    if nth > budget.limit:
-        return _not_looked(
-            f"this item has had its {budget.limit} looks. Finish it with "
-            "what you know, or say in your report what you could not check."
-        )
-
-    try:
-        live = preview.running(where) or preview.start(where)
-    except (LookupError, RuntimeError, TimeoutError) as exc:
-        return _not_looked(f"the project did not start: {exc}")
-
+def _one_page(path: str, live, where: Path, nth: int, limit: int) -> list[str]:
+    """Measure, press and photograph one route, as lines to print."""
     url = live.url.rstrip("/") + path
     served = preview.what_it_serves(live.url, path)
     if not served.is_a_page:
-        return _not_looked(
-            f"{url} answered {served.said}, which is not a page. "
-            f"`{live.command}` is what this project says starts it."
-        )
+        return [
+            f"NOT LOOKED  {path}",
+            f"  {url} answered {served.said}, which is not a page.",
+        ]
 
     # Arithmetic first, because a page wider than the screen is a number
     # rather than an opinion and it is the defect that has cost this crew
@@ -265,7 +238,10 @@ def main(argv: list[str] | None = None) -> int:
     # what the right place was.
     pressed = probe.press(url, DESKTOP, timeout=60)
 
-    pictures, why_not = _photograph(url, where / OUR_LOOK)
+    into = where / OUR_LOOK
+    if slug(path):
+        into = into / slug(path)
+    pictures, why_not = _photograph(url, into)
 
     # The first line says what kind of look this was, and it cannot be
     # written until the pictures have been attempted. Measurement
@@ -273,7 +249,7 @@ def main(argv: list[str] | None = None) -> int:
     # heading that said LOOKED either way would be the exact
     # misunderstanding this is built to prevent.
     said = [
-        f"{LOOKED if pictures else MEASURED_ONLY} {nth} of {budget.limit}",
+        f"{LOOKED if pictures else MEASURED_ONLY} {nth} of {limit}",
         f"  {url}  (started with `{live.command}`)",
         "",
         "MEASURED",
@@ -295,10 +271,10 @@ def main(argv: list[str] | None = None) -> int:
             "The measurements above are facts about the page; the pictures "
             "are the only way you see it."
         )
-        # Each picture is the whole page unless it says otherwise. When
-        # one stops short, say where it stopped: a report on the top of a
-        # page that reads as a report on the page is the thing all of
-        # this exists to prevent.
+        # Each picture is the whole page unless it says otherwise. When one
+        # stops short, say where it stopped: a report on the top of a page
+        # that reads as a report on the page is the thing all of this
+        # exists to prevent.
         if why_not:
             said.append(f"  NOT ALL OF IT: {why_not}")
     else:
@@ -321,6 +297,89 @@ def main(argv: list[str] | None = None) -> int:
                 "before anything about how it looks matters."
             ),
         ]
+    return said
+
+
+def main(argv: list[str] | None = None) -> int:
+    """Start it, measure it, photograph it, say what was found.
+
+    Returns 0 whatever happens. A non-zero exit reads to a worker as a
+    command it should fix, and a project that cannot be started is not
+    something the worker can fix from inside the item.
+    """
+    args = list(sys.argv[1:] if argv is None else argv)
+    paths = args or ["/"]
+    if len(paths) > AT_ONCE:
+        return _not_looked(
+            f"{len(paths)} pages at once, and {AT_ONCE} is the most this "
+            "takes. Look at the ones that carry the item and say in your "
+            "report which you did not."
+        )
+    for path in paths:
+        if not is_route(path):
+            return _not_looked(
+                f"{path!r} is not a path on this project. This looks at the "
+                "project it is run in and nothing else - give it a path "
+                "beginning with / and no scheme, host, port or `..`."
+            )
+    # One page per route, so naming the same one twice does not spend two
+    # looks on one answer.
+    seen_already: list[str] = []
+    for path in paths:
+        if path.rstrip("/") not in [p.rstrip("/") for p in seen_already]:
+            seen_already.append(path)
+    paths = seen_already
+
+    budget = _asked_for()
+    if budget is None:
+        return _not_looked(NO_BUDGET)
+    where = _project()
+    if where is None:
+        return _not_looked("there is no project here to start")
+
+    try:
+        live = preview.running(where) or preview.start(where)
+    except (LookupError, RuntimeError, TimeoutError) as exc:
+        return _not_looked(f"the project did not start: {exc}")
+
+    # A page costs a look, not an invocation. Asking for four pages with
+    # two left buys two pages and an honest sentence about the other two,
+    # which is the whole point of counting them.
+    said: list[str] = []
+    looked_at: list[str] = []
+    not_looked_at: list[str] = []
+    for path in paths:
+        nth = budget.one_more()
+        if nth > budget.limit:
+            not_looked_at.append(path)
+            continue
+        if said:
+            said += ["", "-" * 60, ""]
+        said += _one_page(path, live, where, nth, budget.limit)
+        looked_at.append(path)
+
+    # Nothing at all was looked at, so this is not a look and must not
+    # read as one. The heading is the contract: a worker that sees
+    # anything else at the top of this output has been told something was
+    # established.
+    if not looked_at:
+        return _not_looked(
+            f"this item has had its {budget.limit} looks. Finish it with "
+            "what you know, or say in your report what you could not check."
+        )
+
+    # Which pages this establishes anything about, and which it does not.
+    # A report that names three pages after looking at one is the failure
+    # this whole module exists to prevent, so the list is printed rather
+    # than left to be inferred from the blocks above.
+    said += ["", "ROUTES"]
+    said.append(f"  looked at: {', '.join(looked_at) if looked_at else 'none'}")
+    if not_looked_at:
+        said.append(
+            f"  not looked at: {', '.join(not_looked_at)} - this item has "
+            f"had its {budget.limit} looks. Say so in your report rather "
+            "than describing them."
+        )
     said += ["", NOT_A_CHECK]
     print("\n".join(said))
     return 0

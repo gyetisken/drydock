@@ -46,6 +46,12 @@ class DirtyTree(Exception):
 
 
 # Files whose change is visible to somebody. A change to a parser is not.
+# How many other pages of a site the critic is shown, beyond the home
+# page. Two, because each one is two more captures and a longer prompt,
+# and because the pages a home page links to first are the ones it was
+# built to lead to.
+CRITIC_ALSO = 2
+
 SEEN = re.compile(
     r"\.(css|scss|sass|less|html|htm|ejs|astro|vue|svelte|hbs|pug|njk)$"
     r"|\.(jsx|tsx)$"
@@ -243,6 +249,15 @@ def _show_it(repo_path: Path, run, item, on_event):
         scratch.mkdir(parents=True, exist_ok=True)
     except OSError:
         scratch = Path(tempfile.mkdtemp(prefix="drydock-look-"))
+    # The rest of the site, from what its own home page links to. Capped
+    # at two, so a one-page site costs one page and a forty-page site
+    # costs three - proportional to what is there rather than to what
+    # might be. A site is not its front door: one run built four pages,
+    # the critic saw one, and the other three reached a person having
+    # been looked at by nobody.
+    also = tuple(preview.routes_on(live.url, cap=CRITIC_ALSO))
+    if on_event and also:
+        on_event("critic", "looking at " + ", ".join(("/", *also)))
     try:
         verdict, spend = look_at_it(
             live.url,
@@ -260,6 +275,7 @@ def _show_it(repo_path: Path, run, item, on_event):
             brief=run.as_briefed,
             model=run.model,
             on_event=_said_by("critic", on_event),
+            also=also,
         )
         # What was measured goes on the record beside what was seen,
         # so a contrast failure or a control with no name reaches
@@ -521,7 +537,10 @@ def _one_item(
         "you change anything. The complaint is about what is in those "
         "images, and reading them is the difference between fixing it and "
         "guessing at it."
-        if earlier and any(looked.glob("*.png"))
+        # `rglob`, because a second route's pictures are in a directory
+        # of its own and an attempt that only looked at those would have
+        # read as an attempt that never looked at anything.
+        if earlier and any(looked.rglob("*.png"))
         else ""
     )
     failure = (

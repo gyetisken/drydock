@@ -27,6 +27,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .engines import ClaudeCodeEngine, EngineUnavailable, MalformedAnswer
+from .route import slug
 from .shot import take
 
 SYSTEM = """You are looking at a page somebody has just built, and deciding
@@ -205,8 +206,17 @@ def look(
     engine: str = "claude",
     model: str = "opus",
     on_event=None,
+    also: tuple[str, ...] = (),
 ) -> tuple[Verdict, float]:
-    """Render the page and judge it. `looked` is false when it could not."""
+    """Render the pages and judge them. `looked` is false when it could not.
+
+    `also` is other routes of the same site, photographed into directories
+    of their own beside the home page's. A site is not its front door: one
+    run built four pages, the critic was shown one of them, and the other
+    three went to a person having been seen by nobody. They are a cap
+    rather than a sweep - the caller decides how many, from what the home
+    page actually links to, so a one-page site still costs one page.
+    """
     shots = take(url, scratch)
     if not shots:
         return (
@@ -222,11 +232,20 @@ def look(
             0.0,
         )
 
+    # The rest of the site, each page in its own directory. A route that
+    # will not photograph is not a reason to abandon the look - it is
+    # named below as one the critic has not seen.
+    pages: list[tuple[str, list]] = [("/", shots)]
+    missed: list[str] = []
+    for path in also:
+        more = take(url.rstrip("/") + path, scratch / (slug(path) or "page"))
+        (pages.append((path, more)) if more else missed.append(path))
+
     # A picture that stopped short says so. Without this a review of the
     # top of a page reads exactly like a review of the page, which is the
     # failure the full-page capture was written to end rather than to
     # move one cap higher.
-    short = [s.said() for s in shots if not s.whole]
+    short = [s.said() for _, p in pages for s in p if not s.whole]
     asked = PROMPT.format(
         # The brief first and uncut. It is a few hundred characters and it
         # is the thing being judged against; the direction is the long one
@@ -235,6 +254,28 @@ def look(
         direction=direction[:8000] or "(none was written)",
         item=item_title,
     )
+    # Which pages are in front of it, where, and which are not. Without
+    # this the critic reads a directory of images and infers what it is
+    # looking at, and a verdict on "the site" from one page is the exact
+    # overreach the rest of this module is built to stop.
+    if len(pages) > 1 or missed:
+        asked += "\n\nThe pages you have, and where:\n"
+        for path, _ in pages:
+            where = slug(path) or "page"
+            at = "the top of this directory" if path == "/" else f"`{where}/`"
+            asked += f"  {path}  desktop.png and phone.png in {at}\n"
+        if missed:
+            asked += (
+                "  not photographed: "
+                + ", ".join(missed)
+                + ". You have not seen these. Do not describe them, and do "
+                "not let them count for or against the item.\n"
+            )
+        asked += (
+            "Judge the item against every page you were given. Where a "
+            "page is only reachable and not shown, say so.\n"
+        )
+
     if short:
         asked += (
             "\n\nOne thing about the pictures themselves: "
