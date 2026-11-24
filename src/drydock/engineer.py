@@ -211,8 +211,10 @@ The network is closed for this run.
 
 Package registries work - `npm install`, `uv sync`, `pip install` and
 the rest reach them through a proxy, and you do not have to do anything
-for that. Everything else is closed, including anything you write that
-opens a socket.
+for that. `drydock-look` and `drydock-web` work too: they are drydock's
+own commands and the work they need happens outside this sandbox, so
+use them exactly as you would otherwise. Everything else is closed,
+including anything you write that opens a socket.
 
 So if you see any of these, the machine is not broken and retrying will
 not help:

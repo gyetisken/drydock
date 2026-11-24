@@ -58,8 +58,32 @@ them is describing something this side never reads. The routes are
 checked on both sides, because a check that only runs where the caller
 runs is not a check. The token dies with the item.
 
-The desk takes one verb and answers in text. It is not a proxy and not
-a shell: no address and no command appears anywhere in what it accepts.
+The desk takes two verbs and answers in text, and that is the whole of
+its surface. It is not a proxy and not a shell.
+
+  LOOK <token> <routes>   start this project, photograph these pages
+  WEB  <token> <find|get|read> ...
+                          one of `drydock-web`'s own operations
+
+The second one is there because `drydock-web` could not work in the jail
+either, for a different reason than looking: the proxy tunnels package
+registries, and Wikimedia is not a registry. Adding it to that list was
+the smaller change and the wrong one - the list is the blast radius, and
+a tunnel to a picture host is still a tunnel. So fetching moved out the
+same way looking did.
+
+What crosses is a named operation, never an address this side chose and
+never a command. The desk re-checks the shape and then runs
+`drydock-web`'s own `main`, so the https-only rule, the per-address SSRF
+check, the size caps, the licence recording and the fetch tally are the
+ones that were already there rather than a second copy of them living
+out here. Measured: with the jail on, all four verbs answer exactly what
+they answer with it off, a `read` of 169.254.169.254 or 127.0.0.1 is
+refused, and a worker's own socket to `commons.wikimedia.org` is EPERM.
+
+Each verb gets its own token. A token issued for looking cannot be spent
+on fetching, nothing in a refusal says which part was wrong, and both
+die when the item does.
 
 WHERE THE ENGINEER'S CODE RUNS, which is more places than the engineer:
 
@@ -88,6 +112,11 @@ only part of the program that needs it.
 
 WHAT IS STILL OUTSIDE, named rather than implied:
 
+  `drydock-web    `read` fetches a public page by GET. That is its
+  read`.          interface and it is unchanged, which also means a URL
+                  can carry bytes outward in its path or query. Same
+                  shape as the registry tunnels: watched, logged,
+                  capped, and not closed.
   the browser.    Chrome renders the page, which means it runs the
                   repository's JavaScript with an ordinary network. It
                   is launched by this process, deliberately outside -
@@ -385,7 +414,11 @@ def possible() -> str:
 # --------------------------------------------------------------------------
 
 
-ERRANDS: dict[str, object] = {}
+# token -> (verb, what it may ask for). The verb is kept beside the
+# closure rather than inferred from the request, so a token issued for
+# looking cannot be spent on fetching and the other way round. Two
+# tokens, two authorities, one desk.
+ERRANDS: dict[str, tuple[str, object]] = {}
 _DESK: socketserver.ThreadingTCPServer | None = None
 _DESK_LOCK = threading.Lock()
 
@@ -418,24 +451,52 @@ class _Errand(socketserver.BaseRequestHandler):
 
     @staticmethod
     def _answer(line: str) -> str:
-        from .route import is_route
-
         parts = line.split()
-        if len(parts) < 2 or parts[0] != "LOOK":
+        if len(parts) < 2 or parts[0] not in VERBS:
             return "NOT LOOKED\n  that is not a request this desk takes"
-        token, routes = parts[1], parts[2:]
-        errand = ERRANDS.get(token)
-        if errand is None:
-            # Not "wrong token" - a worker that can enumerate is a worker
-            # that can find one. Nothing here says which part was wrong.
-            return "NOT LOOKED\n  this request was not recognised"
-        # Routes are checked again on this side. The worker checked them
-        # too, and a check that only runs where the caller runs is not a
-        # check.
-        for route in routes:
+        verb, token, rest = parts[0], parts[1], parts[2:]
+        held = ERRANDS.get(token)
+        if held is None or held[0] != verb:
+            # Not "wrong token" and not "wrong verb" - a worker that can
+            # tell those apart is a worker that can enumerate. Nothing
+            # here says which part was wrong.
+            return VERBS[verb] + "\n  this request was not recognised"
+        refused = _not_asked(verb, rest)
+        if refused:
+            return refused
+        return held[1](rest)
+
+
+# The two verbs this desk takes, and the heading each refusal wears. A
+# worker reads the heading to tell "refused" from "nothing found", so
+# the wrong one would be read as an answer.
+VERBS = {"LOOK": "NOT LOOKED", "WEB": "NOT FETCHED"}
+
+
+def _not_asked(verb: str, rest: list[str]) -> str:
+    """Re-check what the worker asked for, on this side.
+
+    The worker checked it too. A check that only runs where the caller
+    runs is not a check, and this side is the one holding the socket.
+
+    Neither verb takes an address or a command from the worker. LOOK
+    takes paths on a project whose directory was decided here; WEB takes
+    one of four named operations, and the only addresses it will accept
+    are ones `drydock-web` itself would have accepted, checked by
+    `drydock-web`'s own code rather than by a copy of it living here.
+    """
+    from .route import is_route
+
+    if verb == "LOOK":
+        for route in rest:
             if not is_route(route):
                 return f"NOT LOOKED\n  {route!r} is not a path on this project"
-        return errand(routes)
+        return ""
+
+    from .outside import not_permitted
+
+    why = not_permitted(rest)
+    return f"NOT FETCHED\n  {why}" if why else ""
 
 
 def desk() -> socketserver.ThreadingTCPServer:
@@ -451,15 +512,18 @@ def desk() -> socketserver.ThreadingTCPServer:
         return _DESK
 
 
-def an_errand(doing) -> str:
+def an_errand(doing, verb: str = "LOOK") -> str:
     """Register one piece of privileged work and return its token.
 
-    The token is the whole of the worker's authority: it names one
-    repository, one item and one budget, it was issued here, and it is
-    forgotten when the item is.
+    The token is the whole of the worker's authority: it names one verb,
+    one repository, one item and one budget, it was issued here, and it
+    is forgotten when the item is. A second kind of work gets a second
+    token rather than a wider one.
     """
+    if verb not in VERBS:
+        raise ValueError(f"{verb!r} is not a verb this desk takes")
     token = secrets.token_urlsafe(24)
-    ERRANDS[token] = doing
+    ERRANDS[token] = (verb, doing)
     return token
 
 
@@ -500,9 +564,11 @@ def around(command: list[str], env: dict) -> tuple[list[str], dict]:
         "NO_PROXY": "",
         # So a worker can see it is in one without being told twice.
         "DRYDOCK_NETJAIL_PORT": str(port),
-        # Where to send a look. The token that goes with it is added per
-        # item, by whoever registered the errand.
+        # Where to send a look, and where to send a fetch. One desk, one
+        # port; what may be asked of it is decided by the token, which is
+        # added per item by whoever registered the errand.
         "DRYDOCK_LOOK_VIA": str(errand),
+        "DRYDOCK_WEB_VIA": str(errand),
     }
     return ["sandbox-exec", "-f", str(where), *command], env
 

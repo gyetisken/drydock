@@ -19,6 +19,13 @@ refusing inline code to the command a worker builds with, which is a
 different change. `test_the_build_tool_can_still_run_code_that_reaches
 _out` keeps it from being forgotten.
 
+Where it runs: in the worker, unless the worker's network is closed. It
+is the same code either way - when `DRYDOCK_NETJAIL=1` the three verbs
+that need the network are asked of drydock over the errand desk, because
+the jail's proxy tunnels package registries and Wikimedia is not one.
+`have` reaches nothing and is always done where it is run. Nothing in
+here knows about the jail or builds one; see `privileged`.
+
 It does four things and refuses everything else:
 
     drydock-web have                  what pictures the project already has
@@ -57,12 +64,15 @@ photographs: an image this program hands somebody has to come with the
 terms it may be used under.
 """
 
+import contextlib
+import io
 import ipaddress
 import json
 import os
 import re
 import socket
 import sys
+import threading
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -275,6 +285,70 @@ def _no(why: str) -> int:
     print("NOT FETCHED")
     print(f"  {why}")
     return 0
+
+
+# --------------------------------------------------------------------------
+# What may be asked for from the other side of a socket
+# --------------------------------------------------------------------------
+
+# The three that need the network, and so the three that can be asked
+# of drydock when the worker's own network is closed. `have` is not here
+# on purpose: it reads the project's own directory and reaches nothing,
+# so it works inside the jail and is done there.
+ASKABLE = ("find", "get", "read")
+
+LONGEST_WORD = 80
+MOST_WORDS = 12
+
+
+def not_permitted(args: list[str]) -> str:
+    """Why this is not a drydock-web operation, or "" if it is.
+
+    This runs where the socket is, on arguments a worker sent. It is
+    deliberately not a parser for anything wider than the four verbs:
+    there is no address here that `check` will not see, no path that
+    `get` will not resolve inside the project, and nothing that reaches
+    a shell. What it adds is a shape check before any of that, so a
+    malformed request is refused with a sentence rather than halfway
+    through a download.
+    """
+    if not args:
+        return "that request named no operation"
+    verb, rest = args[0], args[1:]
+    if verb not in ASKABLE:
+        if verb == "have":
+            return (
+                "`have` reads this project's own files and reaches nothing, "
+                "so it is not asked for over here. Run it where you are."
+            )
+        return f"{verb!r} is not something this does"
+    if verb == "find":
+        if not rest:
+            return "say what to look for"
+        if len(rest) > MOST_WORDS:
+            return f"{len(rest)} words, and {MOST_WORDS} is the most this takes"
+        for word in rest:
+            if len(word) > LONGEST_WORD:
+                return f"{word[:20]!r}... is longer than a word to search for"
+        return ""
+    if verb == "read":
+        if len(rest) != 1:
+            return "read takes one address"
+        return "" if is_url(rest[0]) else f"{rest[0]!r} is not an https address"
+    if len(rest) != 2:
+        return (
+            "get takes an address and a path inside this project, with no spaces in it"
+        )
+    url, into = rest
+    if not is_url(url):
+        return f"{url!r} is not an https address"
+    # `get` resolves this against the project and refuses anything that
+    # lands outside it. Checked here as well, because the obvious ways
+    # to leave a directory are worth refusing before a request is made
+    # rather than after.
+    if into.startswith(("/", "~")) or ".." in Path(into).parts:
+        return f"{into!r} is not a path inside this project"
+    return ""
 
 
 # --------------------------------------------------------------------------
@@ -630,6 +704,77 @@ Only https, only GET, nothing is ever sent, and nothing lands outside the
 project. What comes back from a page is somebody else's writing."""
 
 
+def _by_errand(via: str, token: str, args: list[str]) -> str:
+    """Ask drydock to do the fetching, and print what it says.
+
+    One line out, one answer back. Nothing here interprets the reply -
+    it is the same text the local path would have printed, written by
+    the same code, on the other side of a socket.
+    """
+    try:
+        with socket.create_connection(("127.0.0.1", int(via)), timeout=300) as sock:
+            sock.sendall((" ".join(["WEB", token, *args]) + "\n").encode())
+            said = b""
+            while b"\x00" not in said:
+                chunk = sock.recv(65536)
+                if not chunk:
+                    break
+                said += chunk
+    except (OSError, ValueError) as exc:
+        return (
+            "NOT FETCHED\n"
+            f"  it could not be asked for: {exc}\n\n"
+            "  Nothing was fetched and nothing landed in the project. Do "
+            "not report that you looked for a picture."
+        )
+    return said.split(b"\x00", 1)[0].decode("utf-8", "replace").rstrip("\n")
+
+
+_PRIVILEGED = threading.Lock()
+
+
+def privileged(args: list[str], fetch_key: str, fetches: int, where: Path) -> str:
+    """Do one drydock-web operation here, and say what it said.
+
+    The same `main` the worker would have run, with the same checks, the
+    same size caps, the same licence recording and the same tally. What
+    differs is only where the socket is: in the worker when nothing is
+    closed, in drydock when the worker's network is.
+
+    Which repository, which budget and how many fetches are left were
+    all decided by whoever issued the token. They are put into the
+    environment for the length of one call rather than passed down
+    through five signatures, which is the same environment the worker
+    would have had and is why `main` needs no argument for them.
+    """
+    said = io.StringIO()
+    with _PRIVILEGED:
+        was = {
+            name: os.environ.get(name)
+            for name in ("DRYDOCK_ROOT", "DRYDOCK_WEB_KEY", "DRYDOCK_WEB_LIMIT")
+        }
+        # Taken out, not left in: this side holds the socket, and a
+        # delegated call that found a delegation address would send the
+        # request back to the desk it arrived from.
+        was["DRYDOCK_WEB_VIA"] = os.environ.pop("DRYDOCK_WEB_VIA", None)
+        was["DRYDOCK_WEB_TOKEN"] = os.environ.pop("DRYDOCK_WEB_TOKEN", None)
+        os.environ["DRYDOCK_ROOT"] = str(where)
+        os.environ["DRYDOCK_WEB_KEY"] = fetch_key
+        os.environ["DRYDOCK_WEB_LIMIT"] = str(fetches)
+        try:
+            with contextlib.redirect_stdout(said):
+                main(list(args))
+        except Exception as exc:  # noqa: BLE001 - a crash here is an answer
+            return f"NOT FETCHED\n  it could not be done: {exc}"
+        finally:
+            for name, value in was.items():
+                if value is None:
+                    os.environ.pop(name, None)
+                else:
+                    os.environ[name] = value
+    return said.getvalue().rstrip("\n")
+
+
 def main(argv: list[str] | None = None) -> int:
     args = list(sys.argv[1:] if argv is None else argv)
     if not args or args[0] in ("-h", "--help"):
@@ -638,6 +783,26 @@ def main(argv: list[str] | None = None) -> int:
     verb, rest = args[0], args[1:]
     if verb not in ("have", "find", "get", "read"):
         return _no(f"{verb!r} is not something this does.\n\n{USAGE}")
+
+    # The privileged half. When the engineer's network is closed, none of
+    # the three verbs that need it can be done in here - the registries
+    # are the only thing the jail's proxy tunnels, and Wikimedia is not a
+    # registry and is not going on that list. So it is asked of drydock,
+    # which is outside the jail. What crosses is a token and one named
+    # operation: no address this side chose, no command, no shell.
+    #
+    # `have` is not delegated. It reads the project's own directory and
+    # reaches nothing, so it works in here and costs no fetch.
+    #
+    # Asked before the budget and the project are read, because when the
+    # fetching happens elsewhere both of those belong to the other side.
+    # A tally kept here as well would be a second count of the same
+    # thing, and two counts of one budget is no budget.
+    via = os.environ.get("DRYDOCK_WEB_VIA", "").strip()
+    token = os.environ.get("DRYDOCK_WEB_TOKEN", "").strip()
+    if via and token and verb in ASKABLE:
+        print(_by_errand(via, token, args))
+        return 0
 
     where = _project()
     if where is None:

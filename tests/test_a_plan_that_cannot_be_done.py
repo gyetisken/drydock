@@ -320,7 +320,7 @@ class TestNothingProtectiveWasTraded:
     def test_the_isolation_is_untouched(self):
         source = Path("src/drydock/engines.py").read_text()
         assert '"matcher": "Bash|Read|Edit|Write|Glob|Grep|NotebookEdit"' in source
-        assert '("--setting-sources", "user")' in source
+        assert '("--setting-sources", "")' in source
 
     def test_our_leftovers_still_do_not_count_as_your_changes(self, repo):
         (repo.path / OUR_LOOK).mkdir()

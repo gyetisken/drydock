@@ -121,10 +121,36 @@ AUTH_THAT_IS_NOT_OURS = (
     "CLAUDE_CODE_USE_VERTEX",
 )
 
-# Which settings files a worker may load. Project and local are the two
-# that walk up the directory tree; "user" is the person's own and is kept
-# because it is theirs and is not a surprise to them.
-SETTING_SOURCES = ("--setting-sources", "user")
+# Which settings files a worker may load: none of them.
+#
+# "user" used to be kept here on the reasoning that the person's own
+# settings are theirs and not a surprise to them. Measured, that was
+# wrong on both halves. The same probe, run twice, differing only in
+# this flag:
+#
+#     --setting-sources user   asked whether its instructions mention a
+#                              /marketing or /sales agent: MENTIONED
+#     --setting-sources ""     NOT-MENTIONED
+#
+# So `~/.claude/CLAUDE.md` was reaching every worker - in this case a
+# page of marketing and sales agent instructions, in a run about a
+# hotel website. With it came `model`, `permissions.defaultMode: auto`,
+# an enabled third-party plugin and a block of organisation text naming
+# an unrelated repository as trusted. None of that is a surprise to the
+# person; all of it is a surprise to the run, and a worker whose
+# instructions change when the person edits their own settings is not
+# reproducible.
+#
+# What this does not take away is everything drydock states explicitly:
+# the model, the tools, the permission mode and the max turns are CLI
+# flags, and the confinement hook arrives by `--settings` as inline
+# JSON, which is a different flag and still loaded. Measured: with this
+# set to "", a worker asked to `cat /etc/hosts` was still refused by
+# the hook.
+#
+# `--bare` and `--safe-mode` also stop the inheritance and also turn
+# hooks off, which would take the confinement with them.
+SETTING_SOURCES = ("--setting-sources", "")
 
 BOOTSTRAP = (
     "npm",
@@ -520,6 +546,25 @@ def _an_errand_for(repo: Path, look_key: str, looks: int):
     return doing
 
 
+def _a_fetch_for(repo: Path, fetch_key: str, fetches: int):
+    """What one fetch token is allowed to ask for: this project, this budget.
+
+    The same arrangement as looking, and deliberately not a wider one.
+    The worker sends one of `drydock-web`'s own named operations and
+    nothing else - no host this side chose, no command, no shell - and
+    what runs it is `drydock-web`'s own `main`, so the address check,
+    the size caps, the licence recording and the tally are the ones that
+    were already there rather than a second copy of them out here.
+    """
+
+    def doing(args: list[str]) -> str:
+        from .outside import privileged
+
+        return privileged(list(args), fetch_key, fetches, repo)
+
+    return doing
+
+
 def _confinement(
     repo: Path,
     look_key: str = "",
@@ -677,18 +722,15 @@ class ClaudeCodeEngine:
             self.model,
             "--max-turns",
             str(self.max_turns),
-            # Only the person's own settings. Without this, Claude Code
-            # walks up from the working directory and loads every
-            # `CLAUDE.md` it passes, including ones belonging to a
-            # repository that merely happens to contain this project -
-            # and a nested `.git` does not stop the walk, which was
-            # measured rather than assumed. A job about a restaurant
-            # website was being handed drydock's own instructions to its
-            # own implementation agent.
-            #
-            # `--bare` and `--safe-mode` also stop it and also turn hooks
-            # off, which would take the confinement with them. This is
-            # the one that leaves the hook running; that too was measured.
+            # No settings files at all - not the project's, not the
+            # person's. Without this Claude Code walks up from the
+            # working directory and loads every `CLAUDE.md` it passes,
+            # including ones belonging to a repository that merely
+            # happens to contain this project, and a nested `.git` does
+            # not stop the walk. A job about a restaurant website was
+            # being handed drydock's own instructions to its own
+            # implementation agent. The reasoning for the value, and
+            # what it measurably keeps out, is at SETTING_SOURCES.
             *SETTING_SOURCES,
             "--permission-mode",
             "acceptEdits",
@@ -721,7 +763,7 @@ class ClaudeCodeEngine:
         # Only this method. `structured` is every other station and none
         # of them has a shell at all, so jailing them would buy nothing
         # and give the planner a new way to fail.
-        token = ""
+        tokens: list[str] = []
         if netjail.wanted():
             command, env = netjail.around(command, env)
             # The looking cannot happen in there - starting the project
@@ -731,8 +773,22 @@ class ClaudeCodeEngine:
             # out here and asked for over the desk, with a token that
             # names this item's repository and budget and nothing else.
             if looks > 0 and look_key:
-                token = netjail.an_errand(_an_errand_for(repo, look_key, looks))
+                token = netjail.an_errand(
+                    _an_errand_for(repo, look_key, looks), verb="LOOK"
+                )
                 env["DRYDOCK_LOOK_TOKEN"] = token
+                tokens.append(token)
+            # And the same for fetching, for the same reason: the jail's
+            # proxy tunnels package registries, Wikimedia is not one, and
+            # putting it on that list would widen the one thing the list
+            # is for. Its own token, so a worker holding one authority
+            # does not hold the other.
+            if fetches > 0 and fetch_key:
+                token = netjail.an_errand(
+                    _a_fetch_for(repo, fetch_key, fetches), verb="WEB"
+                )
+                env["DRYDOCK_WEB_TOKEN"] = token
+                tokens.append(token)
             if on_event:
                 on_event("tool", netjail.said())
 
@@ -764,9 +820,9 @@ class ClaudeCodeEngine:
         if overran and on_event:
             on_event("engine", _why_it_stopped(overran, self.seconds))
         _forget(process)
-        # The token dies with the item. A worker that kept one would hold
+        # The tokens die with the item. A worker that kept one would hold
         # authority over a repository after its turn had ended.
-        if token:
+        for token in tokens:
             netjail.forget(token)
 
         if not report_file.exists():

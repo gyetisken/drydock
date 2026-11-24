@@ -441,7 +441,8 @@ def start(repo: Path, timeout: float = 25.0) -> Preview:
     started_with = {**os.environ, **env}
     if netjail.wanted():
         args, started_with = netjail.around(args, started_with)
-        started_with.pop("DRYDOCK_LOOK_TOKEN", None)
+        for authority in ("DRYDOCK_LOOK_TOKEN", "DRYDOCK_WEB_TOKEN"):
+            started_with.pop(authority, None)
 
     with log.open("w") as out:
         process = subprocess.Popen(

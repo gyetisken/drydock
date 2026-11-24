@@ -360,9 +360,11 @@ class TestNothingElseChanged:
 
         assert orchestrate.GATES == ("verifier", "inspector", "reviewer", "critic")
 
-    def test_drydock_web_is_outside_the_jail(self):
-        """It runs in drydock's own process, not the worker's, so the
-        validated path keeps working when the jail is on."""
+    def test_drydock_web_never_wraps_anything_itself(self):
+        """The validated path is the same code on both sides of the
+        desk. It knows nothing about the jail and builds no sandbox: it
+        is either run by the worker, when nothing is closed, or by
+        drydock, when the worker's network is."""
         source = Path("src/drydock/outside.py").read_text()
         assert "netjail" not in source
 
@@ -588,7 +590,7 @@ class TestWhatTheDeskRefusesToLookAt:
             seen["r"] = routes
             return "LOOKED"
 
-        monkeypatch.setitem(netjail.ERRANDS, "tok", doing)
+        monkeypatch.setitem(netjail.ERRANDS, "tok", ("LOOK", doing))
         said = netjail._Errand._answer("LOOK tok " + " ".join(routes))
         return said, seen
 
@@ -626,7 +628,7 @@ class TestWhatTheDeskRefusesToLookAt:
     def test_the_check_runs_on_both_sides(self):
         """The worker checks too. A check that only runs where the caller
         runs is not a check."""
-        assert "is_route" in inspect.getsource(netjail._Errand._answer)
+        assert "is_route" in inspect.getsource(netjail._not_asked)
         assert "is_route" in inspect.getsource(look.main)
 
 
@@ -819,7 +821,7 @@ class TestThePreviewServerIsTheEngineersCodeToo:
         separation the delegation exists for."""
         source = inspect.getsource(preview)
         wrapped = source.index("netjail.around(args, started_with)")
-        popped = source.index('started_with.pop("DRYDOCK_LOOK_TOKEN", None)')
+        popped = source.index("started_with.pop(authority, None)")
         # Counting from the pop, because `subprocess.Popen` is written
         # once more further up as the type of the field it is kept in.
         assert wrapped < popped < source.index("subprocess.Popen(", popped)
@@ -856,3 +858,176 @@ class TestOnThisMachineTheStationsAreClosedToo:
         # sandbox was absent is that the refusal came from the network
         # and not from the kernel.
         assert said.detail.strip() == "NOT-REFUSED"
+
+
+# --------------------------------------------------------------------------
+# The second verb: fetching, when the worker cannot reach the network
+# --------------------------------------------------------------------------
+
+
+class TestWikimediaIsNotOnTheProxysList:
+    """The jail's proxy exists for package registries. The reason
+    `drydock-web` goes over the desk instead of through it is that a
+    tunnel to a picture host is a tunnel, and the list is the blast
+    radius."""
+
+    @pytest.mark.parametrize(
+        "host", ["commons.wikimedia.org", "upload.wikimedia.org", "wikimedia.org"]
+    )
+    def test_it_is_not_permitted_through_the_tunnel(self, host):
+        assert netjail._permitted(host) is False
+
+    def test_the_list_is_still_only_registries(self):
+        for entry in netjail.REGISTRIES:
+            assert "wikimedia" not in entry
+            assert "wikipedia" not in entry
+
+
+class TestOneDeskTwoAuthorities:
+    def test_both_verbs_are_named(self):
+        assert set(netjail.VERBS) == {"LOOK", "WEB"}
+
+    def test_each_wears_its_own_heading(self):
+        """A worker reads the heading to tell "refused" from "nothing
+        found". The wrong one reads as an answer."""
+        assert netjail.VERBS["LOOK"] == "NOT LOOKED"
+        assert netjail.VERBS["WEB"] == "NOT FETCHED"
+
+    def test_a_token_is_issued_for_one_verb(self):
+        token = netjail.an_errand(lambda rest: "DONE", verb="WEB")
+        try:
+            assert netjail.ERRANDS[token][0] == "WEB"
+        finally:
+            netjail.forget(token)
+
+    def test_a_verb_the_desk_does_not_take_is_not_issuable(self):
+        with pytest.raises(ValueError):
+            netjail.an_errand(lambda rest: "DONE", verb="SHELL")
+
+    @pytest.mark.parametrize("issued,asked", [("WEB", "LOOK"), ("LOOK", "WEB")])
+    def test_one_cannot_be_spent_on_the_other(self, issued, asked, monkeypatch):
+        ran = []
+        token = netjail.an_errand(lambda rest: ran.append(rest) or "DONE", verb=issued)
+        try:
+            said = netjail._Errand._answer(f"{asked} {token} find hotel")
+        finally:
+            netjail.forget(token)
+        assert "this request was not recognised" in said
+        assert ran == []
+
+    def test_a_forgotten_token_is_no_token(self):
+        """Authorization dies with the item. A worker that kept one
+        would hold it after its turn had ended."""
+        token = netjail.an_errand(lambda rest: "DONE", verb="WEB")
+        netjail.forget(token)
+        assert "not recognised" in netjail._Errand._answer(f"WEB {token} find hotel")
+
+    def test_the_run_forgets_every_token_it_issued(self):
+        source = inspect.getsource(engines)
+        assert "for token in tokens:" in source
+        assert "netjail.forget(token)" in source
+        assert source.count("tokens.append(token)") == 2
+
+
+class TestWhatTheDeskWillNotFetch:
+    """What crosses is one of `drydock-web`'s own named operations. Not
+    a host this side chose, not a command, not a shell."""
+
+    def _ask(self, rest):
+        ran = []
+        token = netjail.an_errand(lambda got: ran.append(got) or "FETCHED", verb="WEB")
+        try:
+            said = netjail._Errand._answer(f"WEB {token} {rest}")
+        finally:
+            netjail.forget(token)
+        return said, ran
+
+    @pytest.mark.parametrize(
+        "rest,why",
+        [
+            ("curl https://evil.test", "not something this does"),
+            ("sh -c ls", "not something this does"),
+            ("get http://evil.test/x public/a.jpg", "not an https address"),
+            ("get file:///etc/passwd public/a.jpg", "not an https address"),
+            ("get https://ok.test/a.jpg /etc/passwd", "not a path inside this project"),
+            ("get https://ok.test/a.jpg ../../x.jpg", "not a path inside this project"),
+            ("get https://ok.test/a.jpg ~/x.jpg", "not a path inside this project"),
+            ("get https://ok.test/a.jpg", "get takes an address and a path"),
+            ("read https://a.test/1 https://a.test/2", "read takes one address"),
+            ("read notanaddress", "not an https address"),
+            ("find", "say what to look for"),
+            ("have", "reads this project's own files"),
+        ],
+    )
+    def test_it_is_refused_before_anything_is_asked_for(self, rest, why):
+        said, ran = self._ask(rest)
+        assert said.startswith("NOT FETCHED")
+        assert why in said
+        assert ran == [], "the errand ran despite a refused request"
+
+    @pytest.mark.parametrize("verb", ["find", "get", "read"])
+    def test_the_three_that_need_the_network_are_the_three_it_takes(self, verb):
+        from drydock import outside
+
+        assert verb in outside.ASKABLE
+
+    def test_and_have_is_not_one_of_them(self):
+        """It reads the project's own directory and reaches nothing, so
+        it works inside the jail and costs no fetch."""
+        from drydock import outside
+
+        assert "have" not in outside.ASKABLE
+
+    def test_a_search_cannot_be_made_arbitrarily_long(self):
+        from drydock import outside
+
+        said, ran = self._ask("find " + " ".join(["x"] * 40))
+        assert f"{outside.MOST_WORDS} is the most" in said
+        assert ran == []
+
+    def test_a_good_request_reaches_the_errand_unchanged(self):
+        said, ran = self._ask("find art deco facade")
+        assert said == "FETCHED"
+        assert ran == [["find", "art", "deco", "facade"]]
+
+
+class TestTheCheckRunsOnBothSidesForFetchingToo:
+    def test_the_worker_checks_and_so_does_the_desk(self):
+        from drydock import outside
+
+        assert "not_permitted" in inspect.getsource(netjail._not_asked)
+        # The worker's own `main` refuses an unknown verb before it ever
+        # reaches a socket.
+        assert '"have", "find", "get", "read"' in inspect.getsource(outside.main)
+
+    def test_the_privileged_side_runs_drydock_webs_own_main(self):
+        """Not a second copy of the checks out here. The address check,
+        the size caps, the licence recording and the tally are the ones
+        that were already there."""
+        from drydock import outside
+
+        source = inspect.getsource(outside.privileged)
+        assert "main(list(args))" in source
+        for ours in ("urlopen", "socket.create_connection", "Refused"):
+            assert ours not in source
+
+    def test_the_delegation_happens_before_the_budget_is_read(self):
+        """When the fetching happens elsewhere the budget belongs to the
+        other side. Two counts of one budget is no budget."""
+        from drydock import outside
+
+        source = inspect.getsource(outside.main)
+        assert source.index("if via and token") < source.index("budget = _budget()")
+
+    def test_the_privileged_side_cannot_delegate_to_itself(self):
+        from drydock import outside
+
+        source = inspect.getsource(outside.privileged)
+        assert 'os.environ.pop("DRYDOCK_WEB_VIA", None)' in source
+        assert 'os.environ.pop("DRYDOCK_WEB_TOKEN", None)' in source
+
+    def test_the_worker_is_told_where_to_send_a_fetch(self, monkeypatch):
+        monkeypatch.setattr(netjail, "possible", lambda: "")
+        _command, env = netjail.around(["echo"], {})
+        assert env["DRYDOCK_WEB_VIA"] == str(netjail.desk().server_address[1])
+        assert env["DRYDOCK_WEB_VIA"] == env["DRYDOCK_LOOK_VIA"]
