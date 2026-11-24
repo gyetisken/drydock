@@ -163,7 +163,7 @@ class TestStoppingEndsTheItem:
             budget=0.0,
             left=0.0,
             id="20261119-000000",
-            spend=lambda u: None,
+            spend=lambda u, **kw: None,
             verification_baseline=SimpleNamespace(builds=True, tests_run=1),
             refused={},
         )

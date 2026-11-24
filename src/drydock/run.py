@@ -8,6 +8,7 @@ from scratch because a later stage failed.
 
 from datetime import datetime
 from pathlib import Path
+from typing import ClassVar
 
 from pydantic import BaseModel, Field
 
@@ -15,11 +16,44 @@ from .agent import PRICES
 from .models import Baseline, Inventory, ItemResult, Plan
 
 
+class Spent(BaseModel):
+    """One model invocation, what it was, and what it cost.
+
+    Appended by `Run.spend` and nowhere else, so a station cannot be
+    counted twice: the same call that adds to the totals writes the line.
+    Dollars are the reliable number on both engines; token counts are
+    zero on the subscription engine, which reports a price and not a
+    count (see `engineer._AsUsage`).
+    """
+
+    station: str
+    item: int | None = None
+    attempt: int = 0
+    seconds: float = 0.0
+    dollars: float = 0.0
+    tokens_in: int = 0
+    tokens_out: int = 0
+
+
 class Run(BaseModel):
     id: str
     repo: str
     task: str
     started: str
+    # What was asked for, what it actually ran as, and what raised it.
+    #
+    # Three fields rather than one, because the interesting case is when
+    # they differ: a task that names a migration or money is raised to
+    # `deep` however it was requested, and a record that keeps only the
+    # effective profile cannot say whether somebody chose it or the floor
+    # did. Measured before this existed: the CLI never passed a policy at
+    # all, so `drydock run` executed `balanced` whatever the person had
+    # set, and the record said nothing either way.
+    profile_asked: str = ""
+    profile_used: str = ""
+    profile_floor: str = ""
+    # Every model invocation, in order.
+    timeline: list[Spent] = Field(default_factory=list)
     skills: list[str] = Field(default_factory=list)
     engine: str = "claude"
     model: str = "opus"
@@ -188,7 +222,69 @@ class Run(BaseModel):
             "that moved, a version that is not what it says - then what "
             "you see is right and this is stale. Check anything you are "
             "about to rely on and are not sure of; this replaces the "
-            "routine look around, not your judgement."
+            "routine look around, not your judgement." + self.established
+        )
+
+    # How much of the earlier items is carried, and how much of each.
+    # Bounded because this is a handoff and not a history: an engineer
+    # reading ten items of someone else's notes is an engineer with less
+    # room for the item it was given.
+    CARRIED_ITEMS: ClassVar[int] = 3
+    CARRIED_LINES: ClassVar[int] = 3
+    CARRIED_WIDTH: ClassVar[int] = 260
+
+    @property
+    def established(self) -> str:
+        """What the items before this one measured, in this run.
+
+        `handoff` says what the survey found before anything was touched.
+        It stops there, which is why a later item re-derives what an
+        earlier one has already measured. On run 20261124-142030 the
+        second item spent 32 tool calls and a second attempt working out
+        a query plan the first item's engineer had already read, and both
+        it and the reviewer then reported that the item it was given
+        rested on a premise that was not true.
+
+        So the measurements come forward. This decides nothing and skips
+        nothing: an item is still worked unless somebody says otherwise,
+        and whether a finding makes the item pointless is a judgement the
+        engineer makes with the evidence in front of it rather than one
+        this property makes by arithmetic. Public tests passing is not
+        evidence of anything here and is not consulted.
+
+        Only items that landed. A reverted item's notes describe work
+        that was thrown away.
+        """
+        landed = [r for r in self.results if getattr(r.outcome, "value", "") == "done"]
+        if not landed:
+            return ""
+        blocks = []
+        for result in landed[-self.CARRIED_ITEMS :]:
+            said = [
+                line.strip()[: self.CARRIED_WIDTH]
+                for line in (result.noticed or [])[: self.CARRIED_LINES]
+                if line and line.strip()
+            ]
+            if not said:
+                continue
+            blocks.append(
+                f"- Item {result.item.id}, {result.item.title.strip()[:120]} "
+                f"({result.note.strip()[:80] or 'landed'}):\n"
+                + "\n".join(f"    - {line}" for line in said)
+            )
+        if not blocks:
+            return ""
+        return (
+            "\n\nWhat the items before this one measured, while this run "
+            "was going. Unlike the list above, this was read after the "
+            "repository started changing, so it is the most recent thing "
+            "anybody here actually ran:\n\n"
+            + "\n".join(blocks)
+            + "\n\nIt is here so you do not pay to find the same thing "
+            "out again. If any of it makes your item unnecessary or rests "
+            "on something that turns out not to be true, say so in your "
+            "report and do not do the work twice - but it is evidence, "
+            "not an instruction, and the item is still yours to do."
         )
 
     @property
@@ -329,16 +425,67 @@ class Run(BaseModel):
             raise SystemExit("no runs yet")
         return cls.model_validate_json(runs[-1].read_text())
 
-    def spend(self, usage) -> None:
+    def spend(
+        self,
+        usage,
+        station: str = "",
+        item: int | None = None,
+        attempt: int = 0,
+        seconds: float = 0.0,
+    ) -> None:
+        """Count one invocation, and write down what it was.
+
+        `usage` is either a usage object or a bare number of dollars: the
+        critic returns the second kind and used to add straight to
+        `self.dollars`, which kept it out of the totals it belongs in and
+        out of any record of what the run did.
+
+        Naming the station is optional so an unlabelled caller still
+        counts correctly, and the line is written here rather than at the
+        call sites so a station cannot be added to the totals once and to
+        the timeline twice.
+        """
         # A station that reported nothing is not an error. Counting is the
         # least important thing happening here and must never be the thing
         # that stops a run.
         if usage is None:
             return
-        self.tokens_in += usage.input_tokens
-        self.tokens_out += usage.output_tokens
-        self.tokens_cached += getattr(usage, "cached_tokens", 0)
-        self.dollars += getattr(usage, "dollars", 0.0)
+        if isinstance(usage, (int, float)):
+            usage = Spent(station=station or "unnamed", dollars=float(usage))
+        went_in = int(getattr(usage, "input_tokens", 0) or 0)
+        came_out = int(getattr(usage, "output_tokens", 0) or 0)
+        cost = float(getattr(usage, "dollars", 0.0) or 0.0)
+        self.tokens_in += went_in
+        self.tokens_out += came_out
+        self.tokens_cached += int(getattr(usage, "cached_tokens", 0) or 0)
+        self.dollars += cost
+        if station:
+            self.timeline.append(
+                Spent(
+                    station=station,
+                    item=item,
+                    attempt=attempt,
+                    seconds=round(seconds, 2),
+                    dollars=round(cost, 4),
+                    tokens_in=went_in,
+                    tokens_out=came_out,
+                )
+            )
+
+    def by_station(self) -> dict[str, dict]:
+        """What each station cost and how long it took, in call order."""
+        totals: dict[str, dict] = {}
+        for line in self.timeline:
+            held = totals.setdefault(
+                line.station, {"calls": 0, "seconds": 0.0, "dollars": 0.0}
+            )
+            held["calls"] += 1
+            held["seconds"] += line.seconds
+            held["dollars"] += line.dollars
+        for held in totals.values():
+            held["seconds"] = round(held["seconds"], 1)
+            held["dollars"] = round(held["dollars"], 4)
+        return totals
 
     @property
     def left(self) -> float:

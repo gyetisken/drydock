@@ -8,6 +8,7 @@ drydock show
 import argparse
 import textwrap
 import threading
+import time
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -17,6 +18,7 @@ from .detect import detect
 from .engines import stop_workers
 from .orchestrate import execute
 from .planner import plan
+from .policy import Policy
 from .run import Run, event_printer
 from .skills import discover, load
 
@@ -69,12 +71,66 @@ def _cmd_skills(args) -> int:
     return 0
 
 
+def _decide_profile(run, asked: str) -> Policy:
+    """The policy for this run, resolved the way the application resolves it.
+
+    One place, so the CLI and the application cannot drift. What was
+    asked for, what the task's own risk floor raised it to, and the
+    result are all written onto the record: a run that says only
+    "balanced" cannot answer whether somebody chose that or the floor
+    did.
+
+    Raised, never lowered. A task that names a migration, an
+    authorization change, money or data removal is not allowed to take
+    the cheap road however it was requested.
+    """
+    from .policy import at_least, floor_for, of
+    from .settings import Settings
+
+    wanted = (asked or Settings.load().profile or "").strip().lower()
+    raised = floor_for(run.task)
+    policy = at_least(of(wanted), raised.floor)
+    run.profile_asked = wanted
+    run.profile_used = policy.profile
+    run.profile_floor = raised.why if policy.profile != wanted else ""
+    return policy
+
+
+def _policy_of(run) -> Policy:
+    """The policy a later stage of the same run must use.
+
+    Read off the record rather than resolved again, so `plan` and `run`
+    cannot disagree with the `survey` that decided it - and so a change
+    to the person's settings halfway through a run does not change the
+    run.
+    """
+    from .policy import of
+
+    if run.profile_used:
+        return of(run.profile_used)
+    # A record written before this was kept. Resolve it the same way
+    # rather than silently falling back to the default.
+    return _decide_profile(run, "")
+
+
+def _say_profile(run, policy) -> None:
+    if run.profile_floor:
+        print(
+            f"profile: {policy.profile} (asked for {run.profile_asked or 'default'}; "
+            f"raised because {run.profile_floor})"
+        )
+    else:
+        print(f"profile: {policy.profile}")
+
+
 def _cmd_survey(args) -> int:
     repo = Path(args.repo).expanduser().resolve()
     chain = detect(repo)
     skills = _chosen_skills(args.skill, chain)
     run = Run.start(repo, args.task, [s.name for s in skills])
     run.budget = args.budget
+    policy = _decide_profile(run, getattr(args, "profile", "") or "")
+    _say_profile(run, policy)
     print(f"{chain.build_tool} / {chain.language}")
     if skills:
         print(f"skills: {', '.join(s.name for s in skills)}")
@@ -91,6 +147,7 @@ def _cmd_survey(args) -> int:
     run.save()
 
     print("\nsurveying")
+    began = time.monotonic()
     run.inventory, usage = survey(
         repo,
         args.task,
@@ -100,12 +157,26 @@ def _cmd_survey(args) -> int:
         model=args.model,
         budget=run.left if run.budget else 0.0,
     )
-    run.spend(usage)
+    run.spend(usage, station="analyst", seconds=time.monotonic() - began)
     run.save()
 
     print(f"\n{len(run.inventory.findings)} findings, {len(run.inventory.risks)} risks")
     print(_spend(run))
     return 0
+
+
+def _by_station(run) -> str:
+    """What each station cost and took, for the end of a stage."""
+    held = run.by_station()
+    if not held:
+        return ""
+    widest = max(len(name) for name in held)
+    lines = [
+        f"  {name:<{widest}}  {v['calls']:>2} call(s)  "
+        f"{v['seconds']:>7.1f}s  ${v['dollars']:.2f}"
+        for name, v in held.items()
+    ]
+    return "\n".join(lines)
 
 
 def _spend(run) -> str:
@@ -124,8 +195,11 @@ def _cmd_plan(args) -> int:
     if not run.inventory:
         raise SystemExit("that run has no survey yet")
     repo = Path(run.repo)
+    policy = _policy_of(run)
 
+    _say_profile(run, policy)
     print(f"planning: {run.task}\n")
+    began = time.monotonic()
     run.plan, usage = plan(
         repo,
         run.task,
@@ -133,8 +207,12 @@ def _cmd_plan(args) -> int:
         run.baseline,
         _chosen_skills(run.skills),
         event_printer(),
+        # The policy the survey settled. Without this the planner is
+        # told the default's item range whatever the person chose, which
+        # is how a `fast` run was planned as `balanced`.
+        policy=policy,
     )
-    run.spend(usage)
+    run.spend(usage, station="planner", seconds=time.monotonic() - began)
     run.save()
 
     print(f"\n{run.plan.summary}\n")
@@ -165,6 +243,8 @@ def _cmd_run(args) -> int:
     # application uses: the workers of this run are ended, and the flag
     # stops anything else being started - a retry, a restart of a worker
     # that was just terminated, a split, the next wave.
+    _say_profile(run, _policy_of(run))
+
     out_of_time = {"yes": False}
     clock = None
     if getattr(args, "minutes", 0):
@@ -185,6 +265,12 @@ def _cmd_run(args) -> int:
             on_event=event_printer("      "),
             on_item=on_item,
             should_stop=lambda: out_of_time["yes"],
+            # The same policy the application passes. Without it
+            # `execute` fell back to `of(None)`, which is `balanced`, so
+            # every CLI run ignored the chosen profile: measured on run
+            # 20261124-142030, which was asked for `fast` and reviewed
+            # the diff because `balanced` does.
+            policy=_policy_of(run),
         )
     finally:
         if clock is not None:
@@ -196,6 +282,9 @@ def _cmd_run(args) -> int:
             f"  {result.item.id:>2}. {MARK[result.outcome.value]:<9} {result.note[:70]}"
         )
     print(f"\n{len(run.results)}/{len(run.plan.items)} items   {_spend(run)}")
+    said = _by_station(run)
+    if said:
+        print(said)
     return 0
 
 
@@ -310,6 +399,14 @@ def main() -> None:
         help="dollars this run may spend; it stops rather than exceeding it",
     )
     s.add_argument("--model", help="override the model for the survey")
+    s.add_argument(
+        "--profile",
+        choices=["fast", "balanced", "deep"],
+        help="how much ceremony this run gets; the stored setting otherwise. "
+        "Raised, never lowered: a task that names a migration, an "
+        "authorization change, money or data removal is not allowed to run "
+        "as fast",
+    )
     s.set_defaults(func=_cmd_survey)
 
     p = sub.add_parser("plan", help="turn the survey into an ordered list of changes")

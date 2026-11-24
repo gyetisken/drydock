@@ -14,6 +14,7 @@ import contextlib
 import os
 import re
 import tempfile
+import time
 from concurrent.futures import Future, ThreadPoolExecutor
 from pathlib import Path
 
@@ -324,6 +325,7 @@ def _judge(
     answers arrive, not what they are allowed to decide.
     """
     jobs: dict[str, Future] = {}
+    began = time.monotonic()
     with ThreadPoolExecutor(max_workers=2) as pool:
         if policy.read_the_diff:
             jobs["reviewer"] = pool.submit(
@@ -389,7 +391,12 @@ def _judge(
             continue
 
         if name == "reviewer":
-            run.spend(spend)
+            run.spend(
+                spend,
+                station="reviewer",
+                item=item.id,
+                seconds=time.monotonic() - began,
+            )
             if on_gate:
                 on_gate(item, name, answer["approved"], answer["reason"])
             noticed += [f"reviewer: {w}" for w in (answer.get("noticed") or [])]
@@ -397,7 +404,15 @@ def _judge(
                 refusals.append(answer["reason"])
                 refused_by.append(name)
         elif answer is not None:
-            run.dollars += spend
+            # Through `spend` like everything else. This used to add
+            # straight to `run.dollars`, which kept the critic out of the
+            # token totals and out of any record of what the run did.
+            run.spend(
+                spend,
+                station="critic",
+                item=item.id,
+                seconds=time.monotonic() - began,
+            )
             if on_gate:
                 on_gate(
                     item,
@@ -574,6 +589,7 @@ def _one_item(
                 attempt - 1,
                 "the run was stopped before this attempt started",
             ), None
+        started_at = time.monotonic()
         try:
             report, usage = work(
                 where,
@@ -610,7 +626,13 @@ def _one_item(
                 item=item, outcome=Outcome.BLOCKED, attempts=attempt, note=str(stop)
             ), None
 
-        run.spend(usage)
+        run.spend(
+            usage,
+            station="engineer",
+            item=item.id,
+            attempt=attempt,
+            seconds=time.monotonic() - started_at,
+        )
 
         # The machine, not the item. A worker that could not reach the
         # model API or was refused by the sandbox has established nothing
@@ -664,6 +686,7 @@ def _one_item(
         if asked and not settled:
             if on_gate:
                 on_gate(item, "asked", True, asked)
+            asked_at = time.monotonic()
             said, spend = answer(
                 where,
                 run.plan,
@@ -674,7 +697,13 @@ def _one_item(
                 model=model,
                 on_event=on_event,
             )
-            run.spend(spend)
+            run.spend(
+                spend,
+                station="planner-answer",
+                item=item.id,
+                attempt=attempt,
+                seconds=time.monotonic() - asked_at,
+            )
             settled = said
             if on_gate:
                 on_gate(item, "answered", True, said)
@@ -1308,7 +1337,7 @@ def _split_it(run, item, result, engine, model, on_event, on_gate) -> bool:
             on_event("planner", f"could not split item {item.id}: {exc}")
         return False
 
-    run.spend(spend)
+    run.spend(spend, station="planner-split", item=item.id)
     if not pieces:
         return False
 

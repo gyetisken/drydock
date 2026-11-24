@@ -25,6 +25,7 @@ fixes it.
 
 import inspect
 from pathlib import Path
+from typing import ClassVar
 
 from drydock import blame, orchestrate, session
 
@@ -229,6 +230,8 @@ class TestItIsShownUnderTheRightStation:
 
         class Fake:
             _agent_event = session.Session._agent_event
+            # The real session stamps when a station started here.
+            _began: ClassVar[dict] = {}
             feed = type("F", (), {"emit": lambda self, *a, **k: heard.append(k)})()
 
         route = session.Session._station_event(Fake())
@@ -240,6 +243,8 @@ class TestItIsShownUnderTheRightStation:
 
         class Fake:
             _agent_event = session.Session._agent_event
+            # The real session stamps when a station started here.
+            _began: ClassVar[dict] = {}
             feed = type("F", (), {"emit": lambda self, *a, **k: heard.append(k)})()
 
         route = session.Session._station_event(Fake())

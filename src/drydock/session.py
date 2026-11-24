@@ -11,6 +11,7 @@ import os
 import re
 import tempfile
 import threading
+import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import ClassVar
@@ -103,6 +104,8 @@ class Session:
         within_minutes: float = 0.0,
     ) -> None:
         self.feed = Feed()
+        # When each station started, for the spend record.
+        self._began: dict[str, float] = {}
         self.feed.also(self._write_log)
         self.repo = repo
         self.task = task
@@ -125,6 +128,9 @@ class Session:
         # How much ceremony this job gets. Decided once, here, and carried
         # rather than re-derived anywhere downstream.
         self.policy = policy or of(None)
+        # What was requested, before the risk floor had its say. Kept so
+        # the record can show a raise rather than only its result.
+        self.asked_profile = (policy.profile if policy else "") if not floor else ""
         # Whatever this person always wants true of work in this repository.
         # Appended to the task rather than mixed into the system prompt, so
         # it is visible in the run record as part of what was asked for.
@@ -181,6 +187,14 @@ class Session:
             pass
 
     def _agent_event(self, who: str):
+        # When this station started, so `_spent` can say how long it took
+        # without a clock at every call site. Stamped where the callback
+        # is built, which is immediately before the station is asked to
+        # work. For a station awaited through a future the figure
+        # includes any time spent waiting on a sibling running beside it,
+        # which is what a person watching the page experiences anyway.
+        self._began[who] = time.monotonic()
+
         def report(what: str, text: str) -> None:
             # Named `what` rather than `kind`: emit() takes the event kind as
             # its first argument, so a field called kind collides with it.
@@ -243,6 +257,11 @@ class Session:
             self.run.budget = self.budget
             self.run.engine = self.engine
             self.run.model = self.model
+            # The same three fields the CLI writes, so a record says what
+            # it ran as and whether the person or the risk floor decided.
+            self.run.profile_asked = self.asked_profile
+            self.run.profile_used = self.policy.profile
+            self.run.profile_floor = self.floor
             self.feed.emit(
                 "run.started",
                 repo=self.repo.name,
@@ -903,7 +922,12 @@ class Session:
         the entire time, and a number that is wrong while looking precise is
         worse than no number.
         """
-        self.run.spend(usage)
+        began = self._began.pop(who, None)
+        self.run.spend(
+            usage,
+            station=who.lower(),
+            seconds=(time.monotonic() - began) if began else 0.0,
+        )
         self.run.save()
         self.feed.emit("spend", cost=round(self.run.cost, 2), who=who)
 
@@ -1064,7 +1088,7 @@ class Session:
                             model=self.model,
                             on_event=self._agent_event("Critic"),
                         )
-                        self.run.dollars += dollars
+                        self._spent(dollars, "Critic")
                     except Exception as exc:  # noqa: BLE001 - a look is not a run
                         self.feed.emit(
                             "agent.state",
@@ -1656,7 +1680,7 @@ class Session:
 
         if seen is None:
             return
-        self.run.dollars += spend
+        self._spent(spend, "Critic")
         # Nothing is reverted on the strength of this one - the work has
         # already been verified piece by piece - so a check that could not
         # finish is said rather than hidden, under its own station.
