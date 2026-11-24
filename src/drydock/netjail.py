@@ -32,6 +32,21 @@ WHAT THIS IS NOT, and the word "isolation" is wrong for it:
   seatbelt is        Apple deprecated `sandbox-exec`. It works today.
   deprecated.        Nothing promises it works next release.
 
+And one compatibility cost, measured rather than expected:
+`drydock-look` does not work in here. It starts the project's dev server
+and then connects to it, and that connection is loopback-to-loopback,
+which this profile denies along with everything else. Narrowing the
+allowance to just that port was tried and cannot be written: seatbelt
+takes an exact port or a wildcard - no range, no pattern - the profile
+is fixed when the worker execs while the port is chosen inside the jail
+minutes later, nothing inside can widen it (a nested profile is refused
+outright, not merely ignored), and there is no filter for whose process
+is listening, so an allowed port would trust a leftover server from an
+unrelated run. All four were measured. See
+`TestWhySpecificLocalPortsCannotBeAllowed`.
+
+So a jailed run and a looked-at run are, for now, two different runs.
+
 What it does buy: the demonstrated path is closed, every allowed
 connection is named in a log, and anything else fails loudly rather than
 succeeding quietly.

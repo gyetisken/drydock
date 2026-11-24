@@ -428,3 +428,69 @@ class TestOnThisMachineItActuallyRefuses:
             command, check=False, capture_output=True, text=True, env=env, timeout=60
         )
         assert target.read_text() == "ok"
+
+
+class TestWhySpecificLocalPortsCannotBeAllowed:
+    """Why the jail allows one loopback port and not the preview's.
+
+    Asked for: allow only the ports this run's preview server, browser
+    and CDP connection need, and make sure the port belongs to the
+    process it is supposed to. Measured against seatbelt, and it cannot
+    be done - so it is written down here rather than quietly traded for
+    opening all of localhost.
+
+    The grammar, from `sandbox-exec` itself:
+
+        (remote ip "localhost:9001")      accepted
+        (remote ip "localhost:*")         accepted
+        (remote ip "localhost:9001-9010") invalid port in network address
+        (remote ip (regex #"localhost:9[0-9]+"))
+                                          remote expects string argument
+        (remote ip "127.0.0.1:9001")      host must be * or localhost
+        ... (process-name "node")         unbound variable: process-name
+
+    So the expressible universe is exact single ports or a wildcard.
+    There is no range, no pattern, and no way to say whose port it is.
+
+    Three things follow, and each on its own would be enough:
+
+    1. The profile is fixed when the worker execs. The preview port is
+       chosen minutes later, inside the jail, by `preview._free_port`.
+    2. Nothing inside can widen it. A nested `sandbox-exec` does not
+       merely fail to add permissions - it cannot be applied at all:
+       `sandbox_apply: Operation not permitted`.
+    3. Even with the port known, seatbelt would trust whatever is
+       listening on it. On this machine that is not hypothetical: a
+       leftover `astro dev` from an earlier run was holding 4321 while
+       these were being measured.
+    """
+
+    def test_the_profile_allows_exactly_one_loopback_port(self):
+        assert netjail.PROFILE.count("(allow network-outbound") == 2
+        assert '(remote ip "localhost:{port}")' in netjail.PROFILE
+        assert '(remote ip "localhost:*")' not in netjail.PROFILE
+
+    def test_the_port_is_the_proxys_and_nothing_else(self, monkeypatch):
+        monkeypatch.setattr(netjail, "possible", lambda: "")
+        command, env = netjail.around(["echo"], {})
+        profile = Path(command[2]).read_text()
+        port = env["DRYDOCK_NETJAIL_PORT"]
+        assert profile.count("allow network-outbound") == 2
+        assert f'"localhost:{port}"' in profile
+        assert env["HTTPS_PROXY"].endswith(":" + port)
+
+    def test_the_preview_port_is_chosen_after_the_profile_is_written(self):
+        """The ordering that makes a per-run allowance impossible: the
+        jail is built around the worker, and the worker starts the
+        preview later from inside it."""
+        from drydock import preview
+
+        source = inspect.getsource(preview.start)
+        assert "port = _free_port()" in source
+
+    def test_the_module_says_the_preview_does_not_work_jailed(self):
+        said = flat(Path("src/drydock/netjail.py").read_text())
+        assert "drydock-look" in said
+        assert (
+            "that connection is loopback-to-loopback, which this profile denies" in said
+        )
