@@ -554,6 +554,10 @@ def work(
                 "noticed": result.noticed,
                 "question": result.question,
                 "died": result.died,
+                # Why the machine stopped it, when it was the machine.
+                # Dropped here once, which meant the orchestrator could
+                # not tell a closed network from an item that gave up.
+                "walled": result.walled,
             },
             _AsUsage(result),
         )

@@ -63,8 +63,12 @@ class TestWhereItIsAsked:
         assert "elif _stopping(should_stop):" in source
 
     def test_an_item_is_not_split_while_stopping(self):
+        """Both guards, in order, without pinning how they are spelled:
+        a second condition was added beside this one and the exact
+        one-liner stopped existing."""
         source = inspect.getsource(orchestrate.execute)
-        assert "not _stopping(should_stop) and _split_it(" in source
+        stopping = source.index("not _stopping(should_stop)")
+        assert stopping < source.index("_split_it(")
 
     def test_the_wave_loop_still_asks(self):
         assert "_stopping(should_stop)" in inspect.getsource(orchestrate.execute)

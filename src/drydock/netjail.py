@@ -14,8 +14,23 @@ allow-list.
 So this closes it one level down, where the operating system can be made
 to care. The engineer's worker, and every process it starts, runs under
 a seatbelt profile that denies outbound connections - except to one port
-on loopback, where a proxy accepts CONNECT to a short list of package
-registries and refuses everything else.
+on loopback, where a proxy accepts CONNECT to two short lists and
+refuses everything else:
+
+  REGISTRIES     where the project's dependencies come from.
+  CONTROL_PLANE  `api.anthropic.com`, which is the worker's own
+                 connection. It is a Claude Code process; without this
+                 it cannot think, the way this program cannot publish
+                 without `git push`. Kept as a separate list so a
+                 refusal can say which question it is answering, and as
+                 an exact host so no subdomain rides in on it.
+
+That second list was missing for the whole life of this module and
+nobody noticed, because every compatibility test was build, test,
+preview and fetch - none of which needs a model. The first real jailed
+worker came back `Failed to authenticate. API Error: 403
+api.anthropic.com is not a package registry this run may reach` and the
+run reported every item BLOCKED.
 
 WHAT THIS IS NOT, and the word "isolation" is wrong for it:
 
@@ -210,7 +225,29 @@ def wanted() -> bool:
 # --------------------------------------------------------------------------
 
 
-def _permitted(host: str) -> bool:
+# The worker's own control plane, kept apart from the registries on
+# purpose. The worker *is* a Claude Code process: it cannot think without
+# reaching this, the way this program cannot publish without `git push`.
+#
+# Measured, and the reason this exists: with only the registries allowed,
+# the engineer came back `Failed to authenticate. API Error: 403
+# api.anthropic.com is not a package registry this run may reach`, and
+# every item was reported BLOCKED. Netjail had never run a real worker -
+# every compatibility test until then was build, test, preview and fetch,
+# none of which needs a model.
+#
+# Exact host, no leading dot, so no subdomain rides in on it. Port 443
+# only, like everything else here.
+#
+# WHAT IT COSTS, and the word "closed" is wrong for it: this is an
+# egress channel and a wide one. Sending the repository to the model is
+# what a coding agent does, so anything the worker can read it can also
+# put in a request. The jail does not change that and was never able to.
+# What it changes is that a worker cannot reach anywhere *else*.
+CONTROL_PLANE = ("api.anthropic.com",)
+
+
+def _matches(host: str, rules) -> bool:
     """The host, or a subdomain of it. Never a name that merely ends in it.
 
     The first version matched by suffix against the list as written, and
@@ -223,11 +260,31 @@ def _permitted(host: str) -> bool:
     host = host.lower().rstrip(".")
     if not host:
         return False
-    for rule in REGISTRIES:
+    for rule in rules:
         bare = rule.lower().strip().lstrip(".")
         if host == bare or host.endswith("." + bare):
             return True
     return False
+
+
+def reachable(host: str) -> str:
+    """Which list lets this host through, or "" for none.
+
+    Two lists rather than one longer list, because they answer different
+    questions and a refusal should say which one it is. A registry is
+    where the project's dependencies come from; the control plane is how
+    the worker exists at all.
+    """
+    if _matches(host, CONTROL_PLANE):
+        return "control plane"
+    if _matches(host, REGISTRIES):
+        return "registry"
+    return ""
+
+
+def _permitted(host: str) -> bool:
+    """Kept for the registry question alone, which is what it always was."""
+    return _matches(host, REGISTRIES)
 
 
 def _public(host: str) -> tuple[bool, str]:
@@ -305,13 +362,16 @@ class _Through(socketserver.BaseRequestHandler):
             return self._no(
                 sock, 403, f"port {port or '?'} is not open from here. Only 443."
             )
-        if not _permitted(host):
+        why = reachable(host)
+        if not why:
             self.server.noted.append(("refused", f"CONNECT {target} (host)"))
             return self._no(
                 sock,
                 403,
-                f"{host} is not a package registry this run may reach. "
-                f"Allowed: {', '.join(REGISTRIES)}.",
+                f"{host} is not somewhere this run may reach. Package "
+                f"registries: {', '.join(REGISTRIES)}. Nothing else, except "
+                f"the model API itself ({', '.join(CONTROL_PLANE)}), which is "
+                "this worker's own connection and not a way out to anywhere.",
             )
         ok, where = _public(host)
         if not ok:
@@ -324,7 +384,7 @@ class _Through(socketserver.BaseRequestHandler):
             self.server.noted.append(("failed", f"{host}: {exc}"))
             return self._no(sock, 502, f"{host} did not answer: {exc}")
 
-        self.server.noted.append(("allowed", f"CONNECT {host}:443 -> {where}"))
+        self.server.noted.append(("allowed", f"CONNECT {host}:443 -> {where} ({why})"))
         sock.sendall(b"HTTP/1.1 200 Connection established\r\n\r\n")
         self._pipe(sock, out)
 
@@ -574,11 +634,16 @@ def around(command: list[str], env: dict) -> tuple[list[str], dict]:
 
 
 def said() -> str:
-    """One line for the feed, so a jailed run says so out loud."""
+    """One line for the feed, so a jailed run says so out loud.
+
+    It has to name both lists. "Package registries only" was true of the
+    profile and false of what is open, which is the kind of sentence
+    somebody reads once and then trusts.
+    """
     return (
-        "the network is closed for the engineer: package registries only, "
-        "through a proxy. DNS and the registries themselves are still "
-        "channels - this is not isolation."
+        "the network is closed for the engineer: package registries and the "
+        "model API, through a proxy, and nothing else. DNS, the registries "
+        "and the model API are all still channels - this is not isolation."
     )
 
 

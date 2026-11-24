@@ -295,7 +295,10 @@ class TestItDoesNotClaimIsolation:
     def test_the_line_in_the_feed_says_so_too(self):
         said = flat(netjail.said())
         assert "this is not isolation" in said
-        assert "package registries only" in said
+        # Both lists, because naming one of two understates what is
+        # open, and that is a sentence somebody reads once and trusts.
+        assert "package registries and the model API" in said
+        assert "and nothing else" in said
 
     def test_the_engineer_is_told_the_same(self):
         said = flat(engineer.JAILED)
@@ -1031,3 +1034,180 @@ class TestTheCheckRunsOnBothSidesForFetchingToo:
         _command, env = netjail.around(["echo"], {})
         assert env["DRYDOCK_WEB_VIA"] == str(netjail.desk().server_address[1])
         assert env["DRYDOCK_WEB_VIA"] == env["DRYDOCK_LOOK_VIA"]
+
+
+# --------------------------------------------------------------------------
+# The worker's own connection, and what happens when it is missing
+# --------------------------------------------------------------------------
+
+
+class TestTheWorkerCanStillReachTheModel:
+    """Measured, and the reason this exists: with only the registries
+    allowed, the engineer came back "Failed to authenticate. API Error:
+    403 api.anthropic.com is not a package registry this run may reach"
+    and every item was reported BLOCKED. Netjail had never run a real
+    worker - every compatibility test until then was build, test,
+    preview and fetch, none of which needs a model."""
+
+    def test_the_model_api_is_reachable(self):
+        assert netjail.reachable("api.anthropic.com") == "control plane"
+
+    def test_it_is_a_separate_list_from_the_registries(self):
+        """A refusal has to be able to say which question it is
+        answering: where dependencies come from, or how the worker
+        exists at all."""
+        assert netjail.CONTROL_PLANE
+        for entry in netjail.CONTROL_PLANE:
+            assert entry not in netjail.REGISTRIES
+        assert netjail._permitted("api.anthropic.com") is False
+
+    def test_a_registry_is_still_a_registry(self):
+        assert netjail.reachable("registry.npmjs.org") == "registry"
+
+    @pytest.mark.parametrize(
+        "host",
+        [
+            "anthropic.com",
+            "notapi.anthropic.com",
+            "evil-api.anthropic.com",
+            "api.anthropic.com.evil.test",
+            "console.anthropic.com",
+            "statsig.anthropic.com",
+        ],
+    )
+    def test_nothing_rides_in_beside_it(self, host):
+        """Exact host, no leading dot. The narrowest thing that works."""
+        assert netjail.reachable(host) == ""
+
+    def test_nothing_else_was_opened(self):
+        for host in (
+            "commons.wikimedia.org",
+            "upload.wikimedia.org",
+            "github.com",
+            "example.com",
+            "169.254.169.254",
+        ):
+            assert netjail.reachable(host) == ""
+
+    def test_it_is_still_443_only(self):
+        source = inspect.getsource(netjail._Through.handle)
+        assert 'if port != "443"' in source
+
+    def test_it_is_still_connect_only(self):
+        """A forward proxy would be an open relay for anything that can
+        speak HTTP, whatever the host list says."""
+        source = inspect.getsource(netjail._Through.handle)
+        assert 'method != "CONNECT"' in source
+
+    def test_the_address_is_still_resolved_and_checked_here(self):
+        source = inspect.getsource(netjail._Through.handle)
+        assert source.index("reachable(host)") < source.index("_public(host)")
+
+    def test_the_log_says_which_list_let_it_through(self):
+        source = inspect.getsource(netjail._Through.handle)
+        assert "({why})" in source
+
+    def test_the_egress_cost_is_written_down(self):
+        """Not "closed". Sending the repository to the model is what a
+        coding agent does, so this is an egress channel and saying
+        otherwise would be the guard nobody should trust."""
+        said = flat(inspect.getsource(netjail))
+        assert "egress channel and a wide one" in said
+
+
+class TestAClosedNetworkIsNotAnOversizedItem:
+    """The second half of the same failure. The orchestrator read a
+    worker that wrote no report as an item too large, split it in two,
+    and both halves failed the same way. Three workers, one cause, and
+    the run reported the wrong one."""
+
+    REAL = (
+        "the worker stopped without writing a report and exited 1.\n\n"
+        "Failed to authenticate. API Error: 403 api.anthropic.com is not "
+        "a package registry this run may reach."
+    )
+
+    def test_the_real_failure_is_recognised(self):
+        assert engines.hit_a_wall(self.REAL) == "the worker could not authenticate"
+
+    @pytest.mark.parametrize(
+        "said,because",
+        [
+            ("Tunnel connection failed", "the sandbox proxy refused the connection"),
+            ("connect EPERM 1.1.1.1:443", "the sandbox refused a connection"),
+            ("getaddrinfo ENOTFOUND api.example.test", "a name could not be resolved"),
+            (
+                "API Error: 401 authentication_error",
+                "the model API refused the credentials",
+            ),
+            (
+                "API Error: 429 rate_limit_error",
+                "the model API is rate limiting this account",
+            ),
+            ("x is not somewhere this run may reach", "the sandbox refused an address"),
+        ],
+    )
+    def test_every_shape_of_it(self, said, because):
+        assert engines.hit_a_wall(said) == because
+
+    @pytest.mark.parametrize(
+        "said",
+        [
+            "the worker stopped without writing a report and exited 1",
+            "it used all 60 turns it was given",
+            "it ran for 12 minutes without finishing and was stopped",
+            "the test suite failed: 3 failed, 19 passed",
+            "",
+        ],
+    )
+    def test_an_ordinary_failure_is_left_alone(self, said):
+        """A worker that really did run out of turns is a different
+        thing and still gets another attempt and a split."""
+        assert engines.hit_a_wall(said) == ""
+
+    def test_the_engine_labels_the_result_rather_than_guessing(self):
+        source = inspect.getsource(engines.ClaudeCodeEngine.work)
+        assert "wall = hit_a_wall(reason)" in source
+        assert "walled=wall," in source
+
+    def test_the_turn_count_is_not_read_as_a_cause(self):
+        """A worker that cannot authenticate also stops at zero turns.
+        The sentence about the item being too large must not be the one
+        the run reports."""
+        source = inspect.getsource(engines.ClaudeCodeEngine.work)
+        assert source.index("too large to be one item") < source.index(
+            "wall = hit_a_wall(reason)"
+        )
+
+    def test_it_spends_no_further_attempt(self):
+        from drydock import orchestrate
+
+        source = inspect.getsource(orchestrate)
+        assert 'if report.get("walled"):' in source
+        # Before the kill check, because a worker that cannot
+        # authenticate also exits without a report.
+        assert source.index('report.get("walled")') < source.index('report.get("died")')
+
+    def test_and_it_is_never_split(self):
+        from drydock import orchestrate
+
+        source = inspect.getsource(orchestrate)
+        assert "not result.walled" in source
+        assert source.index("not result.walled") < source.index("_split_it(")
+
+    def test_the_cause_reaches_the_item_result(self):
+        from drydock.models import ItemResult
+
+        assert "walled" in ItemResult.model_fields
+
+    def test_the_note_says_it_is_the_machine(self):
+        source = inspect.getsource(engines.ClaudeCodeEngine.work)
+        assert "This is the machine, not the work" in source
+        assert "a smaller item would" in source
+
+    def test_one_classifier_rather_than_two(self):
+        """Two copies would drift and the second would be the one that
+        mattered."""
+        from drydock import orchestrate
+
+        assert "WALLED" not in inspect.getsource(orchestrate)

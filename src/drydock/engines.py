@@ -101,6 +101,11 @@ class EngineResult:
     # an item the engineer could not do, and it calls for the opposite
     # response: try the same item again rather than giving up on it.
     died: bool = False
+    # The worker could not reach something it needs, so nothing about the
+    # item was learned. Set to the cause. Neither another attempt nor a
+    # smaller item fixes this, and treating it as either is how a closed
+    # network got reported as an oversized task.
+    walled: str = ""
     dollars: float = 0.0
     turns: int = 0
 
@@ -868,11 +873,23 @@ class ClaudeCodeEngine:
                 )
             if why:
                 reason += f".\n\n{why}"
+            # Before anything else is concluded from it. A worker that
+            # could not reach the model has not told us the item is too
+            # large, and the turn count it stopped at means nothing.
+            wall = hit_a_wall(reason)
+            if wall:
+                reason = (
+                    f"{wall}, so this item was not attempted. Nothing about "
+                    "the item has been established and nothing was changed. "
+                    "This is the machine, not the work: a smaller item would "
+                    "fail the same way.\n\n" + reason
+                )
             return EngineResult(
                 done=False,
                 summary=reason,
                 files_changed=[],
                 noticed=[],
+                walled=wall,
                 # A worker that stopped showing anything is a worker that
                 # stopped working, which is not the item's fault and is
                 # worth trying again. A worker that used its whole clock
@@ -1189,6 +1206,49 @@ def _was_killed(code: int | None) -> bool:
     if code is None:
         return False
     return code < 0 or 128 < code < 160
+
+
+# What the worker says when the problem is the machine rather than the
+# item. Matched against the worker's own failure text only - never
+# against tool output, where a test the engineer wrote may legitimately
+# print any of these.
+#
+# Measured, and the reason this list exists: with the network closed and
+# the model API not on the allow-list, the engineer returned "Failed to
+# authenticate. API Error: 403 api.anthropic.com is not a package
+# registry this run may reach". The orchestrator read a worker that
+# wrote no report as an item too large, split it in two, and both halves
+# failed the same way. Three workers, one cause, and the run reported
+# the wrong one.
+WALLED = (
+    ("failed to authenticate", "the worker could not authenticate"),
+    ("is not somewhere this run may reach", "the sandbox refused an address"),
+    ("is not a package registry", "the sandbox refused an address"),
+    ("tunnel connection failed", "the sandbox proxy refused the connection"),
+    ("could not resolve", "a name could not be resolved"),
+    ("enotfound", "a name could not be resolved"),
+    ("econnrefused", "a connection was refused"),
+    ("eperm", "the sandbox refused a connection"),
+    ("operation not permitted", "the sandbox refused a connection"),
+    ("api error: 401", "the model API refused the credentials"),
+    ("api error: 403", "the model API or the sandbox refused the request"),
+    ("api error: 429", "the model API is rate limiting this account"),
+    ("api error: 5", "the model API returned a server error"),
+)
+
+
+def hit_a_wall(text: str) -> str:
+    """Why this is the machine's fault, or "" if it is not.
+
+    One classifier, used by the engine to label a result and by the
+    orchestrator to decide not to retry and not to split. Two copies of
+    this would drift and the second one would be the one that mattered.
+    """
+    said = (text or "").lower()
+    for mark, because in WALLED:
+        if mark in said:
+            return because
+    return ""
 
 
 def _why_it_stopped(which: str, seconds: float) -> str:

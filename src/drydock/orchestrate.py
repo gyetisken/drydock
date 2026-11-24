@@ -612,6 +612,24 @@ def _one_item(
 
         run.spend(usage)
 
+        # The machine, not the item. A worker that could not reach the
+        # model API or was refused by the sandbox has established nothing
+        # about the work, so this spends no attempt, is not split, and
+        # says what actually happened. Before the kill check, because a
+        # worker that cannot authenticate also exits without a report and
+        # would otherwise be read as one that gave up on its own.
+        if report.get("walled"):
+            here.discard()
+            if on_event:
+                on_event("engine", f"{report['walled']} - not an item problem")
+            return ItemResult(
+                item=item,
+                outcome=Outcome.BLOCKED,
+                attempts=attempt,
+                note=report.get("summary", ""),
+                walled=report["walled"],
+            ), None
+
         # It was killed rather than finishing. Nothing it wrote is trusted,
         # but nothing about the item has been learned either, so this is not
         # an attempt and the right response is to try the same item again.
@@ -1212,8 +1230,10 @@ def execute(
                 # intervention this program has evidence for is exactly
                 # this one: the same site went from one item of five
                 # landing to six of seven when its largest was split.
-                pieces = not _stopping(should_stop) and _split_it(
-                    run, item, result, engine, model, on_event, on_gate
+                pieces = (
+                    not result.walled
+                    and not _stopping(should_stop)
+                    and _split_it(run, item, result, engine, model, on_event, on_gate)
                 )
                 if pieces:
                     continue

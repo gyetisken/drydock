@@ -156,6 +156,10 @@ class ItemResult(BaseModel):
     # because the weakest of the four claims is not worth six items
     # nobody attempted - and it is written down, because it is still true.
     outstanding: str = ""
+    # Why the machine stopped this item, when it was the machine. Carried
+    # so the run can report the real cause and so nothing downstream
+    # treats it as an item that needs to be smaller or tried again.
+    walled: str = ""
     # Everything true that was said about this item and did not stop it:
     # what the engineer noticed outside its scope, what the reviewer saw
     # in the diff, what the critic saw on the page. All three stations
