@@ -472,6 +472,42 @@ class Run(BaseModel):
                 )
             )
 
+    # Which stations happen before a line of the thing anybody asked for
+    # exists, and which happen because it does. Named rather than
+    # inferred: on run 20261124-153354 the preparation was 323 of 497
+    # seconds and $1.53 of $2.22, and nothing in the record said so -
+    # the figure had to be added up by hand from the station lines.
+    BEFORE_ANY_CODE: ClassVar[tuple[str, ...]] = (
+        "analyst",
+        "architect",
+        "designer",
+        "planner",
+        "start",
+    )
+
+    def phases(self) -> dict[str, dict]:
+        """What was spent getting ready, and what was spent working.
+
+        `planner-answer` and `planner-split` are work, not preparation:
+        they happen because an item is being worked on and would not
+        happen without one.
+        """
+        out = {
+            "preparation": {"calls": 0, "seconds": 0.0, "dollars": 0.0},
+            "execution": {"calls": 0, "seconds": 0.0, "dollars": 0.0},
+        }
+        for line in self.timeline:
+            which = (
+                "preparation" if line.station in self.BEFORE_ANY_CODE else "execution"
+            )
+            out[which]["calls"] += 1
+            out[which]["seconds"] += line.seconds
+            out[which]["dollars"] += line.dollars
+        for held in out.values():
+            held["seconds"] = round(held["seconds"], 1)
+            held["dollars"] = round(held["dollars"], 4)
+        return out
+
     def by_station(self) -> dict[str, dict]:
         """What each station cost and how long it took, in call order."""
         totals: dict[str, dict] = {}

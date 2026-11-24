@@ -196,6 +196,18 @@ def _cmd_plan(args) -> int:
         raise SystemExit("that run has no survey yet")
     repo = Path(run.repo)
     policy = _policy_of(run)
+    # Planning twice costs what planning costs. I did it by accident on
+    # run 20261124-153354 - two planner calls, $0.38 and $0.15, and the
+    # second one's plan is the one that ran. Nothing stopped it and
+    # nothing would have said so afterwards if the station lines had not
+    # just started being written down.
+    if run.plan and not getattr(args, "again", False):
+        print(
+            f"run {run.id} already has a plan of {len(run.plan.items)} item(s). "
+            "Pass --again to plan it over, which costs another planner call, "
+            "or `drydock run` to work the plan it has."
+        )
+        return 0
 
     _say_profile(run, policy)
     print(f"planning: {run.task}\n")
@@ -285,6 +297,17 @@ def _cmd_run(args) -> int:
     said = _by_station(run)
     if said:
         print(said)
+        split = run.phases()
+        print(
+            f"  {'before any code':<16}  {split['preparation']['calls']:>2} call(s)  "
+            f"{split['preparation']['seconds']:>7.1f}s  "
+            f"${split['preparation']['dollars']:.2f}"
+        )
+        print(
+            f"  {'working':<16}  {split['execution']['calls']:>2} call(s)  "
+            f"{split['execution']['seconds']:>7.1f}s  "
+            f"${split['execution']['dollars']:.2f}"
+        )
     return 0
 
 
@@ -411,6 +434,11 @@ def main() -> None:
 
     p = sub.add_parser("plan", help="turn the survey into an ordered list of changes")
     p.add_argument("--run")
+    p.add_argument(
+        "--again",
+        action="store_true",
+        help="plan a run that already has a plan, which costs another planner call",
+    )
     p.set_defaults(func=_cmd_plan)
 
     r = sub.add_parser("run", help="work the plan, one item at a time")

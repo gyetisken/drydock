@@ -160,3 +160,79 @@ class TestTheExistingRecordIsUnchanged:
             "seconds",
             "dollars",
         }
+
+
+class TestGettingReadyIsToldApartFromWorking:
+    """On run 20261124-153354 the preparation was 323 of 497 seconds and
+    $1.53 of $2.22. Nothing in the record said so; it had to be added up
+    by hand from the station lines."""
+
+    def a_run_like_that(self) -> Run:
+        run = a_run()
+        run.spend(Usage(1.00), station="analyst", seconds=227.0)
+        run.spend(Usage(0.38), station="planner", seconds=45.6)
+        run.spend(Usage(0.15), station="planner", seconds=50.6)
+        run.spend(Usage(0.69), station="engineer", item=1, attempt=1, seconds=109.8)
+        return run
+
+    def test_the_two_halves_are_separately_measurable(self):
+        split = self.a_run_like_that().phases()
+        assert split["preparation"]["calls"] == 3
+        assert split["preparation"]["seconds"] == 323.2
+        assert split["preparation"]["dollars"] == 1.53
+        assert split["execution"]["calls"] == 1
+        assert split["execution"]["seconds"] == 109.8
+
+    def test_they_add_up_to_the_whole(self):
+        run = self.a_run_like_that()
+        split = run.phases()
+        assert round(
+            split["preparation"]["dollars"] + split["execution"]["dollars"], 4
+        ) == round(run.dollars, 4)
+
+    def test_a_planner_answering_mid_item_is_work_not_preparation(self):
+        """It happens because an item is being worked on and would not
+        happen without one."""
+        run = a_run()
+        run.spend(Usage(0.1), station="planner-answer", item=1, attempt=2, seconds=20.0)
+        run.spend(Usage(0.1), station="planner-split", item=1, seconds=15.0)
+        split = run.phases()
+        assert split["preparation"]["calls"] == 0
+        assert split["execution"]["calls"] == 2
+
+    def test_every_station_the_loop_names_lands_on_one_side_or_the_other(self):
+        run = a_run()
+        for station in ("analyst", "planner", "engineer", "reviewer", "critic"):
+            run.spend(Usage(0.1), station=station, seconds=1.0)
+        split = run.phases()
+        assert split["preparation"]["calls"] + split["execution"]["calls"] == 5
+
+    def test_an_empty_run_says_zero_rather_than_raising(self):
+        split = a_run().phases()
+        assert split["preparation"]["calls"] == 0
+        assert split["execution"]["dollars"] == 0.0
+
+
+class TestAPlanIsNotPaidForTwice:
+    """Measured by accident: two planner calls on run 20261124-153354,
+    $0.38 and $0.15, and the second one's plan is the one that ran."""
+
+    def test_the_guard_is_there(self):
+        source = inspect.getsource(cli._cmd_plan)
+        assert "if run.plan and not getattr(args" in source
+        assert "--again" in inspect.getsource(cli) or "again" in source
+
+    def test_it_says_what_to_do_instead(self):
+        source = inspect.getsource(cli._cmd_plan)
+        assert "Pass --again" in source
+        assert "drydock run" in source
+
+    def test_planning_over_is_still_possible_when_asked(self):
+        source = inspect.getsource(cli)
+        assert '"--again"' in source
+        assert "costs another planner call" in source
+
+    def test_a_run_with_no_plan_is_not_blocked(self):
+        source = inspect.getsource(cli._cmd_plan)
+        # The guard reads the plan, so a run without one falls through.
+        assert source.index("if run.plan and not") < source.index('print(f"planning:')
