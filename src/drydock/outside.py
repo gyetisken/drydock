@@ -81,13 +81,28 @@ BIGGEST_PAGE = 2 * 1024 * 1024
 PATIENCE = 30.0
 HOPS = 3
 
+# What may be downloaded. Raster only, and the omission is deliberate:
+# an SVG is a document, not a picture. It can carry `<script>`, a
+# `javascript:` href, an `onload`, a `<foreignObject>` with markup in it,
+# and an `<image href="https://...">` that fetches on every page view -
+# and it arrives as text that goes straight into the repository, past a
+# diff somebody skims. Sanitising one properly is a parser and a
+# denylist that has to be right every time against a format designed to
+# be extensible.
+#
+# Nothing is lost that matters: the thing an SVG is wanted for here is a
+# drawing, and the engineer can write one. What this gives up is
+# downloading somebody else's, which is the half with the teeth.
 PICTURES = {
     "image/jpeg": ".jpg",
     "image/png": ".png",
     "image/webp": ".webp",
     "image/gif": ".gif",
-    "image/svg+xml": ".svg",
 }
+
+# Refused with its own sentence rather than the general one, because
+# "that is not a picture" would be a lie about an SVG.
+NOT_DOWNLOADED = {"image/svg+xml", "image/svg"}
 READABLE = ("text/html", "text/plain", "text/markdown", "application/json")
 
 # What `have` counts as a picture already in the project.
@@ -388,9 +403,14 @@ def find(words: list[str], most: int = 6) -> int:
 
     print(f"FOUND {len(pages)} for {terms!r}  (Wikimedia Commons)")
     print()
+    shown = 0
     for page in list(pages.values())[:most]:
         shots = page.get("imageinfo") or [{}]
         info = shots[0]
+        if (info.get("mime") or "") in NOT_DOWNLOADED:
+            # Offering one would be offering something `get` refuses.
+            continue
+        shown += 1
         meta = info.get("extmetadata") or {}
         licence = _plain(str((meta.get("LicenseShortName") or {}).get("value", "?")))
         by = _plain(str((meta.get("Artist") or {}).get("value", "unknown")))
@@ -403,6 +423,8 @@ def find(words: list[str], most: int = 6) -> int:
         print(f"    by: {by[:70]}")
         print(f"    get: {url}")
         print()
+    if not shown:
+        print("  (every result was a vector file, which is not downloaded here)")
     print(
         "  Every one of these is free to use and most of them require you "
         "to say who made it and under what licence. `drydock-web get <url> "
@@ -501,6 +523,14 @@ def get(url: str, into: str, where: Path) -> int:
     except Refused as exc:
         return _no(str(exc))
 
+    if said.kind in NOT_DOWNLOADED:
+        return _no(
+            "an SVG is not downloaded here. It is a document rather than a "
+            "picture - it can carry script, a remote reference that fetches "
+            "on every view, and markup - and it would land in the repository "
+            "as text. Draw the one you need instead: an SVG you write is a "
+            "real asset, and writing it is not restricted."
+        )
     if said.kind not in PICTURES:
         return _no(
             f"that answered {said.kind or 'nothing'}, which is not a picture. "
