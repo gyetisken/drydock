@@ -32,8 +32,8 @@ WHAT THIS IS NOT, and the word "isolation" is wrong for it:
   seatbelt is        Apple deprecated `sandbox-exec`. It works today.
   deprecated.        Nothing promises it works next release.
 
-And one compatibility cost, measured rather than expected:
-`drydock-look` does not work in here. It starts the project's dev server
+And the compatibility cost it used to have, and how it was paid:
+`drydock-look` could not work in here. It starts the project's dev server
 and then connects to it, and that connection is loopback-to-loopback,
 which this profile denies along with everything else. Narrowing the
 allowance to just that port was tried and cannot be written: seatbelt
@@ -45,7 +45,21 @@ is listening, so an allowed port would trust a leftover server from an
 unrelated run. All four were measured. See
 `TestWhySpecificLocalPortsCannotBeAllowed`.
 
-So a jailed run and a looked-at run are, for now, two different runs.
+So the port was not opened and the work moved instead, following
+`drydock-web`: drydock holds the socket, the worker asks. The profile
+names a second loopback port - the errand desk - and both it and the
+proxy are sockets this process bound before writing the profile, which
+is how "whose port is it" gets answered without a filter for it.
+
+What crosses is a token and some routes. Which repository, which command
+starts it, where the pictures go and how many looks are left were all
+decided here when the token was issued; a worker that lies about any of
+them is describing something this side never reads. The routes are
+checked on both sides, because a check that only runs where the caller
+runs is not a check. The token dies with the item.
+
+The desk takes one verb and answers in text. It is not a proxy and not
+a shell: no address and no command appears anywhere in what it accepts.
 
 What it does buy: the demonstrated path is closed, every allowed
 connection is named in a log, and anything else fails loudly rather than
@@ -61,6 +75,7 @@ import contextlib
 import ipaddress
 import os
 import platform
+import secrets
 import select
 import shutil
 import socket
@@ -96,8 +111,14 @@ PROFILE = """(version 1)
 (deny network-outbound)
 (deny network-inbound)
 
-;; One way out: the dependency proxy on loopback.
+;; Two ways out, both to sockets this process bound itself before the
+;; profile was written - so "whose port is it" is answered by having
+;; opened it, which is the one way seatbelt cannot answer. The first is
+;; the dependency proxy. The second is where `drydock-look` sends its
+;; request, because the looking happens out here where there is a
+;; loopback to use.
 (allow network-outbound (remote ip "localhost:{port}"))
+(allow network-outbound (remote ip "localhost:{errand}"))
 
 ;; Not the network, and some toolchains need them.
 (allow network-outbound (remote unix-socket))
@@ -317,6 +338,93 @@ def possible() -> str:
     return ""
 
 
+# --------------------------------------------------------------------------
+# The errand desk
+# --------------------------------------------------------------------------
+
+
+ERRANDS: dict[str, object] = {}
+_DESK: socketserver.ThreadingTCPServer | None = None
+_DESK_LOCK = threading.Lock()
+
+
+class _Errand(socketserver.BaseRequestHandler):
+    """One request, one verb, and the worker names no path and no command.
+
+    It sends a token and some routes. What repository that token belongs
+    to, where the pictures go and what command starts the project are all
+    decided here, from what was written down when the token was issued.
+    A worker that lies about any of it is describing something this side
+    never reads.
+    """
+
+    def handle(self) -> None:
+        sock = self.request
+        sock.settimeout(600)
+        try:
+            said = b""
+            while b"\n" not in said and len(said) < 4096:
+                chunk = sock.recv(512)
+                if not chunk:
+                    return
+                said += chunk
+        except OSError:
+            return
+        answer = self._answer(said.split(b"\n", 1)[0].decode("utf-8", "replace"))
+        with contextlib.suppress(OSError):
+            sock.sendall(answer.encode() + b"\n\x00")
+
+    @staticmethod
+    def _answer(line: str) -> str:
+        from .route import is_route
+
+        parts = line.split()
+        if len(parts) < 2 or parts[0] != "LOOK":
+            return "NOT LOOKED\n  that is not a request this desk takes"
+        token, routes = parts[1], parts[2:]
+        errand = ERRANDS.get(token)
+        if errand is None:
+            # Not "wrong token" - a worker that can enumerate is a worker
+            # that can find one. Nothing here says which part was wrong.
+            return "NOT LOOKED\n  this request was not recognised"
+        # Routes are checked again on this side. The worker checked them
+        # too, and a check that only runs where the caller runs is not a
+        # check.
+        for route in routes:
+            if not is_route(route):
+                return f"NOT LOOKED\n  {route!r} is not a path on this project"
+        return errand(routes)
+
+
+def desk() -> socketserver.ThreadingTCPServer:
+    """The one errand desk for this process, bound on first use."""
+    global _DESK
+    with _DESK_LOCK:
+        if _DESK is None:
+            server = socketserver.ThreadingTCPServer(("127.0.0.1", 0), _Errand)
+            server.daemon_threads = True
+            server.allow_reuse_address = True
+            threading.Thread(target=server.serve_forever, daemon=True).start()
+            _DESK = server
+        return _DESK
+
+
+def an_errand(doing) -> str:
+    """Register one piece of privileged work and return its token.
+
+    The token is the whole of the worker's authority: it names one
+    repository, one item and one budget, it was issued here, and it is
+    forgotten when the item is.
+    """
+    token = secrets.token_urlsafe(24)
+    ERRANDS[token] = doing
+    return token
+
+
+def forget(token: str) -> None:
+    ERRANDS.pop(token, None)
+
+
 def around(command: list[str], env: dict) -> tuple[list[str], dict]:
     """Wrap one command in the jail, and point it at the proxy.
 
@@ -329,9 +437,10 @@ def around(command: list[str], env: dict) -> tuple[list[str], dict]:
         raise CannotJail(why)
 
     port = proxy().server_address[1]
+    errand = desk().server_address[1]
     try:
         where = Path(tempfile.mkdtemp(prefix="drydock-netjail-")) / "profile.sb"
-        where.write_text(PROFILE.format(port=port))
+        where.write_text(PROFILE.format(port=port, errand=errand))
     except OSError as exc:
         raise CannotJail(f"the sandbox profile could not be written: {exc}") from exc
 
@@ -349,6 +458,9 @@ def around(command: list[str], env: dict) -> tuple[list[str], dict]:
         "NO_PROXY": "",
         # So a worker can see it is in one without being told twice.
         "DRYDOCK_NETJAIL_PORT": str(port),
+        # Where to send a look. The token that goes with it is added per
+        # item, by whoever registered the errand.
+        "DRYDOCK_LOOK_VIA": str(errand),
     }
     return ["sandbox-exec", "-f", str(where), *command], env
 

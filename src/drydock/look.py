@@ -158,15 +158,24 @@ def _project() -> Path | None:
     return where if where.is_dir() else None
 
 
-def _not_looked(why: str) -> int:
-    """Say that nothing was established, in words that cannot be misread."""
-    print("NOT LOOKED")
-    print(f"  {why}")
-    print(
+def _said_not_looked(why: str) -> str:
+    """The words for "nothing was established", written once.
+
+    Built rather than printed because the same sentence has to travel
+    back over a socket when the looking is done elsewhere, and two
+    spellings of a refusal is how one of them stops being read.
+    """
+    return (
+        "NOT LOOKED\n"
+        f"  {why}\n"
         "\n  Nothing about the rendered page has been established by this. "
         "Do not report that you checked it, and do not describe what it "
         "looks like - you have not seen it."
     )
+
+
+def _not_looked(why: str) -> int:
+    print(_said_not_looked(why))
     return 0
 
 
@@ -330,6 +339,22 @@ def main(argv: list[str] | None = None) -> int:
             seen_already.append(path)
     paths = seen_already
 
+    # The privileged half. When the engineer's network is closed it
+    # cannot be done in here - starting the project and then connecting
+    # to it is loopback to loopback, which the jail denies - so it is
+    # asked of drydock, which is outside it. The worker sends routes and
+    # a token and nothing else: no path, no command, no address.
+    #
+    # Asked before the budget and the project are read, because when the
+    # looking happens elsewhere both of those belong to the other side.
+    # A tally kept here as well would be a second count of the same
+    # thing, and two counts of one budget is no budget.
+    via = os.environ.get("DRYDOCK_LOOK_VIA", "").strip()
+    token = os.environ.get("DRYDOCK_LOOK_TOKEN", "").strip()
+    if via and token:
+        print(_by_errand(via, token, paths))
+        return 0
+
     budget = _asked_for()
     if budget is None:
         return _not_looked(NO_BUDGET)
@@ -337,10 +362,51 @@ def main(argv: list[str] | None = None) -> int:
     if where is None:
         return _not_looked("there is no project here to start")
 
+    said = privileged(paths, budget, where)
+    print(said)
+    return 0
+
+
+def _by_errand(via: str, token: str, paths: list[str]) -> str:
+    """Ask drydock to do the looking, and print what it says.
+
+    One line out, one answer back. Nothing here interprets the reply -
+    it is the same text the local path would have printed, written by
+    the same code, on the other side of a socket.
+    """
+    import socket
+
+    try:
+        with socket.create_connection(("127.0.0.1", int(via)), timeout=900) as sock:
+            sock.sendall((" ".join(["LOOK", token, *paths]) + "\n").encode())
+            said = b""
+            while b"\x00" not in said:
+                chunk = sock.recv(65536)
+                if not chunk:
+                    break
+                said += chunk
+    except (OSError, ValueError) as exc:
+        return (
+            "NOT LOOKED\n"
+            f"  the looking could not be asked for: {exc}\n\n"
+            "  Nothing about the rendered page has been established by "
+            "this. Do not report that you checked it."
+        )
+    return said.split(b"\x00", 1)[0].decode("utf-8", "replace").rstrip("\n")
+
+
+def privileged(paths: list[str], budget: Tally, where: Path) -> str:
+    """Start the project, photograph it, and say what was found.
+
+    Everything in here needs a loopback socket: the preview server, the
+    browser and the connection between them. It runs wherever there is
+    one - in the worker when nothing is closed, in drydock when the
+    worker's network is.
+    """
     try:
         live = preview.running(where) or preview.start(where)
     except (LookupError, RuntimeError, TimeoutError) as exc:
-        return _not_looked(f"the project did not start: {exc}")
+        return _said_not_looked(f"the project did not start: {exc}")
 
     # A page costs a look, not an invocation. Asking for four pages with
     # two left buys two pages and an honest sentence about the other two,
@@ -363,7 +429,7 @@ def main(argv: list[str] | None = None) -> int:
     # anything else at the top of this output has been told something was
     # established.
     if not looked_at:
-        return _not_looked(
+        return _said_not_looked(
             f"this item has had its {budget.limit} looks. Finish it with "
             "what you know, or say in your report what you could not check."
         )
@@ -381,8 +447,7 @@ def main(argv: list[str] | None = None) -> int:
             "than describing them."
         )
     said += ["", NOT_A_CHECK]
-    print("\n".join(said))
-    return 0
+    return "\n".join(said)
 
 
 if __name__ == "__main__":

@@ -19,7 +19,7 @@ from pathlib import Path
 
 import pytest
 
-from drydock import engineer, engines, netjail
+from drydock import engineer, engines, look, netjail
 
 # One script, used twice: inside the jail it must be refused, outside it
 # must not. 203.0.113.1 is TEST-NET-3 and answers nowhere, so what the
@@ -465,18 +465,37 @@ class TestWhySpecificLocalPortsCannotBeAllowed:
        these were being measured.
     """
 
-    def test_the_profile_allows_exactly_one_loopback_port(self):
-        assert netjail.PROFILE.count("(allow network-outbound") == 2
+    def test_the_profile_allows_exactly_two_loopback_ports(self):
+        """It was one. It is two now, and both are sockets drydock bound
+        itself before writing the profile - which is how "whose port is
+        it" gets answered without a filter for it. The preview's port is
+        still not among them, and that is why the looking moved out
+        instead of the port being opened."""
+        out = [
+            line
+            for line in netjail.PROFILE.splitlines()
+            if line.startswith("(allow network-outbound (remote ip")
+        ]
+        assert len(out) == 2
         assert '(remote ip "localhost:{port}")' in netjail.PROFILE
-        assert '(remote ip "localhost:*")' not in netjail.PROFILE
+        assert '(remote ip "localhost:{errand}")' in netjail.PROFILE
+        assert '(allow network-outbound (remote ip "localhost:*"))' not in (
+            netjail.PROFILE
+        )
 
-    def test_the_port_is_the_proxys_and_nothing_else(self, monkeypatch):
+    def test_the_ports_are_drydocks_own_and_no_others(self, monkeypatch):
         monkeypatch.setattr(netjail, "possible", lambda: "")
         command, env = netjail.around(["echo"], {})
         profile = Path(command[2]).read_text()
-        port = env["DRYDOCK_NETJAIL_PORT"]
-        assert profile.count("allow network-outbound") == 2
+        port, errand = env["DRYDOCK_NETJAIL_PORT"], env["DRYDOCK_LOOK_VIA"]
+        out = [
+            line
+            for line in profile.splitlines()
+            if line.startswith("(allow network-outbound (remote ip")
+        ]
+        assert len(out) == 2
         assert f'"localhost:{port}"' in profile
+        assert f'"localhost:{errand}"' in profile
         assert env["HTTPS_PROXY"].endswith(":" + port)
 
     def test_the_preview_port_is_chosen_after_the_profile_is_written(self):
@@ -494,3 +513,210 @@ class TestWhySpecificLocalPortsCannotBeAllowed:
         assert (
             "that connection is loopback-to-loopback, which this profile denies" in said
         )
+
+
+# --------------------------------------------------------------------------
+# The errand desk: the looking moved out, the authority did not
+# --------------------------------------------------------------------------
+
+
+class TestTheWorkerAsksRatherThanDoes:
+    """`drydock-look` could not work inside the jail, because starting a
+    project and then connecting to it is loopback to loopback. Seatbelt
+    cannot be told to allow one dynamic port belonging to one process,
+    so the port was not opened - the work moved instead.
+
+    The split follows `drydock-web`: drydock holds the socket, the worker
+    asks. What crosses is a token and some routes. Which repository,
+    which command starts it, where the pictures go and how many looks are
+    left were all decided on this side when the token was issued.
+    """
+
+    def test_the_worker_sends_routes_and_a_token_and_nothing_else(self):
+        source = inspect.getsource(look._by_errand)
+        assert '" ".join(["LOOK", token, *paths])' in source
+        for naming in ("DRYDOCK_ROOT", "build_command", "live.url", "where"):
+            assert naming not in source
+
+    def test_the_repository_comes_from_the_token(self):
+        """A closure, not a field in the request. A worker that lies
+        about the path is describing something this side never reads."""
+        source = inspect.getsource(engines._an_errand_for)
+        assert "def doing(routes: list[str]) -> str:" in source
+        assert 'privileged(list(routes) or ["/"]' in source
+        assert "repo" in source
+
+    def test_an_unknown_token_is_refused(self):
+        assert "this request was not recognised" in netjail._Errand._answer(
+            "LOOK nope /"
+        )
+
+    def test_a_missing_token_is_refused(self):
+        assert "not recognised" in netjail._Errand._answer("LOOK /")
+
+    def test_the_refusal_does_not_say_which_part_was_wrong(self):
+        """A worker that can tell "no such token" from "bad route" can
+        enumerate."""
+        said = netjail._Errand._answer("LOOK nope /")
+        for leaking in ("token", "expired", "unknown", "forbidden"):
+            assert leaking not in said.lower()
+
+    @pytest.mark.parametrize("verb", ["RUN", "EXEC", "GET", "SHELL", "", "look"])
+    def test_only_one_verb(self, verb):
+        assert "not a request this desk takes" in netjail._Errand._answer(
+            f"{verb} token /"
+        )
+
+    def test_it_is_not_a_shell(self):
+        source = inspect.getsource(netjail._Errand._answer)
+        for running in ("subprocess", "Popen", "system(", "eval(", "exec("):
+            assert running not in source
+
+    def test_it_is_not_a_proxy(self):
+        """One verb, one answer, no address anywhere in it."""
+        source = inspect.getsource(netjail._Errand._answer)
+        assert "CONNECT" not in source
+        assert "create_connection" not in source
+
+
+class TestWhatTheDeskRefusesToLookAt:
+    def _desk(self, monkeypatch, routes):
+        seen = {}
+
+        def doing(routes):
+            seen["r"] = routes
+            return "LOOKED"
+
+        monkeypatch.setitem(netjail.ERRANDS, "tok", doing)
+        said = netjail._Errand._answer("LOOK tok " + " ".join(routes))
+        return said, seen
+
+    @pytest.mark.parametrize(
+        "route",
+        [
+            "https://evil.test/",
+            "http://localhost:8400/",
+            "//evil.test/x",
+            "/../../etc/passwd",
+            "/..",
+            "/a%2e%2e/b",
+            "/x;",
+            "/a b",
+            "file:///etc/passwd",
+            "rooms",
+        ],
+    )
+    def test_anything_that_is_not_a_route(self, route, monkeypatch):
+        said, seen = self._desk(monkeypatch, [route])
+        assert "NOT LOOKED" in said
+        assert "not a path on this project" in said
+        assert "r" not in seen, "the errand ran despite a bad route"
+
+    def test_one_bad_route_refuses_the_whole_request(self, monkeypatch):
+        said, seen = self._desk(monkeypatch, ["/", "/../etc"])
+        assert "NOT LOOKED" in said
+        assert "r" not in seen
+
+    def test_good_routes_are_passed_through(self, monkeypatch):
+        said, seen = self._desk(monkeypatch, ["/", "/rooms"])
+        assert said == "LOOKED"
+        assert seen["r"] == ["/", "/rooms"]
+
+    def test_the_check_runs_on_both_sides(self):
+        """The worker checks too. A check that only runs where the caller
+        runs is not a check."""
+        assert "is_route" in inspect.getsource(netjail._Errand._answer)
+        assert "is_route" in inspect.getsource(look.main)
+
+
+class TestTheTokenIsScopedAndTemporary:
+    def test_a_token_is_long_enough_not_to_be_guessed(self):
+        token = netjail.an_errand(lambda r: "")
+        assert len(token) >= 24
+        netjail.forget(token)
+
+    def test_two_errands_do_not_share_one(self):
+        a = netjail.an_errand(lambda r: "a")
+        b = netjail.an_errand(lambda r: "b")
+        assert a != b
+        assert netjail._Errand._answer(f"LOOK {a} /") == "a"
+        assert netjail._Errand._answer(f"LOOK {b} /") == "b"
+        netjail.forget(a)
+        netjail.forget(b)
+
+    def test_forgetting_one_revokes_it(self):
+        token = netjail.an_errand(lambda r: "done")
+        assert netjail._Errand._answer(f"LOOK {token} /") == "done"
+        netjail.forget(token)
+        assert "not recognised" in netjail._Errand._answer(f"LOOK {token} /")
+
+    def test_the_item_forgets_its_token(self):
+        """A worker holding one after its turn would hold authority over
+        a repository it no longer has."""
+        source = inspect.getsource(engines.ClaudeCodeEngine.work)
+        assert "netjail.forget(token)" in source
+
+    def test_it_is_only_issued_when_the_item_may_look(self):
+        source = inspect.getsource(engines.ClaudeCodeEngine.work)
+        at = source.index("netjail.an_errand")
+        assert "if looks > 0 and look_key:" in source[at - 160 : at]
+
+
+class TestTheSecondPortIsDrydocksOwn:
+    def test_the_profile_names_both_and_only_both(self):
+        assert netjail.PROFILE.count("(allow network-outbound (remote ip") == 2
+        assert '"localhost:{port}"' in netjail.PROFILE
+        assert '"localhost:{errand}"' in netjail.PROFILE
+        assert '(allow network-outbound (remote ip "localhost:*"))' not in (
+            netjail.PROFILE
+        )
+
+    def test_both_are_bound_before_the_profile_is_written(self):
+        """This is what answers the question seatbelt cannot: whose port
+        is it. Both were opened here, by this process, before the worker
+        was told their numbers."""
+        source = inspect.getsource(netjail.around)
+        assert source.index("proxy()") < source.index("write_text")
+        assert source.index("desk()") < source.index("write_text")
+
+    def test_the_worker_is_told_where_to_ask(self, monkeypatch):
+        monkeypatch.setattr(netjail, "possible", lambda: "")
+        _command, env = netjail.around(["echo"], {})
+        assert env["DRYDOCK_LOOK_VIA"] == str(netjail.desk().server_address[1])
+
+    def test_the_desk_listens_on_loopback_only(self):
+        source = inspect.getsource(netjail.desk)
+        assert 'ThreadingTCPServer(("127.0.0.1", 0), _Errand)' in source
+
+
+class TestTheLocalPathIsUnchanged:
+    """Netjail is off by default, and with it off nothing about looking
+    is different: the same command, run by the worker, doing the work
+    where it always did."""
+
+    def test_the_command_is_the_same(self):
+        from drydock.route import LOOK as NAME
+
+        assert NAME == "drydock-look"
+
+    def test_it_does_the_work_itself_when_nothing_is_closed(self):
+        source = inspect.getsource(look.main)
+        assert "if via and token:" in source
+        assert "said = privileged(paths, budget, where)" in source
+
+    def test_the_budget_is_counted_once(self):
+        """When the looking is delegated the tally belongs to the other
+        side. Two counts of one budget is no budget."""
+        source = inspect.getsource(look.main)
+        assert source.index("if via and token:") < source.index("budget = _asked_for()")
+
+    def test_the_same_code_writes_both_answers(self):
+        """The worker prints what came back without interpreting it, so
+        a delegated look and a local one read identically."""
+        source = inspect.getsource(look._by_errand)
+        assert "decode" in source
+        # It writes one refusal of its own, for a desk that did not
+        # answer. Everything else it prints came from the other side
+        # untouched.
+        for parsing in ("MEASURED", "PICTURES", "ROUTES", "json.", "split('\\n')"):
+            assert parsing not in source

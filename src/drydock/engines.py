@@ -503,6 +503,23 @@ def _but_not_the_answer(without: str) -> str:
     return " ".join(t for t in without.split() if t != "Write")
 
 
+def _an_errand_for(repo: Path, look_key: str, looks: int):
+    """What one token is allowed to ask for: this repository, this budget.
+
+    A closure rather than a message the worker fills in. The routes are
+    the only thing that crosses, and they are checked on both sides;
+    everything else - which directory, which command starts it, where
+    the pictures go - was decided here when the token was issued.
+    """
+
+    def doing(routes: list[str]) -> str:
+        from .look import Tally, privileged
+
+        return privileged(list(routes) or ["/"], Tally(key=look_key, limit=looks), repo)
+
+    return doing
+
+
 def _confinement(
     repo: Path,
     look_key: str = "",
@@ -704,8 +721,18 @@ class ClaudeCodeEngine:
         # Only this method. `structured` is every other station and none
         # of them has a shell at all, so jailing them would buy nothing
         # and give the planner a new way to fail.
+        token = ""
         if netjail.wanted():
             command, env = netjail.around(command, env)
+            # The looking cannot happen in there - starting the project
+            # and then connecting to it is loopback to loopback, which
+            # the profile denies, and seatbelt cannot be told to allow
+            # one dynamic port that belongs to one process. So it is done
+            # out here and asked for over the desk, with a token that
+            # names this item's repository and budget and nothing else.
+            if looks > 0 and look_key:
+                token = netjail.an_errand(_an_errand_for(repo, look_key, looks))
+                env["DRYDOCK_LOOK_TOKEN"] = token
             if on_event:
                 on_event("tool", netjail.said())
 
@@ -737,6 +764,10 @@ class ClaudeCodeEngine:
         if overran and on_event:
             on_event("engine", _why_it_stopped(overran, self.seconds))
         _forget(process)
+        # The token dies with the item. A worker that kept one would hold
+        # authority over a repository after its turn had ended.
+        if token:
+            netjail.forget(token)
 
         if not report_file.exists():
             # A worker that fails has to say why. This used to report only

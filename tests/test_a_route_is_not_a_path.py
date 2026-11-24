@@ -432,29 +432,32 @@ class TestTheLookToolTakesSeveralRoutes:
 
     def test_a_page_costs_a_look_rather_than_an_invocation(self):
         """Otherwise one call could photograph six pages against a budget
-        of two, and the budget exists to bound browser launches."""
-        source = inspect.getsource(look.main)
+        of two, and the budget exists to bound browser launches.
+
+        In `privileged` since the looking moved: when it is delegated
+        the tally belongs to whoever does the work."""
+        source = inspect.getsource(look.privileged)
         at = source.index("for path in paths:\n        nth = budget.one_more()")
         assert "if nth > budget.limit:" in source[at : at + 400]
         assert "not_looked_at.append(path)" in source[at : at + 400]
 
     def test_it_says_which_pages_it_establishes_anything_about(self):
-        source = inspect.getsource(look.main)
+        source = inspect.getsource(look.privileged)
         assert '"ROUTES"' in source
         assert "looked at:" in source
         assert "not looked at:" in source
 
     def test_a_page_it_could_not_reach_is_named_rather_than_inferred(self):
-        source = flat(inspect.getsource(look.main)).replace('" "', "")
+        source = flat(inspect.getsource(look.privileged)).replace('" "', "")
         assert "Say so in your report rather than describing them" in source
 
     def test_nothing_looked_at_still_says_not_looked(self):
         """The heading is the contract. A worker that sees anything else
         at the top of this output has been told something was
         established."""
-        source = inspect.getsource(look.main)
+        source = inspect.getsource(look.privileged)
         assert "if not looked_at:" in source
-        assert "return _not_looked(" in source[source.index("if not looked_at:") :]
+        assert "return _said_not_looked(" in source[source.index("if not looked_at:") :]
 
     def test_each_route_photographs_into_its_own_directory(self):
         source = inspect.getsource(look._one_page)
