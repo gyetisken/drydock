@@ -26,6 +26,13 @@ the jail's proxy tunnels package registries and Wikimedia is not one.
 `have` reaches nothing and is always done where it is run. Nothing in
 here knows about the jail or builds one; see `privileged`.
 
+Where the pictures come from: Wikimedia Commons and Openverse, asked
+together because which one has the picture depends entirely on the
+words. Neither needs a key. Unsplash and Pexels would have been the
+obvious third and fourth - both answer 401 to an anonymous request,
+measured - and a credential is not something to add quietly, so they
+are not here.
+
 It does four things and refuses everything else:
 
     drydock-web have                  what pictures the project already has
@@ -83,6 +90,15 @@ from .route import is_url
 
 AGENT = "drydock/0.1 (+https://github.com/gyetisken/drydock)"
 COMMONS = "https://commons.wikimedia.org/w/api.php"
+# Openverse indexes Flickr, museums and a dozen other collections, and it
+# answers without a key - which is why it is here and Unsplash and Pexels
+# are not. Both of those return 401 to an anonymous request, measured, so
+# either would mean a credential and that is not something to add quietly.
+#
+# Anonymous limits, read from its own headers: 20 a minute, 200 a day.
+# Six fetches an item makes that comfortable, and a 429 is reported as a
+# refusal rather than a crash.
+OPENVERSE = "https://api.openverse.org/v1/images/"
 
 # Caps. Generous enough for a photograph and a documentation page, small
 # enough that nothing here can fill a disk or hold a worker's clock.
@@ -108,6 +124,17 @@ PICTURES = {
     "image/png": ".png",
     "image/webp": ".webp",
     "image/gif": ".gif",
+}
+
+# The other way round, for a source that reports an extension rather
+# than a type. Anything not in here is not offered, which is how an SVG
+# from Openverse never reaches `get`.
+PICTURE_OF = {
+    "jpg": "image/jpeg",
+    "jpeg": "image/jpeg",
+    "png": "image/png",
+    "webp": "image/webp",
+    "gif": "image/gif",
 }
 
 # Refused with its own sentence rather than the general one, because
@@ -438,11 +465,21 @@ def _plain(html: str) -> str:
     return " ".join(re.sub(r"<[^>]+>", " ", html or "").split())
 
 
-def find(words: list[str], most: int = 6) -> int:
-    """Search Wikimedia Commons. Prints what may be used and on what terms."""
-    terms = " ".join(words).strip()
-    if not terms:
-        return _no("say what to look for: `drydock-web find art deco facade`")
+@dataclass
+class Picture:
+    """One result, in the shape the printer wants, whoever found it."""
+
+    title: str
+    url: str
+    kind: str
+    width: object
+    height: object
+    licence: str
+    by: str
+    source: str
+
+
+def _from_commons(terms: str, most: int) -> list[Picture]:
     asked = (
         COMMONS
         + "?"
@@ -460,14 +497,144 @@ def find(words: list[str], most: int = 6) -> int:
             }
         )
     )
-    try:
-        said = _ask(asked, BIGGEST_PAGE, "application/json")
-        found = json.loads(said.body.decode("utf-8", "replace"))
-    except (Refused, ValueError) as exc:
-        return _no(f"the search did not answer: {exc}")
-
+    found = json.loads(_ask(asked, BIGGEST_PAGE, "application/json").body)
     pages = (found.get("query") or {}).get("pages") or {}
-    if not pages:
+    out = []
+    for page in list(pages.values())[:most]:
+        info = (page.get("imageinfo") or [{}])[0]
+        if (info.get("mime") or "") in NOT_DOWNLOADED:
+            # Offering one would be offering something `get` refuses.
+            continue
+        meta = info.get("extmetadata") or {}
+        out.append(
+            Picture(
+                title=_plain(page.get("title", "")),
+                url=info.get("thumburl") or info.get("url") or "",
+                kind=info.get("mime", "?"),
+                width=info.get("width", "?"),
+                height=info.get("height", "?"),
+                licence=_plain(
+                    str((meta.get("LicenseShortName") or {}).get("value", "?"))
+                ),
+                by=_plain(str((meta.get("Artist") or {}).get("value", "unknown"))),
+                source="Wikimedia Commons",
+            )
+        )
+    return out
+
+
+def _kind_of(said: object, url: str) -> str:
+    """What kind of picture this is, from whatever the source stated.
+
+    Measured: Openverse reports `filetype: null` for every Flickr
+    result, which is most of what it is there for. A filter on that
+    field alone dropped exactly the pictures the second source exists to
+    reach. So the address is read when the field is empty, and when
+    neither says anything the result is still offered - `get` reads the
+    actual content type and refuses anything that is not a picture, so
+    it is the authority here and this is only a label.
+    """
+    stated = PICTURE_OF.get(str(said or "").lower(), "")
+    if stated:
+        return stated
+    end = Path(urllib.parse.urlsplit(url).path).suffix.lower().lstrip(".")
+    if end == "svg":
+        return "image/svg+xml"
+    return PICTURE_OF.get(end, "")
+
+
+def _from_openverse(terms: str, most: int) -> list[Picture]:
+    """Photographs, mostly. Filtered to the licences a project can use.
+
+    `commercial,modification` rather than `commercial` alone: measured,
+    the looser filter returns CC BY-ND, which may be used commercially
+    and may not be cropped, and a picture nobody may crop is a trap in a
+    layout rather than an asset.
+    """
+    asked = (
+        OPENVERSE
+        + "?"
+        + urllib.parse.urlencode(
+            {
+                "q": terms,
+                "page_size": most,
+                "license_type": "commercial,modification",
+            }
+        )
+    )
+    found = json.loads(_ask(asked, BIGGEST_PAGE, "application/json").body)
+    out = []
+    for said in (found.get("results") or [])[:most]:
+        url = str(said.get("url") or "")
+        if not url:
+            continue
+        where = str(said.get("source") or "unknown")
+        # Openverse indexes Commons too, and Commons is already asked
+        # directly. Measured on "hotel lobby interior": every Openverse
+        # result came back from wikimedia, so without this the second
+        # source returned a second copy of the first one and nothing
+        # else.
+        if "wikimedia" in where or "wikipedia" in where:
+            continue
+        kind = _kind_of(said.get("filetype"), url)
+        if kind in NOT_DOWNLOADED:
+            continue
+        name = str(said.get("license") or "").upper()
+        version = str(said.get("license_version") or "")
+        out.append(
+            Picture(
+                title=_plain(str(said.get("title") or "")),
+                url=url,
+                kind=kind or "?",
+                width=said.get("width", "?"),
+                height=said.get("height", "?"),
+                # Spelled the way Commons spells it, so two sources do
+                # not describe one licence two different ways.
+                licence=f"CC {name} {version}".strip() if name else "?",
+                by=_plain(str(said.get("creator") or "unknown")),
+                source=f"Openverse / {where}",
+            )
+        )
+    return out
+
+
+# Both sources, and what each contributes. Commons is encyclopedic and
+# high resolution; Openverse is mostly Flickr and reaches ordinary
+# photography that Commons does not have. Asked together because which
+# one has the picture depends entirely on the words.
+SOURCES = (("Wikimedia Commons", _from_commons), ("Openverse", _from_openverse))
+
+
+def find(words: list[str], most: int = 6) -> int:
+    """Search every source. Prints what may be used and on what terms."""
+    terms = " ".join(words).strip()
+    if not terms:
+        return _no("say what to look for: `drydock-web find art deco facade`")
+
+    each = max(1, most // len(SOURCES))
+    got: list[list[Picture]] = []
+    broke = []
+    for name, ask in SOURCES:
+        try:
+            got.append(ask(terms, each + 2))
+        except (Refused, ValueError, KeyError, TypeError, StopIteration) as exc:
+            # One source failing is not a search failing. Which one it
+            # was gets said, because "fewer results than usual" with no
+            # reason reads as "there are fewer pictures".
+            got.append([])
+            broke.append(f"{name} did not answer ({exc})")
+
+    # Interleaved rather than concatenated, so one source cannot fill the
+    # whole list and the other be read as having nothing.
+    pictures: list[Picture] = []
+    for nth in range(max((len(one) for one in got), default=0)):
+        for one in got:
+            if nth < len(one) and len(pictures) < most:
+                pictures.append(one[nth])
+
+    if not pictures:
+        if broke:
+            return _no("the search did not answer: " + "; ".join(broke))
         print(f"NOTHING FOUND for {terms!r}")
         print(
             "  Try plainer words, or fewer of them. If nothing suits, "
@@ -475,30 +642,22 @@ def find(words: list[str], most: int = 6) -> int:
         )
         return 0
 
-    print(f"FOUND {len(pages)} for {terms!r}  (Wikimedia Commons)")
+    print(f"FOUND {len(pictures)} for {terms!r}")
     print()
-    shown = 0
-    for page in list(pages.values())[:most]:
-        shots = page.get("imageinfo") or [{}]
-        info = shots[0]
-        if (info.get("mime") or "") in NOT_DOWNLOADED:
-            # Offering one would be offering something `get` refuses.
-            continue
-        shown += 1
-        meta = info.get("extmetadata") or {}
-        licence = _plain(str((meta.get("LicenseShortName") or {}).get("value", "?")))
-        by = _plain(str((meta.get("Artist") or {}).get("value", "unknown")))
-        url = info.get("thumburl") or info.get("url") or ""
-        print(f"  {_plain(page.get('title', ''))[:70]}")
+    for shot in pictures:
+        # Written down here, so `get` can attribute a file from any
+        # source without the worker retyping anything.
+        _remember(shot)
+        print(f"  {shot.title[:70]}")
         print(
-            f"    {info.get('width', '?')}x{info.get('height', '?')}  "
-            f"{info.get('mime', '?')}  licence: {licence}"
+            f"    {shot.width}x{shot.height}  {shot.kind}  "
+            f"licence: {shot.licence}  ({shot.source})"
         )
-        print(f"    by: {by[:70]}")
-        print(f"    get: {url}")
+        print(f"    by: {shot.by[:70]}")
+        print(f"    get: {shot.url}")
         print()
-    if not shown:
-        print("  (every result was a vector file, which is not downloaded here)")
+    for why in broke:
+        print(f"  ({why})")
     print(
         "  Every one of these is free to use and most of them require you "
         "to say who made it and under what licence. `drydock-web get <url> "
@@ -516,13 +675,69 @@ def find(words: list[str], most: int = 6) -> int:
 CREDITS = "CREDITS.md"
 
 
-def _terms(url: str) -> tuple[str, str]:
-    """The licence and the author of a Commons file, asked of Commons.
+# What a search found, kept where `get` can read it and a worker cannot
+# write it. Under the drydock home, outside the repository, like the
+# tallies.
+REMEMBERED = "terms.json"
+REMEMBER_MOST = 400
 
-    Looked up rather than copied by hand from the search output: an
-    attribution a worker retyped is an attribution that can be wrong, and
-    a wrong credit on somebody's photograph is worse than none.
+
+def _ledger() -> Path:
+    home = Path(os.environ.get("DRYDOCK_HOME") or Path.home() / ".drydock")
+    home.mkdir(parents=True, exist_ok=True)
+    return home / REMEMBERED
+
+
+def _remember(shot: "Picture") -> None:
+    """Write down one result's terms, so `get` need not ask again.
+
+    The second source does not have a Commons-shaped lookup to go back
+    to, and the alternative - letting a worker pass the licence and the
+    author on the command line - is exactly the thing `_terms` exists to
+    avoid. So the terms are kept from the answer that carried them,
+    written by this program, keyed by the address they describe.
     """
+    if not shot.url:
+        return
+    note = _ledger()
+    try:
+        held = json.loads(note.read_text())
+        if not isinstance(held, dict):
+            held = {}
+    except (OSError, ValueError):
+        held = {}
+    held[shot.url] = {"licence": shot.licence, "by": shot.by, "source": shot.source}
+    if len(held) > REMEMBER_MOST:
+        held = dict(list(held.items())[-REMEMBER_MOST:])
+    try:
+        note.write_text(json.dumps(held))
+    except OSError:
+        pass  # the ledger is a convenience; `_terms` still has Commons
+
+
+def _recalled(url: str) -> tuple[str, str]:
+    try:
+        held = json.loads(_ledger().read_text())[url]
+    except (OSError, ValueError, KeyError, TypeError):
+        return "", ""
+    return str(held.get("licence", "")), str(held.get("by", ""))
+
+
+def _terms(url: str) -> tuple[str, str]:
+    """The licence and the author of a picture, from whoever stated them.
+
+    Looked up or remembered, never retyped: an attribution a worker
+    passed on the command line is an attribution that can be wrong, and
+    a wrong credit on somebody's photograph is worse than none.
+
+    The ledger first, because it holds what the search itself said - for
+    an Openverse result that is the only statement of the terms there
+    is. Commons is asked directly when the ledger has nothing, which is
+    what happens when a worker names an address it did not find here.
+    """
+    licence, by = _recalled(url)
+    if licence or by:
+        return licence, by
     name = re.search(r"/commons/(?:thumb/)?[0-9a-f]/[0-9a-f]{2}/([^/?]+)", url)
     if not name or "wikimedia.org" not in (urllib.parse.urlsplit(url).hostname or ""):
         return "", ""
