@@ -108,7 +108,7 @@ class TestItAlsoHasToBuild:
     def test_green_tests_do_not_excuse_a_broken_build(self, monkeypatch):
         monkeypatch.setattr(
             "drydock.verify.check",
-            lambda name, *_: fake_check(name != "build", "Tests run: 24"),
+            lambda name, *_, **_kw: fake_check(name != "build", "Tests run: 24"),
         )
         verdict = verify(Path("."), "tests", self.BASE, self.COMMANDS)
         assert not verdict.passed
@@ -119,7 +119,7 @@ class TestItAlsoHasToBuild:
         running it twice proves nothing and costs a minute."""
         calls = []
 
-        def spy(name, command, *_):
+        def spy(name, command, *_, **_kw):
             calls.append(name)
             return fake_check(True, "Tests run: 24, Failures: 0, Errors: 0, Skipped: 0")
 
@@ -144,7 +144,7 @@ TSC_OUTPUT = "Found 0 errors. Watching for file changes.\n"
 
 class TestABuildThatIsAlsoATestRunReportsItsTests:
     def _verdict(self, output: str, passed: bool = True, monkeypatch=None):
-        def ran(name, command, repo):
+        def ran(name, command, repo, **_kw):
             return Check(
                 name=name, command=command, passed=passed, seconds=0.1, detail=output
             )

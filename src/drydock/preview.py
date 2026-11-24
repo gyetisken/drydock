@@ -33,6 +33,8 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
+from . import netjail
+
 
 @dataclass
 class Preview:
@@ -425,15 +427,29 @@ def start(repo: Path, timeout: float = 25.0) -> Preview:
     # could not.
     env = {"PORT": str(port), "HOST": "127.0.0.1", "PYTHONUNBUFFERED": "1"}
 
+    # The command came from the project's own manifest, not from us -
+    # which is to say it is the engineer's code by another name, and when
+    # the network is closed it is closed for this too. Spelt as `sh -c`
+    # rather than `shell=True` so there is a list to put the jail in
+    # front of; the semantics are the same ones `shell=True` would have
+    # used.
+    #
+    # It gets no look token. The errand desk is reachable from in here -
+    # it is one of the two ports the profile names - and without a token
+    # it answers "this request was not recognised" and nothing else.
+    args = ["/bin/sh", "-c", command]
+    started_with = {**os.environ, **env}
+    if netjail.wanted():
+        args, started_with = netjail.around(args, started_with)
+        started_with.pop("DRYDOCK_LOOK_TOKEN", None)
+
     with log.open("w") as out:
-        # The command came from the project's own manifest, not from us.
         process = subprocess.Popen(
-            command,
+            args,
             cwd=repo,
-            shell=True,
             stdout=out,
             stderr=subprocess.STDOUT,
-            env={**os.environ, **env},
+            env=started_with,
             start_new_session=True,
         )
 

@@ -61,6 +61,48 @@ runs is not a check. The token dies with the item.
 The desk takes one verb and answers in text. It is not a proxy and not
 a shell: no address and no command appears anywhere in what it accepts.
 
+WHERE THE ENGINEER'S CODE RUNS, which is more places than the engineer:
+
+The jail first went around one worker, and that was not the boundary.
+The repository's build command, its test command and its dev server are
+the engineer's code under other names, and four stations run them:
+
+  engineer      the worker itself                        jailed
+  verifier      the build preflight, the build, the      jailed
+                suite - it runs the files the engineer
+                just wrote
+  analyst       the baseline build and suite, before     jailed
+                any work
+  preview       `npm run dev`, for as long as the         jailed
+                looking takes
+
+Measured before they were: with the jail on, an engineer wrote a test
+file that opened a socket and the verifier's `npm test` carried the
+connection through. The engineer's own shell was shut at the time.
+
+They are marked at one place - `shell.run(untrusted=True)` - and asked
+for rather than assumed, because the callers that must not have it run
+through the same function: `git fetch`, `git push` and the rest are
+drydock's own commands, and a jail there would take the network from the
+only part of the program that needs it.
+
+WHAT IS STILL OUTSIDE, named rather than implied:
+
+  the browser.    Chrome renders the page, which means it runs the
+                  repository's JavaScript with an ordinary network. It
+                  is launched by this process, deliberately outside -
+                  a headless browser that cannot reach the network
+                  cannot load a font or a picture, and the point of
+                  looking is to see what a visitor sees. What it is
+                  given is a loopback URL and a profile directory; what
+                  it reads back is a screenshot and a count.
+  toolchain       `detect.installed` runs `node --version` and four
+  probes.         like it, before any work exists. Fixed command names
+                  from this program, not from the repository.
+  everything      Off by default. With `DRYDOCK_NETJAIL` unset none of
+  when it is      this applies and the stations run as they always did.
+  off.
+
 What it does buy: the demonstrated path is closed, every allowed
 connection is named in a log, and anything else fails loudly rather than
 succeeding quietly.

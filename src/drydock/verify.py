@@ -38,7 +38,7 @@ def verify_build(repo: Path, command: str) -> Verdict:
             reason="no separate build command",
             check=Check(name="build", command="", passed=True, seconds=0.0),
         )
-    result = check("build", command, repo)
+    result = check("build", command, repo, untrusted=True)
     # A build command is often the test command. `"build": "npm test"` is
     # what a greenfield worker writes when there is nothing to compile, and
     # then the counts are sitting in the output and nothing read them: one
@@ -114,7 +114,7 @@ def verify(repo: Path, item_verify: str, base: Baseline, commands: dict) -> Verd
     build = commands.get("build", "")
     compiled = None
     if build and build != commands["tests"]:
-        compiled = check("build", build, repo)
+        compiled = check("build", build, repo, untrusted=True)
         if not compiled.passed:
             return Verdict(
                 False,
@@ -122,7 +122,7 @@ def verify(repo: Path, item_verify: str, base: Baseline, commands: dict) -> Verd
                 compiled,
             )
 
-    result = check("tests", commands["tests"], repo)
+    result = check("tests", commands["tests"], repo, untrusted=True)
     run, failed, _ = read_test_counts(result.detail)
 
     if not result.passed or failed:

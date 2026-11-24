@@ -16,10 +16,11 @@ import platform
 import subprocess
 import sys
 from pathlib import Path
+from typing import ClassVar
 
 import pytest
 
-from drydock import engineer, engines, look, netjail
+from drydock import engineer, engines, look, netjail, preview, shell
 
 # One script, used twice: inside the jail it must be refused, outside it
 # must not. 203.0.113.1 is TEST-NET-3 and answers nowhere, so what the
@@ -720,3 +721,138 @@ class TestTheLocalPathIsUnchanged:
         # untouched.
         for parsing in ("MEASURED", "PICTURES", "ROUTES", "json.", "split('\\n')"):
             assert parsing not in source
+
+
+# --------------------------------------------------------------------------
+# The stations that run the engineer's code
+# --------------------------------------------------------------------------
+
+
+class TestEveryPlaceTheRepositorysOwnCodeRuns:
+    """The jail used to go around one worker. But the engineer's code is
+    not only run by the engineer: the verifier runs the suite, the
+    analyst runs the baseline, the preview runs the dev server. Those
+    were open, and measured open - a test file that opened a socket got
+    through `npm test` while the engineer's own shell was shut.
+
+    So `untrusted` is asked for at the one chokepoint, and these pin
+    that every caller which hands over a command from the repository
+    asks for it.
+    """
+
+    REPOSITORYS: ClassVar[dict[str, int]] = {
+        "verify.py": 3,  # the build preflight, the build, the suite
+        "analyst.py": 2,  # the baseline build and the baseline suite
+        "tools.py": 1,  # the build the engineer may ask for by name
+    }
+
+    @pytest.mark.parametrize("module,how_many", sorted(REPOSITORYS.items()))
+    def test_the_command_from_the_repository_is_marked(self, module, how_many):
+        source = Path("src/drydock") / module
+        text = source.read_text()
+        runs = text.count("check(") + text.count("run(")
+        marked = text.count("untrusted=True")
+        assert marked == how_many, f"{module}: {marked} marked of {runs} calls"
+
+    # Drydock's own git, run through the same function. A jail here
+    # would take the network from `git push`, which is the one command
+    # in the program that needs it.
+    @pytest.mark.parametrize("module", ["repo.py", "workspace.py"])
+    def test_drydocks_own_commands_are_not_marked(self, module):
+        text = (Path("src/drydock") / module).read_text()
+        assert "untrusted" not in text
+
+    def test_git_push_goes_through_the_same_door(self):
+        """If this stops being true the reason the flag is asked for
+        rather than defaulted has gone, and so has the care."""
+        from drydock import publish, repo
+
+        assert "run(" in inspect.getsource(repo)
+        assert "untrusted" not in inspect.getsource(publish)
+
+    def test_nothing_is_jailed_unless_it_says_so(self, monkeypatch):
+        monkeypatch.setenv(netjail.FLAG, "1")
+        seen = []
+        monkeypatch.setattr(netjail, "around", lambda a, e: seen.append(a) or (a, e))
+        shell.run("true", Path.cwd())
+        assert seen == []
+
+    def test_and_it_is_jailed_when_it_does(self, monkeypatch):
+        monkeypatch.setenv(netjail.FLAG, "1")
+        seen = []
+        monkeypatch.setattr(netjail, "around", lambda a, e: seen.append(a) or (a, e))
+        shell.run("true", Path.cwd(), untrusted=True)
+        assert seen == [["true"]]
+
+    def test_the_flag_still_decides(self, monkeypatch):
+        """Marked untrusted and the jail switched off is an ordinary
+        run. The mark says what the command is, not that it is confined."""
+        monkeypatch.delenv(netjail.FLAG, raising=False)
+        seen = []
+        monkeypatch.setattr(netjail, "around", lambda a, e: seen.append(a) or (a, e))
+        shell.run("true", Path.cwd(), untrusted=True)
+        assert seen == []
+
+
+class TestThePreviewServerIsTheEngineersCodeToo:
+    """`npm run dev` is a long-lived process out of the repository's own
+    package.json, and before this it was the widest hole of the lot: not
+    one command but a server, running for as long as the looking takes."""
+
+    def test_it_is_spelled_so_it_can_be_wrapped(self):
+        """It used to be `shell=True`, which hands the string to a shell
+        this program never sees and cannot put a sandbox in front of."""
+        source = inspect.getsource(preview)
+        assert 'args = ["/bin/sh", "-c", command]' in source
+        # As a keyword, not as the word in the comment explaining why it
+        # is no longer passed.
+        for shape in ("shell=True,", "shell=True)", "shell=True\n"):
+            assert shape not in source
+
+    def test_the_jail_goes_around_it(self):
+        source = inspect.getsource(preview)
+        assert "args, started_with = netjail.around(args, started_with)" in source
+
+    def test_and_the_errand_token_is_taken_off_it(self):
+        """The dev server is the engineer's code. Handing it the token
+        that reaches drydock's own privileged looking would undo the
+        separation the delegation exists for."""
+        source = inspect.getsource(preview)
+        wrapped = source.index("netjail.around(args, started_with)")
+        popped = source.index('started_with.pop("DRYDOCK_LOOK_TOKEN", None)')
+        # Counting from the pop, because `subprocess.Popen` is written
+        # once more further up as the type of the field it is kept in.
+        assert wrapped < popped < source.index("subprocess.Popen(", popped)
+
+
+@pytest.mark.skipif(
+    platform.system() != "Darwin" or not netjail.shutil.which("sandbox-exec"),
+    reason="seatbelt is macOS only",
+)
+class TestOnThisMachineTheStationsAreClosedToo:
+    def test_an_untrusted_command_cannot_open_a_socket(self, monkeypatch, tmp_path):
+        monkeypatch.setattr(netjail, "possible", lambda: "")
+        monkeypatch.setenv(netjail.FLAG, "1")
+        script = tmp_path / "reach.py"
+        script.write_text(TRY_A_SOCKET)
+        said = shell.check(
+            "reach",
+            f"{sys.executable} {script}",
+            tmp_path,
+            timeout=30,
+            untrusted=True,
+        )
+        assert said.detail.strip() == "REFUSED"
+
+    def test_and_drydocks_own_still_can(self, monkeypatch, tmp_path):
+        """The same script, the same jail switched on, run as drydock's
+        own command. If this were refused too, `git push` would be."""
+        monkeypatch.setattr(netjail, "possible", lambda: "")
+        monkeypatch.setenv(netjail.FLAG, "1")
+        script = tmp_path / "reach.py"
+        script.write_text(TRY_A_SOCKET)
+        said = shell.check("reach", f"{sys.executable} {script}", tmp_path, timeout=30)
+        # Not "ALLOWED": nothing answers at TEST-NET-3. What says the
+        # sandbox was absent is that the refusal came from the network
+        # and not from the kernel.
+        assert said.detail.strip() == "NOT-REFUSED"

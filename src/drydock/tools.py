@@ -136,7 +136,7 @@ def write_tools(repo: Path, build_command: str) -> list[Tool]:
         return f"{path}: replaced {hits} occurrence{'s' if hits != 1 else ''}"
 
     def build() -> str:
-        code, out = run(build_command, repo, timeout=900)
+        code, out = run(build_command, repo, timeout=900, untrusted=True)
         head = "build ok" if code == 0 else f"build FAILED (exit {code})"
         return f"{head}\n{out[-6000:]}"
 

@@ -634,7 +634,7 @@ class TestABuildItemStillRunsARealSuite:
     def _run(self, monkeypatch, commands, base=GREENFIELD, passing=True, detail=None):
         ran = []
 
-        def record(name, command, repo):
+        def record(name, command, repo, **_kw):
             ran.append((name, command))
             said = detail or (TEST_OUTPUT if name == "tests" else BUILD_OUTPUT)
             return Check(

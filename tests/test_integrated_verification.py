@@ -118,9 +118,9 @@ def test_build_only_preflight_runs_suite_only_on_the_integrated_commit(
     checks = []
     actual_check = verifier.check
 
-    def record(name, command, where):
+    def record(name, command, where, **kw):
         checks.append((name, git(where, "rev-parse", "HEAD")))
-        return actual_check(name, command, where)
+        return actual_check(name, command, where, **kw)
 
     monkeypatch.setattr(verifier, "check", record)
     build_item = item(1, "left").model_copy(update={"verify_with": "build"})

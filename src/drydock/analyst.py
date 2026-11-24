@@ -55,10 +55,10 @@ def baseline(repo: Path, chain: Toolchain) -> Baseline:
     if not chain.build_command:
         return Baseline(builds=True, tests_run=0, tests_failed=0, tests_skipped=0)
 
-    build = check("build", chain.build_command, repo)
+    build = check("build", chain.build_command, repo, untrusted=True)
     if not chain.has_tests:
         return Baseline(builds=build.passed, checks=[build])
-    tests = check("tests", chain.test_command, repo)
+    tests = check("tests", chain.test_command, repo, untrusted=True)
     run, failed, skipped = read_test_counts(tests.detail)
     return Baseline(
         builds=build.passed,
