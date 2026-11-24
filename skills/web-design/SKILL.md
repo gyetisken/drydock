@@ -133,17 +133,23 @@ repository supplies are yours to use, each with an aspect ratio in the
 CSS so nothing jumps, `loading="lazy"` below the fold, a real `alt` and a
 ground colour underneath; `brand/logo.svg` may already be there.
 
-Where nothing supplies one, **you draw it**. An SVG you write is a real
-asset and not a placeholder - a hero, a scene, a mark, a texture, a
-pattern behind a band, a figure beside a paragraph - and it ships with
-the page. A photograph you cannot get rules out a photographic hero; it
-does not rule out an illustrated one. What you draw, how much, and in
-what manner are yours, and they should answer to this business rather
-than to the category.
+Where nothing supplies one there are two answers and they are not
+ranked. **You can draw it** - an SVG you write is a real asset and not a
+placeholder, and it ships with the page. **You can look for a
+photograph**, if the engineer's instructions gave you the command for
+it: start with what the project already has, then search. What it finds
+is free to use and carries its licence and author; record both, and put
+the attribution on the page when the licence asks.
 
-Do not go looking: there is no network here. And "no pictures" is a
-decision about this page, not a rule - do not make it silently for a
-business whose appeal is how it looks.
+Which one is a judgement about the subject. A real place, object or
+person is usually weaker drawn: a photograph is the thing, an
+illustration is an impression of it. An idea, a service or a brand is
+often stronger drawn, because there is nothing to photograph and a stock
+image of the wrong thing is worse than a good mark.
+
+Either way, a picture with no art direction is a stock photograph of a
+handshake. And "no pictures" is a decision about this page, not a rule -
+do not make it silently for something whose appeal is how it looks.
 
 **Space is a decision, not what is left over.** Room between sections and
 around a headline is the point. A content column that stops halfway

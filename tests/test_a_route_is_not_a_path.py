@@ -347,7 +347,7 @@ class TestTheFenceIsNotLoosened:
 class TestOneRuleReadByBoth:
     def test_the_hook_and_the_tool_import_the_same_one(self):
         assert (
-            "from .route import LOOK, is_route"
+            "from .route import LOOK, WEB, is_route, is_url"
             in Path("src/drydock/confine.py").read_text()
         )
         assert (
@@ -891,26 +891,35 @@ class TestTheEngineerIsToldItMayDraw:
     either: the word did not appear in the section the builder reads.
     """
 
-    def test_drawing_is_the_answer_when_nothing_supplies_a_picture(self):
+    def test_drawing_is_one_of_the_two_answers(self):
+        """It was the only one. There is a fetching command now, and the
+        passage names both without ranking them - the point was never
+        that drawing wins, it was that it had not been offered."""
         said = flat(web_design()["engineer"])
-        assert "Where nothing supplies one, **you draw it**" in said
+        assert "there are two answers and they are not ranked" in said
+        assert "**You can draw it**" in said
 
     def test_what_it_writes_is_an_asset_rather_than_a_placeholder(self):
         said = flat(web_design()["engineer"])
-        assert "An SVG you write is a real asset and not a placeholder" in said
+        assert "an SVG you write is a real asset and not a" in said
+        assert "placeholder" in said
 
     def test_the_kinds_are_named_without_being_prescribed(self):
         """Named so the option is visible, listed so none of them is the
         instruction."""
         said = flat(web_design()["engineer"])
-        for kind in ("a hero", "a scene", "a mark", "a texture", "a pattern"):
+        # The engineer's own prompt carries the list of kinds now; the
+        # skill carries the judgement about which medium suits what.
+        assert "Which one is a judgement about the subject" in said
+        for kind in ("A real place, object or person", "An idea, a service or a brand"):
             assert kind in said
 
-    def test_a_missing_photograph_does_not_rule_out_an_illustrated_one(self):
+    def test_a_photograph_is_the_thing_and_a_drawing_is_an_impression(self):
+        """The sentence that replaced it, and a better one: it says when
+        each medium is right rather than only that both are allowed."""
         said = flat(web_design()["engineer"])
         assert (
-            "A photograph you cannot get rules out a photographic hero; it does "
-            "not rule out an illustrated one" in said
+            "a photograph is the thing, an illustration is an impression of it" in said
         )
 
     def test_the_design_section_says_the_same_thing(self):
@@ -925,18 +934,21 @@ class TestTheEngineerIsToldItMayDraw:
         said = flat(web_design()["engineer"])
         assert "That rules out the photograph and nothing else" in said
 
-    def test_it_still_says_not_to_go_looking(self):
-        """Two workers once spent a hundred and fifty minutes proving a
-        photograph existed. That rule is not relaxed by this."""
-        assert "Do not go looking: there is no network here" in flat(
-            web_design()["engineer"]
-        )
+    def test_looking_is_now_offered_rather_than_forbidden(self):
+        """It said "do not go looking: there is no network here", and it
+        was right while there was none - two workers had spent a hundred
+        and fifty minutes between them trying to prove a photograph
+        existed. There is a sanctioned way now, and what bounds the cost
+        is a budget rather than a prohibition."""
+        said = flat(web_design()["engineer"])
+        assert "there is no network here" not in said
+        assert "if the engineer's instructions gave you the command for it" in said
 
     def test_nothing_here_prescribes_how_much_or_in_what_manner(self):
         said = flat(web_design()["engineer"])
         at = said.index("**Pictures.**")
-        block = said[at : at + 1400]
-        assert "What you draw, how much, and in what manner are yours" in block
+        block = said[at : at + 1600]
+        assert "they are not ranked" in block
         # No count, no named style, no palette.
         assert not re.search(
             r"\b(one|two|three|four|five|\d+)\s+(svgs?|illustrat)", block, re.IGNORECASE

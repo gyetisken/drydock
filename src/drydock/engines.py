@@ -30,7 +30,7 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
-from .route import LOOK
+from .route import LOOK, WEB
 
 
 class EngineUnavailable(RuntimeError):
@@ -156,7 +156,9 @@ BOOTSTRAP = (
 # module imports nothing, so the hook does not pay for this one.
 
 
-def _shell_rule(build_command: str, can_look: bool = False) -> str:
+def _shell_rule(
+    build_command: str, can_look: bool = False, can_fetch: bool = False
+) -> str:
     """Which shell commands the worker may run.
 
     Once a project has a build command the worker is held to it, which is as
@@ -173,6 +175,8 @@ def _shell_rule(build_command: str, can_look: bool = False) -> str:
         # Both forms: it is useful with no argument at all, which is the
         # home page, and with one path.
         allowed += [f"Bash({LOOK})", f"Bash({LOOK} *)"]
+    if can_fetch:
+        allowed += [f"Bash({WEB})", f"Bash({WEB} *)"]
     return " ".join(allowed)
 
 
@@ -180,16 +184,23 @@ def _shell_rule(build_command: str, can_look: bool = False) -> str:
 # as often a checkout as an installation and `drydock-look` has to work the
 # same either way. Written outside every repository: it is ours, and a tool
 # that appears in somebody's project is a file they have to explain.
-def _put_the_tool_somewhere(env: dict) -> Path:
-    """Write the look command where a worker can run it, and return its dir."""
+# The commands this program lends a worker, and the module behind each.
+OUR_TOOLS = ((LOOK, "drydock.look"), (WEB, "drydock.outside"))
+
+
+def _put_the_tool_somewhere(
+    env: dict, named: tuple[str, str] = (LOOK, "drydock.look")
+) -> Path:
+    """Write one of our commands where a worker can run it, and return its dir."""
     home = Path(os.environ.get("DRYDOCK_HOME") or Path.home() / ".drydock")
     where = home / "bin"
     where.mkdir(parents=True, exist_ok=True)
-    tool = where / LOOK
+    name, module = named
+    tool = where / name
     # This interpreter, not whatever `python3` resolves to on the worker's
     # path. PYTHONPATH is already set below for the confinement hook, which
     # is what makes the import work from a checkout.
-    wanted = f'#!/bin/sh\nexec {shlex.quote(sys.executable)} -m drydock.look "$@"\n'
+    wanted = f'#!/bin/sh\nexec {shlex.quote(sys.executable)} -m {module} "$@"\n'
     if not tool.exists() or tool.read_text() != wanted:
         tool.write_text(wanted)
     tool.chmod(0o755)
@@ -491,7 +502,13 @@ def _but_not_the_answer(without: str) -> str:
     return " ".join(t for t in without.split() if t != "Write")
 
 
-def _confinement(repo: Path, look_key: str = "", looks: int = 0) -> tuple[str, dict]:
+def _confinement(
+    repo: Path,
+    look_key: str = "",
+    looks: int = 0,
+    fetch_key: str = "",
+    fetches: int = 0,
+) -> tuple[str, dict]:
     """Settings and environment that keep the worker inside one repository.
 
     Claude Code has a real filesystem and no reason of its own to stay
@@ -545,9 +562,19 @@ def _confinement(repo: Path, look_key: str = "", looks: int = 0) -> tuple[str, d
         # tally itself is kept under the drydock home, outside what the
         # worker's file tools may touch, and it is keyed by run and item so
         # that items sharing a tree cannot spend each other's looks.
-        env["PATH"] = str(_put_the_tool_somewhere(env)) + os.pathsep + env["PATH"]
+        env["PATH"] = (
+            str(_put_the_tool_somewhere(env, OUR_TOOLS[0])) + os.pathsep + env["PATH"]
+        )
         env["DRYDOCK_LOOK_KEY"] = look_key
         env["DRYDOCK_LOOK_LIMIT"] = str(looks)
+    if fetches > 0 and fetch_key:
+        # Same arrangement, its own tally: an item that spent its looks
+        # has not spent its fetches, and neither can borrow the other's.
+        where = str(_put_the_tool_somewhere(env, OUR_TOOLS[1]))
+        if where not in env["PATH"]:
+            env["PATH"] = where + os.pathsep + env["PATH"]
+        env["DRYDOCK_WEB_KEY"] = fetch_key
+        env["DRYDOCK_WEB_LIMIT"] = str(fetches)
     return settings, env
 
 
@@ -582,6 +609,8 @@ class ClaudeCodeEngine:
         on_event=None,
         look_key: str = "",
         looks: int = 0,
+        fetch_key: str = "",
+        fetches: int = 0,
     ) -> EngineResult:
         binary = _claude_binary()
         report_file = repo / ".drydock-report.json"
@@ -649,11 +678,21 @@ class ClaudeCodeEngine:
             # build, and nothing else. Without this it has a shell.
             "--allowedTools",
             "Read Edit Write Glob Grep "
-            + _shell_rule(build_command, can_look=looks > 0 and bool(look_key)),
+            + _shell_rule(
+                build_command,
+                can_look=looks > 0 and bool(look_key),
+                can_fetch=fetches > 0 and bool(fetch_key),
+            ),
             "--append-system-prompt",
             system,
         ]
-        settings, env = _confinement(repo, look_key=look_key, looks=looks)
+        settings, env = _confinement(
+            repo,
+            look_key=look_key,
+            looks=looks,
+            fetch_key=fetch_key,
+            fetches=fetches,
+        )
         command[1:1] = ["--settings", settings]
 
         process = subprocess.Popen(

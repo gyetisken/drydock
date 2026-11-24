@@ -227,12 +227,12 @@ class TestTheEngineerIsToldAboutPictures:
     def test_it_knows_the_mark_may_already_be_there(self):
         assert "`brand/logo.svg`" in self._engineer_section()
 
-    def test_it_is_told_not_to_go_looking(self):
-        """Measured before the rule existed: two workers spent a hundred
-        and fifty minutes between them trying to prove a photograph was
-        real."""
+    def test_looking_is_offered_with_a_budget_rather_than_forbidden(self):
+        """It used to say "do not go looking: there is no network here",
+        which was right while there was no way to. There is one now."""
         said = self._engineer_section()
-        assert "Do not go looking: there is no network here" in said
+        assert "there is no network here" not in said
+        assert "**You can look for a photograph**" in said
 
     def test_no_images_is_not_presented_as_the_rule(self):
         said = self._engineer_section()

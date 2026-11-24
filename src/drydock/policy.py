@@ -91,6 +91,10 @@ class Policy:
     # This buys nothing on an item nobody will look at, so it is only ever
     # offered on one the planner marked as worth looking at.
     self_looks: int = 3
+    # How many times one item may reach outside this machine: a search, a
+    # download, a page read. Bounded for the same reason looks are - the
+    # worker's clock is real, and so is somebody else's server.
+    fetches: int = 6
 
     @property
     def say(self) -> str:

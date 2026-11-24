@@ -598,6 +598,11 @@ def _one_item(
                 # would let the first item spend the last one's looks.
                 can_look=_worth_a_look(item),
                 look_key=f"{run.id}-item{item.id}",
+                # Its own key, so a tally for one is not a tally for the
+                # other. Given on the same condition as the look: an item
+                # that renders something a person sees is the one that may
+                # need a picture.
+                fetch_key=f"{run.id}-item{item.id}",
             )
         except BudgetExceeded as stop:
             here.discard()

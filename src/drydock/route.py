@@ -45,6 +45,12 @@ import re
 # name lives in the one module both can import for nothing.
 LOOK = "drydock-look"
 
+# The other tool this program lends a worker: the one that reaches outside
+# the machine. Same shape as the look tool - drydock owns it, the hook
+# allows it by name, and the worker never gets a shell that can reach the
+# network. See `outside.py`.
+WEB = "drydock-web"
+
 # Deliberately strict and deliberately not a URL parser. Everything this
 # has to admit is a path somebody can type: letters, digits, and the four
 # punctuation marks that appear in real routes.
@@ -91,3 +97,26 @@ def slug(said: str) -> str:
     """
     kept = "".join(c if c.isalnum() else "-" for c in said.split("?", 1)[0].strip("/"))
     return kept.strip("-")
+
+
+# An address the fetching tool may be pointed at. Shape only: whether it
+# leads anywhere it should not is settled by `outside.py`, which resolves
+# the host and checks every address it lands on. This is here because the
+# confinement hook has to tell a URL from a file path before it resolves
+# anything, and it may not import the fetching machinery to do it.
+_URL = re.compile(r"^https://[A-Za-z0-9.-]+(?::\d{2,5})?(/[^\s]*)?$")
+
+
+def is_url(said: str) -> bool:
+    """Whether this is an https address and nothing else.
+
+    http is refused along with everything else: a worker reading a page
+    over a connection somebody can rewrite is reading whatever they wrote.
+    """
+    if not said or not isinstance(said, str):
+        return False
+    if said != said.strip() or any(c in said for c in "\\ \t\r\n\0"):
+        return False
+    if len(said) > 2000:
+        return False
+    return bool(_URL.match(said))

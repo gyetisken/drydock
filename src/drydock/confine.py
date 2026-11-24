@@ -26,7 +26,7 @@ import shlex
 import sys
 from pathlib import Path
 
-from .route import LOOK, is_route
+from .route import LOOK, WEB, is_route, is_url
 
 # The keys a path can arrive under, across the tools worth guarding.
 PATH_KEYS = ("file_path", "path", "notebook_path", "target_file")
@@ -103,8 +103,9 @@ ALLOWED = frozenset(
         "composer",
         "swift",
         "java",
-        # This program's own tool, when a worker is allowed to look.
+        # This program's own tools, when a worker is allowed them.
         LOOK,
+        WEB,
     }
 )
 
@@ -197,10 +198,19 @@ def _one_command(said: str, root: Path) -> str | None:
     # that is not a switch is still a path, still resolved, and still has
     # to land inside the project.
     looking = name == LOOK
+    # The fetching tool takes https addresses, which resolve as relative
+    # paths and would be refused as being outside the project. Only this
+    # one command name, only arguments that validate as an address, and
+    # only by the same rule the tool itself applies. Its destination
+    # argument is a path and is still resolved below, which is what keeps
+    # a download inside the project.
+    fetching = name == WEB
     for word in words[1:]:
         if _A_SWITCH.match(word) or not word:
             continue
         if looking and is_route(word):
+            continue
+        if fetching and is_url(word):
             continue
         try:
             target = Path(word).expanduser()
