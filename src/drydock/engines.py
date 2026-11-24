@@ -30,6 +30,7 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
+from . import netjail
 from .route import LOOK, WEB
 
 
@@ -694,6 +695,19 @@ class ClaudeCodeEngine:
             fetches=fetches,
         )
         command[1:1] = ["--settings", settings]
+
+        # The engineer's worker, and only it. Off unless DRYDOCK_NETJAIL=1,
+        # and it raises rather than handing back an unjailed command: a
+        # confinement that quietly is not there is worse than none,
+        # because the run then reports one it did not have.
+        #
+        # Only this method. `structured` is every other station and none
+        # of them has a shell at all, so jailing them would buy nothing
+        # and give the planner a new way to fail.
+        if netjail.wanted():
+            command, env = netjail.around(command, env)
+            if on_event:
+                on_event("tool", netjail.said())
 
         process = subprocess.Popen(
             command,

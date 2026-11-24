@@ -11,6 +11,7 @@ reported, not fixed.
 
 from pathlib import Path
 
+from . import netjail
 from .agent import API_MODEL, CHEAP_ENGINEER, JUDGEMENT, Agent, Tool, for_work
 from .engines import WEB as OUR_WEB
 from .engines import ClaudeCodeEngine, EngineResult, shell_allowance
@@ -193,6 +194,43 @@ criterion, it does not become a test, and it does not widen the item. The
 item is still the whole of what you touch. If the request or the brief
 already says one of these, that wins and you do not restate it."""
 
+
+# What a worker is told when the network around it is closed.
+#
+# Short on purpose and mostly about error messages. The clients mangle
+# the refusal on the way through - Python says "Tunnel connection
+# failed", Node says ENOTFOUND for something that was refused rather
+# than missing, a raw socket says EPERM and nothing else - so a worker
+# that has not been told reads a closed network as a broken machine and
+# spends the item working around it. One did exactly that with the
+# command fence: four refusals, and it concluded Bash was unavailable
+# and finished without running the suite it was allowed to run.
+JAILED = """
+
+The network is closed for this run.
+
+Package registries work - `npm install`, `uv sync`, `pip install` and
+the rest reach them through a proxy, and you do not have to do anything
+for that. Everything else is closed, including anything you write that
+opens a socket.
+
+So if you see any of these, the machine is not broken and retrying will
+not help:
+
+    EPERM, PermissionError      a connection was refused by the sandbox
+    ENOTFOUND                   usually a refusal, not a missing host
+    Tunnel connection failed    the proxy refused the address
+    403 ... is not a package registry
+
+Do not work around it, and do not weaken a test to make it pass. If the
+item genuinely needs something from the internet, build what you can,
+say in your report what you could not reach and why you needed it, and
+leave it there.
+
+One honest note, because you may be asked to reason about it: this is
+not isolation. A hostname lookup still leaves this machine, and what
+travels inside the registry connections is not inspected. It closes the
+ordinary way out, not every way."""
 
 # What a worker is told when it may reach outside this machine.
 #
@@ -456,6 +494,11 @@ def work(
     briefed = LOOKING.format(look=OUR_LOOK, looks=looks) if looks else ""
     if fetches:
         briefed += OUTSIDE.format(web=OUR_WEB, fetches=fetches)
+    # Said to the worker rather than only to the log: the refusals it
+    # will meet are written by somebody else and do not explain
+    # themselves.
+    if netjail.wanted() and engine == "claude":
+        briefed += JAILED
     if typing != model and on_event:
         # Visible, every time, in the feed and in the run log. A routing
         # decision nobody can see is the bug this replaced.
