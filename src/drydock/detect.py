@@ -145,20 +145,71 @@ FACES = re.compile(
 A_FACE_ON_DISK = ("public", "static", "views", "templates", "src/pages")
 
 
+# Four of those words mean a screen and also mean something else: a
+# page of results, a site reliability rota, an app on a phone, a service
+# interface. The rest only ever mean a screen.
+ALSO_MEANS_SOMETHING_ELSE = re.compile(r"\b(page|site|app|interface)\b")
+
+
+def _only_the_ambiguous_ones(task: str) -> bool:
+    """Whether every word that matched is one of those four."""
+    hits = [m.group(0) for m in FACES.finditer(task)]
+    return bool(hits) and all(ALSO_MEANS_SOMETHING_ELSE.fullmatch(h) for h in hits)
+
+
 def has_a_face(repo: Path, task: str) -> bool:
     """Whether this job produces something a person looks at.
 
     A parser, a migration or a CLI does not need a palette, and asking
-    for one costs a minute and produces an answer nobody reads.
+    for one costs a minute, loads the whole web-design skill into a
+    backend briefing, and produces an answer nobody reads.
+
+    Measured on run 20261125-141215, a paging fix: "the first page to
+    the last" matched, so a worker was told to direct a look, wrote a
+    paragraph explaining why it was not directing one, and that
+    paragraph was stored as the run's art direction. Six of eighteen
+    backend phrasings matched the same way - page size, page token, page
+    fault, service interface, site reliability.
+
+    Three signals, in order, and no new list of words:
+
+      the repository.  Something a person looks at is on disk. This is
+                       the strongest signal there is and it decides
+                       outright.
+      an unambiguous   dashboard, UI, frontend, landing page, blog,
+      word.            storefront, marketing. These only ever mean a
+                       screen, so they decide too.
+      one of the four  Enough on its own in an empty folder, where it is
+      ambiguous ones.  a new thing and almost certainly a screen. Not
+                       enough in a repository that already has code and
+                       nothing anybody looks at, because there it is the
+                       other sense.
+
+    Measured against 23 phrasings, visual and not, existing and
+    greenfield: 17 right before, 23 right after. The cost of the
+    remaining shape of error - a page job in an existing repository with
+    no public directory, phrased only as "a page" - is no art direction
+    on something somebody looks at, which this file would rather risk
+    than hand a migration a palette.
 
     Here rather than on the session, because the command line asks the
     same question and a second copy of this would be a second answer.
     """
-    if FACES.search((task or "").lower()):
+    # An existing repository that already serves pages has a face
+    # whether or not the request mentions one.
+    if any((repo / name).exists() for name in A_FACE_ON_DISK):
         return True
-    # An existing repository that already serves pages has a face whether
-    # or not the request mentions one.
-    return any((repo / name).exists() for name in A_FACE_ON_DISK)
+    said = (task or "").lower()
+    if not FACES.search(said):
+        return False
+    if not _only_the_ambiguous_ones(said):
+        return True
+    try:
+        nothing_here = not any(p.name != ".git" for p in repo.iterdir())
+    except OSError:
+        # No repository to read. The word is all there is.
+        return True
+    return nothing_here
 
 
 def is_empty(chain: Toolchain) -> bool:
