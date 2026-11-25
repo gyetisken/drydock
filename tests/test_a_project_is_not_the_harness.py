@@ -145,7 +145,8 @@ class TestAddingAProjectRedrawsTheWindow:
 
 class TestTheParentsInstructionsStayWithTheParent:
     def test_the_worker_is_told_which_settings_to_load(self):
-        assert 'SETTING_SOURCES = ("--setting-sources", "")' in ENGINES
+        assert "SETTING_SOURCES = (" in ENGINES
+        assert '"--setting-sources",' in ENGINES
 
     def test_both_ways_of_running_a_worker_use_it(self):
         """Structured answers and ordinary runs are two separate command

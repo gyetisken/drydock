@@ -186,7 +186,8 @@ class TestNothingWasWeakenedToGetHere:
     def test_the_isolation_is_untouched(self):
         source = Path("src/drydock/engines.py").read_text()
         assert '"matcher": "Bash|Read|Edit|Write|Glob|Grep|NotebookEdit"' in source
-        assert '("--setting-sources", "")' in source
+        assert '"--setting-sources",' in source
+        assert '"--strict-mcp-config",' in source
         assert "AUTH_THAT_IS_NOT_OURS" in source
 
     def test_no_limit_was_added(self):

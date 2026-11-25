@@ -34,9 +34,14 @@ ENGINES = Path("src/drydock/engines.py").read_text()
 
 class TestNoSettingsFileIsLoaded:
     def test_the_flag_is_empty_and_names_no_source(self):
-        assert engines.SETTING_SOURCES == ("--setting-sources", "")
+        """The value is "", and no source is named. `--strict-mcp-config`
+        sits beside it because MCP configuration is read from places
+        `--setting-sources` does not cover."""
+        said = engines.SETTING_SOURCES
+        assert said[0] == "--setting-sources"
+        assert said[1] == ""
         for source in ("user", "project", "local"):
-            assert source not in engines.SETTING_SOURCES
+            assert source not in said
 
     def test_both_ways_of_running_a_worker_pass_it(self):
         """Structured answers and ordinary runs are two command builders.

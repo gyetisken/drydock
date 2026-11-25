@@ -6,6 +6,7 @@ answer.
 """
 
 import contextlib
+import re
 import shutil
 from dataclasses import dataclass, replace
 from pathlib import Path
@@ -129,6 +130,35 @@ def _refine(repo: Path, chain: Toolchain) -> Toolchain:
         test_command=test or build,
         has_tests=bool(test),
     )
+
+
+# Words that mean somebody is going to look at this. Matched on word
+# boundaries, because "ui" sits inside "suite" and a JUnit migration was
+# being sent to a designer.
+FACES = re.compile(
+    r"\b(web ?site|site|web ?page|page|landing|web ?app|app|ui|ux|"
+    r"frontend|front-end|dashboard|portal|blog|shop|storefront|"
+    r"interface|home ?page|marketing)\b"
+)
+
+# Where a project that serves pages keeps them.
+A_FACE_ON_DISK = ("public", "static", "views", "templates", "src/pages")
+
+
+def has_a_face(repo: Path, task: str) -> bool:
+    """Whether this job produces something a person looks at.
+
+    A parser, a migration or a CLI does not need a palette, and asking
+    for one costs a minute and produces an answer nobody reads.
+
+    Here rather than on the session, because the command line asks the
+    same question and a second copy of this would be a second answer.
+    """
+    if FACES.search((task or "").lower()):
+        return True
+    # An existing repository that already serves pages has a face whether
+    # or not the request mentions one.
+    return any((repo / name).exists() for name in A_FACE_ON_DISK)
 
 
 def is_empty(chain: Toolchain) -> bool:

@@ -14,11 +14,11 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 from .analyst import baseline, survey
-from .detect import detect
+from .detect import detect, installed, is_empty
 from .engines import stop_workers
 from .orchestrate import execute
 from .planner import plan
-from .policy import Policy
+from .policy import FAST, Policy
 from .run import Run, event_printer
 from .skills import discover, load
 
@@ -146,6 +146,9 @@ def _cmd_survey(args) -> int:
         print("  the suite is not green; nothing after this can be called a regression")
     run.save()
 
+    if policy.profile == FAST:
+        return _read_and_plan_in_one(run, repo, chain, skills, policy, args)
+
     print("\nsurveying")
     began = time.monotonic()
     run.inventory, usage = survey(
@@ -188,6 +191,83 @@ def _spend(run) -> str:
         else ""
     )
     return f"run {run.id}  ${run.cost:.2f}{note}"
+
+
+def _read_and_plan_in_one(run, repo, chain, skills, policy, args) -> int:
+    """Read the repository, decide, and plan - in one call.
+
+    What the four stations produced between them, from one worker with
+    the repository in front of it. `start.begin` has been the
+    application's default for a while and the command line never called
+    it, so a `fast` run on the command line paid for an Analyst pass
+    whose findings the Engineer then re-derived: measured on run
+    20261124-153354, 227 seconds and $1.00 of a 497-second, $2.22 run,
+    on a five-file repository, after which the Engineer read the same
+    five files again.
+
+    Nothing after the code exists is folded in. The verifier, the
+    inspector and the gates stay where they are, for the reason
+    `start.py` gives: the thing that writes the code must not be the
+    thing that says it may stay.
+
+    `balanced` and `deep` are untouched and still survey, because the
+    survey is a separate reading by somebody whose whole job is to read
+    - which is worth paying for when being wrong is expensive, and is
+    what those profiles are for.
+    """
+    from .detect import count, has_a_face
+    from .start import begin
+
+    empty = is_empty(chain)
+    wanted_a_look = has_a_face(repo, run.task)
+    print("\nreading, deciding and planning in one call")
+    began = time.monotonic()
+    started, usage = begin(
+        repo,
+        run.task,
+        empty=empty,
+        looked_at=wanted_a_look,
+        # Half a second of reading this process can do itself, so a
+        # worker does not spend turns on it.
+        known=installed() if empty else "",
+        skills=skills,
+        on_event=event_printer(),
+        budget=run.left if run.budget else 0.0,
+        engine=run.engine,
+        model=args.model or run.model,
+    )
+    run.spend(usage, station="start", seconds=time.monotonic() - began)
+
+    run.inventory = started.inventory(
+        chain,
+        source_files=count(repo, chain.source_glob) if chain.source_glob else 0,
+        test_files=count(repo, chain.test_glob) if chain.test_glob else 0,
+    )
+    # The request written out, and what was read into it that nobody
+    # said. Stored beside the request rather than folded into it: the
+    # request is what the work is judged against.
+    run.expanded = started.brief
+    run.assumptions = list(started.assumptions)
+    # Only when a look was asked for. `direction` is a required field, so
+    # a worker told not to direct one still has to put something there -
+    # and what it puts there is a paragraph explaining why it is not.
+    if wanted_a_look:
+        run.direction = started.direction
+    run.plan = started.plan
+    run.save()
+
+    print(f"\n{run.plan.summary}\n")
+    for item in run.plan.items:
+        print(f"  {item.id:>2}. {item.title}   [{item.verify_with}]")
+        print(_wrap(item.rationale))
+        print(f"      files: {', '.join(item.files[:4])}")
+        print()
+    print(f"{len(run.plan.items)} items   {_spend(run)}")
+    said = _by_station(run)
+    if said:
+        print(said)
+    print("\n`drydock run` works the plan. `drydock plan --again` plans it over.")
+    return 0
 
 
 def _cmd_plan(args) -> int:

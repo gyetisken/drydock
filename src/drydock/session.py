@@ -8,7 +8,6 @@ of something that takes twenty minutes and costs money.
 """
 
 import os
-import re
 import tempfile
 import threading
 import time
@@ -934,26 +933,16 @@ class Session:
     # Words that mean somebody is going to look at this. Matched on word
     # boundaries, because "ui" sits inside "suite" and a JUnit migration was
     # being sent to a designer.
-    FACES: ClassVar[re.Pattern] = re.compile(
-        r"\b(web ?site|site|web ?page|page|landing|web ?app|app|ui|ux|"
-        r"frontend|front-end|dashboard|portal|blog|shop|storefront|"
-        r"interface|home ?page|marketing)\b"
-    )
-
     def _has_a_face(self) -> bool:
         """Whether this job produces something a person looks at.
 
-        A parser, a migration or a CLI does not need a palette, and asking
-        for one costs a minute and produces an answer nobody reads.
+        The question is `detect.has_a_face`; this is the session asking
+        it. It used to be answered here, which meant the command line had
+        no way to ask it without a second copy of the answer.
         """
-        if self.FACES.search(self.task.lower()):
-            return True
-        # An existing repository that already serves pages has a face whether
-        # or not the request mentions one.
-        return any(
-            (self.repo / name).exists()
-            for name in ("public", "static", "views", "templates", "src/pages")
-        )
+        from .detect import has_a_face
+
+        return has_a_face(self.repo, self.task)
 
     def _stages(self) -> list[str]:
         """Which stations this job reaches.

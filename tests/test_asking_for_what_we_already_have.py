@@ -199,7 +199,8 @@ class TestNothingProtectiveWasTraded:
         assert '"matcher": "Bash|Read|Edit|Write|Glob|Grep|NotebookEdit"' in ENGINES
 
     def test_the_worker_still_inherits_no_settings_at_all(self):
-        assert '("--setting-sources", "")' in ENGINES
+        assert '"--setting-sources",' in ENGINES
+        assert '"--strict-mcp-config",' in ENGINES
 
     def test_the_credentials_are_still_stripped(self):
         assert "AUTH_THAT_IS_NOT_OURS" in ENGINES

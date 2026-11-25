@@ -155,7 +155,28 @@ AUTH_THAT_IS_NOT_OURS = (
 #
 # `--bare` and `--safe-mode` also stop the inheritance and also turn
 # hooks off, which would take the confinement with them.
-SETTING_SOURCES = ("--setting-sources", "")
+SETTING_SOURCES = (
+    "--setting-sources",
+    "",
+    # And no MCP server, from anywhere, unless this program passed one -
+    # which it never does. `--setting-sources ""` only excludes project
+    # settings, so it stops a repository's `.mcp.json` and nothing else:
+    # user and local scope live in `~/.claude.json`, and claude.ai
+    # connectors come from the account rather than from a file. None of
+    # those are drydock's to inherit.
+    #
+    # What it costs a worker to inherit one: tool definitions in its
+    # context, a server process to start before it can think, and - with
+    # the network closed - a server reaching for something the jail
+    # denies. The worker's tools are nine entries chosen here, and that
+    # should be true on anybody's machine rather than only on one with
+    # nothing configured.
+    #
+    # Not an optimisation. `ENABLE_TOOL_SEARCH` is left alone: with nine
+    # tools there is nothing to defer, and the documented threshold is
+    # thirty to fifty.
+    "--strict-mcp-config",
+)
 
 BOOTSTRAP = (
     "npm",
